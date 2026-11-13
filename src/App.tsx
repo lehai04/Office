@@ -41,6 +41,7 @@ import {
   joinOrRestoreRoom,
   leaveWorkSeatToStand,
   loadSavedSession,
+  officeApiUrl,
   sendChatMessage,
   sitAtMeetingChair,
   updateAttendanceDay,
@@ -280,7 +281,7 @@ export function App() {
     const url = `/api/rooms/${encodeURIComponent(room.code)}/events?token=${encodeURIComponent(
       session.sessionToken
     )}`;
-    const es = new EventSource(url);
+    const es = new EventSource(officeApiUrl(url));
 
     es.onmessage = (evt) => {
       try {

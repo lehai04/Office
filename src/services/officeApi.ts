@@ -12,6 +12,11 @@ import type {
 } from '../types/office';
 
 const STORAGE_PREFIX = 'van_phong_ao_session_v2';
+const API_ORIGIN = import.meta.env.VITE_API_ORIGIN?.trim().replace(/\/+$/, '') ?? '';
+
+export function officeApiUrl(path: string): string {
+  return `${API_ORIGIN}${path}`;
+}
 
 /**
  * Hỗ trợ nhiều phiên độc lập trên cùng trình duyệt thông qua query ?session=A, ?session=B, ?session=C
@@ -107,7 +112,7 @@ async function apiFetch<T>(
     headers.set('Authorization', `Bearer ${sessionToken}`);
   }
 
-  const res = await fetch(path, {
+  const res = await fetch(officeApiUrl(path), {
     ...options,
     headers,
   });

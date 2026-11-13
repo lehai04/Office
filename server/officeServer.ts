@@ -66,7 +66,7 @@ interface SseClient {
   res: ServerResponse;
 }
 
-const DATA_DIR = path.resolve(process.cwd(), 'server', 'data');
+const DATA_DIR = path.resolve(process.env.OFFICE_DATA_DIR || path.join('server', 'data'));
 const DB_FILE = path.join(DATA_DIR, 'db.json');
 
 function createInitialSeatsForRoom(roomId: string): WorkSeat[] {

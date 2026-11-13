@@ -7,6 +7,7 @@
     "dev": "vite --port 5173",
     "build": "tsc -b && vite build",
     "build:pages": "tsc -b && vite build --mode github-pages",
+    "start:api": "tsx server/start.ts",
     "preview": "vite preview --port 4173",
     "test:flows": "npx tsx scripts/verify-flows.ts"
   },
