@@ -38,12 +38,14 @@ import {
   fetchSingleDiaryEntry,
   getInviteRoomFromUrl,
   getSessionNamespace,
+  isUsingStaticFallback,
   joinOrRestoreRoom,
   leaveWorkSeatToStand,
   loadSavedSession,
   officeApiUrl,
   sendChatMessage,
   sitAtMeetingChair,
+  subscribeStaticRealtime,
   updateAttendanceDay,
   updateDiaryEntry,
 } from './services/officeApi';
@@ -278,6 +280,51 @@ export function App() {
   useEffect(() => {
     if (!session || !room) return;
 
+    const handleRealtimePayload = (data: Record<string, unknown>) => {
+      if (data.type === 'connected' || data.type === 'room_state') {
+        if (data.room && typeof data.room === 'object') {
+          setRoom(data.room as RoomInfo);
+        }
+        if (Array.isArray(data.members)) setMembers(data.members as RoomMember[]);
+        if (Array.isArray(data.seats)) setSeats(data.seats as WorkSeat[]);
+      } else if (data.type === 'chat_message' && data.message) {
+        const incoming = data.message as ChatMessage;
+        setMessages((prev) => {
+          const exists = prev.some(
+            (m) =>
+              m.id === incoming.id ||
+              (m.clientMsgId && m.clientMsgId === incoming.clientMsgId)
+          );
+          if (exists) {
+            return prev.map((m) =>
+              m.clientMsgId === incoming.clientMsgId ? { ...incoming, status: 'sent' } : m
+            );
+          }
+          return [...prev, { ...incoming, status: 'sent' }];
+        });
+        triggerSpeechBubble(incoming.userId, incoming.content);
+      } else if (data.type === 'diary_sync') {
+        fetchDiaryLists(room.code, session.sessionToken)
+          .then(({ feed, mine }) => {
+            setDiaryFeed(feed);
+            setMyDiary(mine);
+          })
+          .catch((err) => console.error('Failed to sync diary:', err));
+      }
+    };
+
+    const unsubscribeStatic = subscribeStaticRealtime((evt) => {
+      if (evt.roomId !== room.id && evt.roomCode !== room.code) return;
+      if (evt.hiddenUserIds && evt.hiddenUserIds.includes(session.userId)) return;
+      handleRealtimePayload(evt.payload);
+    });
+
+    if (isUsingStaticFallback()) {
+      return () => {
+        unsubscribeStatic();
+      };
+    }
+
     const url = `/api/rooms/${encodeURIComponent(room.code)}/events?token=${encodeURIComponent(
       session.sessionToken
     )}`;
@@ -286,39 +333,14 @@ export function App() {
     es.onmessage = (evt) => {
       try {
         const data = JSON.parse(evt.data);
-        if (data.type === 'connected' || data.type === 'room_state') {
-          if (data.members) setMembers(data.members);
-          if (data.seats) setSeats(data.seats);
-        } else if (data.type === 'chat_message' && data.message) {
-          const incoming: ChatMessage = data.message;
-          setMessages((prev) => {
-            const exists = prev.some(
-              (m) =>
-                m.id === incoming.id ||
-                (m.clientMsgId && m.clientMsgId === incoming.clientMsgId)
-            );
-            if (exists) {
-              return prev.map((m) =>
-                m.clientMsgId === incoming.clientMsgId ? { ...incoming, status: 'sent' } : m
-              );
-            }
-            return [...prev, { ...incoming, status: 'sent' }];
-          });
-          triggerSpeechBubble(incoming.userId, incoming.content);
-        } else if (data.type === 'diary_sync') {
-          fetchDiaryLists(room.code, session.sessionToken)
-            .then(({ feed, mine }) => {
-              setDiaryFeed(feed);
-              setMyDiary(mine);
-            })
-            .catch((err) => console.error('Failed to sync diary:', err));
-        }
+        handleRealtimePayload(data);
       } catch (err) {
         console.error('Error parsing SSE event:', err);
       }
     };
 
     return () => {
+      unsubscribeStatic();
       es.close();
     };
   }, [session, room, triggerSpeechBubble]);

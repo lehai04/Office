@@ -4,6 +4,16 @@ import { handleApiRequest } from './server/officeServer';
 
 export default defineConfig(({ mode }) => ({
   base: mode === 'github-pages' ? '/Office/' : '/',
+  server: {
+    port: 5173,
+    host: true,
+    allowedHosts: true,
+  },
+  preview: {
+    port: 4173,
+    host: true,
+    allowedHosts: true,
+  },
   plugins: [
     react(),
     {
@@ -27,4 +37,3 @@ export default defineConfig(({ mode }) => ({
     },
   ],
 }));
-

@@ -10,9 +10,47 @@ import type {
   RoomMember,
   WorkSeat,
 } from '../types/office';
+import {
+  handleStaticFallbackRequest,
+  subscribeStaticRealtime,
+  type StaticRealtimeEvent,
+} from './staticFallbackEngine';
+
+export { subscribeStaticRealtime, type StaticRealtimeEvent };
 
 const STORAGE_PREFIX = 'van_phong_ao_session_v2';
-const API_ORIGIN = import.meta.env.VITE_API_ORIGIN?.trim().replace(/\/+$/, '') ?? '';
+const API_ORIGIN_STORAGE_KEY = 'van_phong_ao_api_origin';
+
+function resolveApiOrigin(): string {
+  const envOrigin = import.meta.env.VITE_API_ORIGIN?.trim().replace(/\/+$/, '') ?? '';
+  if (typeof window === 'undefined') return envOrigin;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const queryApi = params.get('api')?.trim().replace(/\/+$/, '');
+    if (queryApi) {
+      window.sessionStorage.setItem(API_ORIGIN_STORAGE_KEY, queryApi);
+      return queryApi;
+    }
+    const savedApi = window.sessionStorage.getItem(API_ORIGIN_STORAGE_KEY)?.trim();
+    if (savedApi) return savedApi;
+  } catch {
+    // ignore
+  }
+  return envOrigin;
+}
+
+const API_ORIGIN = resolveApiOrigin();
+
+// Nếu trang đang chạy trên GitHub Pages (*.github.io) và không cấu hình API_ORIGIN riêng,
+// tự động bật chế độ Static Fallback Engine ngay lập tức để không bao giờ gặp lỗi 405.
+let staticFallbackActive =
+  typeof window !== 'undefined' &&
+  !API_ORIGIN &&
+  window.location.hostname.endsWith('.github.io');
+
+export function isUsingStaticFallback(): boolean {
+  return staticFallbackActive;
+}
 
 export function officeApiUrl(path: string): string {
   return `${API_ORIGIN}${path}`;
@@ -106,18 +144,45 @@ async function apiFetch<T>(
   options: RequestInit = {},
   sessionToken?: string
 ): Promise<T> {
+  if (staticFallbackActive) {
+    return handleStaticFallbackRequest<T>(path, options, sessionToken);
+  }
+
   const headers = new Headers(options.headers || {});
   headers.set('Content-Type', 'application/json');
   if (sessionToken) {
     headers.set('Authorization', `Bearer ${sessionToken}`);
   }
 
-  const res = await fetch(officeApiUrl(path), {
-    ...options,
-    headers,
-  });
+  let res: Response;
+  try {
+    res = await fetch(officeApiUrl(path), {
+      ...options,
+      headers,
+    });
+  } catch {
+    // Khi không kết nối được máy chủ Node (ví dụ chạy bản tĩnh), chuyển sang Static Fallback Engine
+    staticFallbackActive = true;
+    return handleStaticFallbackRequest<T>(path, options, sessionToken);
+  }
 
-  const data = await res.json().catch(() => ({}));
+  const contentType = res.headers.get('content-type') || '';
+  const isJson = contentType.includes('application/json');
+  const data = isJson ? await res.json().catch(() => ({})) : {};
+
+  // Nếu máy chủ tĩnh (như GitHub Pages / Netlify / Vercel static) trả về 405 Method Not Allowed,
+  // 404 HTML (không phải JSON từ API của chúng ta), hoặc 502/503, tự động chuyển sang Static Fallback Engine
+  if (
+    !res.ok &&
+    (res.status === 405 ||
+      res.status === 502 ||
+      res.status === 503 ||
+      (res.status === 404 && !data.error))
+  ) {
+    staticFallbackActive = true;
+    return handleStaticFallbackRequest<T>(path, options, sessionToken);
+  }
+
   if (!res.ok) {
     const err = new Error(data.message || `Lỗi máy chủ (${res.status})`) as Error & {
       code?: string;
@@ -332,4 +397,3 @@ export async function updateDiaryEntry(
     sessionToken
   );
 }
-
