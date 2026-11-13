@@ -139,6 +139,47 @@ export async function changeRoomCodeApi(
   return res;
 }
 
+export async function transferRoomManager(
+  roomCode: string,
+  targetUserId: string,
+  sessionToken: string
+): Promise<{
+  managerUserId: string;
+  room: RoomInfo;
+  members: RoomMember[];
+  seats: WorkSeat[];
+}> {
+  return apiFetch(
+    `/api/rooms/${encodeURIComponent(roomCode)}/manager/transfer`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ targetUserId }),
+    },
+    sessionToken
+  );
+}
+
+export async function kickRoomMember(
+  roomCode: string,
+  targetUserId: string,
+  sessionToken: string
+): Promise<{
+  kickedUserId: string;
+  kickedNickname: string;
+  room: RoomInfo;
+  members: RoomMember[];
+  seats: WorkSeat[];
+}> {
+  return apiFetch(
+    `/api/rooms/${encodeURIComponent(roomCode)}/members/kick`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ targetUserId }),
+    },
+    sessionToken
+  );
+}
+
 async function apiFetch<T>(
   path: string,
   options: RequestInit = {},

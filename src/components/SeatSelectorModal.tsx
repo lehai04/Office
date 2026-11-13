@@ -1,5 +1,14 @@
 import React from 'react';
-import { Armchair, DoorOpen, CheckCircle2, X, Users, AlertCircle } from 'lucide-react';
+import {
+  Armchair,
+  DoorOpen,
+  CheckCircle2,
+  X,
+  Users,
+  AlertCircle,
+  Crown,
+  UserMinus,
+} from 'lucide-react';
 import { WORK_SEAT_LAYOUTS, MEETING_CHAIRS } from '../constants/officeLayout';
 import type { RoomMember, WorkSeat } from '../types/office';
 
@@ -12,6 +21,8 @@ interface SeatSelectorModalProps {
   onClaimSeat: (seatId: string) => Promise<void>;
   onSelectMeetingChair: (chairId: string | null) => Promise<void>;
   onStandNearDoor: () => Promise<void>;
+  onTransferManager: (targetUserId: string) => Promise<void>;
+  onKickMember: (targetUserId: string) => Promise<void>;
   claimingSeatId: string | null;
   seatError: string | null;
 }
@@ -25,6 +36,8 @@ export const SeatSelectorModal: React.FC<SeatSelectorModalProps> = ({
   onClaimSeat,
   onSelectMeetingChair,
   onStandNearDoor,
+  onTransferManager,
+  onKickMember,
   claimingSeatId,
   seatError,
 }) => {
@@ -32,6 +45,7 @@ export const SeatSelectorModal: React.FC<SeatSelectorModalProps> = ({
 
   const mySeat = seats.find((s) => s.occupiedByUserId === currentUserId);
   const myMember = members.find((m) => m.userId === currentUserId);
+  const isMeManager = Boolean(myMember?.isManager);
   const myMeetingChairId = myMember?.meetingChairId ?? null;
   const availableCount = seats.filter((s) => !s.occupiedByUserId).length;
 
@@ -334,6 +348,105 @@ export const SeatSelectorModal: React.FC<SeatSelectorModalProps> = ({
                 🗄️ Tủ ngang dưới {idx}
               </div>
             ))}
+          </div>
+        </div>
+
+        {/* KHU VỰC QUẢN LÝ THÀNH VIÊN & QUYỀN TRƯỞNG PHÒNG */}
+        <div className="mt-4 rounded-2xl border border-amber-500/30 bg-slate-950/75 p-3.5 space-y-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Crown className="h-4 w-4 text-amber-400" />
+              <span className="text-xs sm:text-sm font-bold text-white">
+                Thành viên trong phòng ({members.length}) & Quyền Trưởng phòng
+              </span>
+            </div>
+            <span className="rounded-full bg-amber-500/15 border border-amber-400/30 px-2.5 py-0.5 text-[11px] font-semibold text-amber-200">
+              {isMeManager
+                ? '👑 Bạn là Trưởng phòng (Có quyền chuyển chức vụ & xóa người chơi)'
+                : 'Người tạo phòng là Trưởng phòng'}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
+            {members.map((m) => {
+              const isSelf = m.userId === currentUserId;
+              const seatObj = m.seatId
+                ? WORK_SEAT_LAYOUTS.find((l) => l.seatId === m.seatId)
+                : null;
+              const meetObj = m.meetingChairId
+                ? MEETING_CHAIRS.find((c) => c.id === m.meetingChairId)
+                : null;
+
+              return (
+                <div
+                  key={m.userId}
+                  data-testid={`member-row-${m.userId}`}
+                  className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-xs ${
+                    m.isManager
+                      ? 'border-amber-400/50 bg-amber-500/10'
+                      : 'border-white/10 bg-slate-900/80'
+                  }`}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span
+                        className={`h-2 w-2 rounded-full shrink-0 ${
+                          m.online ? 'bg-emerald-400' : 'bg-slate-500'
+                        }`}
+                      />
+                      <span className="font-bold text-white truncate">{m.nickname}</span>
+                      <span className="text-[10px] font-mono text-slate-400">{m.memberTag}</span>
+                      {isSelf && (
+                        <span className="rounded bg-emerald-500/20 px-1.5 py-0.2 text-[10px] font-semibold text-emerald-300">
+                          Bạn
+                        </span>
+                      )}
+                      {m.isManager && (
+                        <span
+                          data-testid={`manager-badge-${m.userId}`}
+                          className="inline-flex items-center gap-1 rounded-full bg-amber-400 px-2 py-0.5 text-[10px] font-extrabold text-slate-950"
+                        >
+                          <Crown className="h-3 w-3" />
+                          Trưởng phòng
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[11px] text-slate-400 mt-0.5">
+                      {meetObj
+                        ? `Đang ngồi ${meetObj.label}`
+                        : seatObj
+                          ? `Ghế cố định: ${seatObj.shortLabel}`
+                          : 'Đang đứng gần cửa'}
+                    </div>
+                  </div>
+
+                  {isMeManager && !isSelf && (
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        data-testid={`transfer-manager-btn-${m.userId}`}
+                        onClick={() => onTransferManager(m.userId)}
+                        title={`Chuyển quyền Trưởng phòng cho ${m.nickname}`}
+                        className="inline-flex items-center gap-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/35 border border-amber-400/40 px-2 py-1 text-[10px] font-bold text-amber-200 transition-all cursor-pointer"
+                      >
+                        <Crown className="h-3 w-3 text-amber-300" />
+                        <span>Nhường quyền</span>
+                      </button>
+                      <button
+                        type="button"
+                        data-testid={`kick-member-btn-${m.userId}`}
+                        onClick={() => onKickMember(m.userId)}
+                        title={`Xóa ${m.nickname} ra khỏi phòng`}
+                        className="inline-flex items-center gap-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/35 border border-rose-400/40 px-2 py-1 text-[10px] font-bold text-rose-200 transition-all cursor-pointer"
+                      >
+                        <UserMinus className="h-3 w-3 text-rose-300" />
+                        <span>Xóa</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
 

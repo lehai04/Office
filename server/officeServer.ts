@@ -230,6 +230,14 @@ function buildRoomStatePayload(room: RoomInfo) {
   const roomSeats = db.seats.filter((s) => s.roomId === room.id);
   const rawMembers = db.roomMembers.filter((m) => m.roomId === room.id);
 
+  // Đảm bảo phòng luôn có Trưởng phòng (người tạo phòng hoặc thành viên đầu tiên trong phòng)
+  if (
+    rawMembers.length > 0 &&
+    (!room.managerUserId || !rawMembers.some((m) => m.userId === room.managerUserId))
+  ) {
+    room.managerUserId = rawMembers[0].userId;
+  }
+
   const memberMap = new Map<string, StoredRoomMember>();
   for (const m of rawMembers) {
     memberMap.set(m.userId, m);
@@ -255,6 +263,7 @@ function buildRoomStatePayload(room: RoomInfo) {
       memberTag: m.memberTag,
       seatId: mySeat ? mySeat.seatId : null,
       meetingChairId: currentMeetingChair,
+      isManager: room.managerUserId === m.userId,
       online: isUserOnlineInRoom(room.id, m.userId),
       joinedAt: m.joinedAt,
       lastSeenAt: m.lastSeenAt,
@@ -392,16 +401,19 @@ export async function handleApiRequest(
       }
 
       let room = db.rooms[rawRoomCode];
+      let isRoomCreator = false;
       if (!room) {
-        if (createIfMissing && rawRoomCode.length >= 3 && rawRoomCode.length <= 20) {
+        if (createIfMissing && rawRoomCode.length >= 2 && rawRoomCode.length <= 20) {
           const newRoomId = `room_${rawRoomCode.toLowerCase()}_${crypto.randomBytes(3).toString('hex')}`;
           room = {
             id: newRoomId,
             code: rawRoomCode,
             name: `Văn phòng ${rawRoomCode}`,
+            managerUserId: null,
           };
           db.rooms[rawRoomCode] = room;
           db.seats.push(...createInitialSeatsForRoom(newRoomId));
+          isRoomCreator = true;
         } else {
           sendJson(res, 404, {
             error: 'ROOM_NOT_FOUND',
@@ -432,6 +444,16 @@ export async function handleApiRequest(
         if (body.avatarGender === 'male' || body.avatarGender === 'female') {
           account.avatarGender = body.avatarGender;
         }
+      }
+
+      // Nếu là người tạo phòng mới hoặc phòng chưa có Trưởng phòng hợp lệ -> gán làm Trưởng phòng
+      const existingRoomMembers = db.roomMembers.filter((m) => m.roomId === room.id);
+      if (
+        isRoomCreator ||
+        !room.managerUserId ||
+        !existingRoomMembers.some((m) => m.userId === room.managerUserId)
+      ) {
+        room.managerUserId = account.userId;
       }
 
       // Upsert room membership
@@ -683,6 +705,115 @@ export async function handleApiRequest(
           avatarGender: account.avatarGender,
           memberTag: account.memberTag,
         },
+      });
+      return true;
+    }
+
+    // 5c. Transfer Room Manager Role (Chuyển quyền Trưởng phòng): POST /api/rooms/:roomCode/manager/transfer
+    if (subPath === 'manager/transfer' && method === 'POST') {
+      const body = await readJsonBody(req);
+      const targetUserId =
+        typeof body.targetUserId === 'string' ? body.targetUserId.trim() : '';
+
+      if (room.managerUserId !== account.userId) {
+        sendJson(res, 403, {
+          error: 'FORBIDDEN_NOT_MANAGER',
+          message: 'Chỉ Trưởng phòng mới có quyền chuyển chức vụ Trưởng phòng cho người khác.',
+        });
+        return true;
+      }
+
+      const targetMember = db.roomMembers.find(
+        (m) => m.roomId === room.id && m.userId === targetUserId
+      );
+      if (!targetMember) {
+        sendJson(res, 404, {
+          error: 'MEMBER_NOT_FOUND',
+          message: 'Thành viên được chọn không còn trong văn phòng này.',
+        });
+        return true;
+      }
+
+      room.managerUserId = targetMember.userId;
+      saveDatabase(db, true);
+
+      const roomState = buildRoomStatePayload(room);
+      broadcastToRoom(room.id, {
+        type: 'room_state',
+        ...roomState,
+      });
+
+      sendJson(res, 200, {
+        managerUserId: room.managerUserId,
+        ...roomState,
+      });
+      return true;
+    }
+
+    // 5d. Kick Member from Room (Trưởng phòng xóa người chơi khác khỏi phòng): POST /api/rooms/:roomCode/members/kick
+    if (subPath === 'members/kick' && method === 'POST') {
+      const body = await readJsonBody(req);
+      const targetUserId =
+        typeof body.targetUserId === 'string' ? body.targetUserId.trim() : '';
+
+      if (room.managerUserId !== account.userId) {
+        sendJson(res, 403, {
+          error: 'FORBIDDEN_NOT_MANAGER',
+          message: 'Chỉ Trưởng phòng mới có quyền xóa người chơi khác ra khỏi phòng.',
+        });
+        return true;
+      }
+
+      if (!targetUserId || targetUserId === account.userId) {
+        sendJson(res, 400, {
+          error: 'CANNOT_KICK_SELF',
+          message: 'Trưởng phòng không thể tự xóa chính mình khỏi phòng.',
+        });
+        return true;
+      }
+
+      const targetMember = db.roomMembers.find(
+        (m) => m.roomId === room.id && m.userId === targetUserId
+      );
+      if (!targetMember) {
+        sendJson(res, 404, {
+          error: 'MEMBER_NOT_FOUND',
+          message: 'Người chơi này không còn trong phòng.',
+        });
+        return true;
+      }
+
+      // Giải phóng ghế làm việc cố định và ghế bàn họp của người bị xóa
+      for (const s of db.seats) {
+        if (s.roomId === room.id && s.occupiedByUserId === targetUserId) {
+          s.occupiedByUserId = null;
+          s.claimedAt = null;
+        }
+      }
+      activeMeetingChairs.delete(`${room.id}:${targetUserId}`);
+
+      // Xóa khỏi danh sách thành viên phòng
+      db.roomMembers = db.roomMembers.filter(
+        (m) => !(m.roomId === room.id && m.userId === targetUserId)
+      );
+      saveDatabase(db, true);
+
+      const roomState = buildRoomStatePayload(room);
+      broadcastToRoom(room.id, {
+        type: 'member_kicked',
+        kickedUserId: targetUserId,
+        kickedNickname: targetMember.nickname,
+        ...roomState,
+      });
+      broadcastToRoom(room.id, {
+        type: 'room_state',
+        ...roomState,
+      });
+
+      sendJson(res, 200, {
+        kickedUserId: targetUserId,
+        kickedNickname: targetMember.nickname,
+        ...roomState,
       });
       return true;
     }

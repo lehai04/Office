@@ -504,11 +504,76 @@ async function runVerification() {
   );
   console.log('   ✅ Khi B đổi biệt danh, quyền ẩn lưu theo ID nội bộ vẫn giữ nguyên hiệu lực.');
 
+  // ------------------------------------------------------------------------
+  // KỊCH BẢN 6: Chức vụ Trưởng phòng (Người tạo phòng -> Chuyển quyền -> Xóa người chơi khỏi phòng)
+  // ------------------------------------------------------------------------
+  console.log('\n▶ Kiểm thử 6: Quyền Trưởng phòng (Người tạo phòng, chuyển quyền & xóa thành viên)...');
+  const stateCheckManager = await apiCall(
+    `/api/rooms/${testRoomCode}/state`,
+    { method: 'GET' },
+    sessionA.sessionToken
+  );
+  assert.equal(
+    stateCheckManager.data.room.managerUserId,
+    sessionA.userId,
+    'Người tạo phòng (A) mặc định là Trưởng phòng'
+  );
+  console.log('   ✅ Người tạo phòng (A) tự động giữ chức vụ Trưởng phòng.');
+
+  // Thành viên thường (B) thử xóa C khi chưa phải Trưởng phòng -> bị từ chối 403
+  const unauthorizedKick = await apiCall(
+    `/api/rooms/${testRoomCode}/members/kick`,
+    {
+      method: 'POST',
+      body: { targetUserId: sessionC.userId },
+    },
+    sessionB.sessionToken
+  );
+  assert.equal(unauthorizedKick.status, 403, 'Thành viên thường không được phép xóa người khác');
+
+  // A chuyển quyền Trưởng phòng cho B
+  const transferToB = await apiCall(
+    `/api/rooms/${testRoomCode}/manager/transfer`,
+    {
+      method: 'POST',
+      body: { targetUserId: sessionB.userId },
+    },
+    sessionA.sessionToken
+  );
+  assert.equal(transferToB.status, 200);
+  assert.equal(transferToB.data.room.managerUserId, sessionB.userId);
+  console.log('   ✅ A chuyển quyền Trưởng phòng cho B thành công.');
+
+  // B (nay là Trưởng phòng) xóa C ra khỏi phòng
+  const kickCRes = await apiCall(
+    `/api/rooms/${testRoomCode}/members/kick`,
+    {
+      method: 'POST',
+      body: { targetUserId: sessionC.userId },
+    },
+    sessionB.sessionToken
+  );
+  assert.equal(kickCRes.status, 200);
+  assert.equal(
+    kickCRes.data.members.some((m: any) => m.userId === sessionC.userId),
+    false,
+    'C đã bị xóa khỏi danh sách thành viên phòng'
+  );
+
+  // C thử truy cập lại phòng sau khi bị xóa -> bị chặn 403
+  const cStateAfterKick = await apiCall(
+    `/api/rooms/${testRoomCode}/state`,
+    { method: 'GET' },
+    sessionC.sessionToken
+  );
+  assert.equal(cStateAfterKick.status, 403, 'Người bị xóa không còn quyền truy cập phòng (403)');
+  console.log('   ✅ Trưởng phòng mới (B) xóa C ra khỏi phòng thành công; C bị thu hồi quyền vào phòng (403).');
+
   // Dọn dẹp lại dữ liệu test để phòng mặc định luôn sạch sẽ cho người dùng
   await apiCall('/api/reset', { method: 'POST', body: {} });
 
   console.log('\n================================================================');
-  console.log(' TẤT CẢ 5 KỊCH BẢN KIỂM THỬ A, B, C ĐỀU VƯỢT QUA 100%!');
+  console.log(' TẤT CẢ 6 KỊCH BẢN KIỂM THỬ A, B, C ĐỀU VƯỢT QUA 100%!');
   console.log('================================================================');
 }
 

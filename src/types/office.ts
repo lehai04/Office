@@ -6,6 +6,7 @@ export interface RoomInfo {
   id: string;
   code: string;
   name: string;
+  managerUserId?: string | null;
 }
 
 export interface RoomMember {
@@ -16,6 +17,7 @@ export interface RoomMember {
   memberTag: string; // e.g., "#A1B2" used to disambiguate duplicate nicknames
   seatId: string | null;
   meetingChairId?: string | null;
+  isManager?: boolean;
   online: boolean;
   joinedAt: string;
   lastSeenAt: string;

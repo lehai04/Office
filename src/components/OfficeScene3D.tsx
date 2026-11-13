@@ -240,6 +240,7 @@ const LowPolyCharacter: React.FC<{
   nickname: string;
   memberTag: string;
   isCurrentUser: boolean;
+  isManager?: boolean;
   isOnline: boolean;
   isSeated: boolean;
   isBowing?: boolean;
@@ -253,6 +254,7 @@ const LowPolyCharacter: React.FC<{
   nickname,
   memberTag,
   isCurrentUser,
+  isManager = false,
   isOnline,
   isSeated,
   isBowing = false,
@@ -446,6 +448,20 @@ const LowPolyCharacter: React.FC<{
                   </mesh>
                 </group>
               )}
+
+              {/* Vương miện vàng 3D cho Trưởng phòng */}
+              {isManager && (
+                <group position={[0, 0.26, 0]}>
+                  <mesh castShadow>
+                    <cylinderGeometry args={[0.14, 0.12, 0.08, 8]} />
+                    <meshStandardMaterial color="#fbbf24" metalness={0.75} roughness={0.2} />
+                  </mesh>
+                  <mesh position={[0, 0.05, 0.11]}>
+                    <sphereGeometry args={[0.028, 8, 8]} />
+                    <meshBasicMaterial color="#ef4444" />
+                  </mesh>
+                </group>
+              )}
             </group>
           </group>
         </>
@@ -484,6 +500,11 @@ const LowPolyCharacter: React.FC<{
                   isOnline ? 'bg-emerald-400' : 'bg-slate-400'
                 }`}
               />
+              {isManager && (
+                <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-400 px-1.5 py-0.2 text-[9px] font-extrabold text-slate-950 shadow-sm">
+                  👑 Trưởng phòng
+                </span>
+              )}
               <span>{displayName}</span>
               {isCurrentUser && <span className="text-[10px] opacity-90">(Bạn)</span>}
               {!isOnline && <span className="text-[10px] opacity-75">(Offline)</span>}
@@ -1518,6 +1539,7 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
                 nickname={member.nickname}
                 memberTag={member.memberTag}
                 isCurrentUser={isMe}
+                isManager={Boolean(member.isManager)}
                 isOnline={member.online}
                 isSeated={isSeated}
                 isBowing={isMe && isBowing}

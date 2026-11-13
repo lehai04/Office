@@ -217,7 +217,11 @@ function publishOverMqtt(data: Record<string, unknown>): void {
   }
 }
 
-function mergeRemoteDatabase(remoteDb: StaticDatabaseSchema): StaticDatabaseSchema {
+function mergeRemoteDatabase(
+  remoteDb: StaticDatabaseSchema,
+  kickedUserId?: string,
+  kickedRoomId?: string
+): StaticDatabaseSchema {
   const local = loadStaticDb();
 
   // Merge accounts
@@ -240,6 +244,13 @@ function mergeRemoteDatabase(remoteDb: StaticDatabaseSchema): StaticDatabaseSche
     } else if (rm.lastSeenAt >= local.roomMembers[idx].lastSeenAt) {
       local.roomMembers[idx] = rm;
     }
+  }
+
+  if (kickedUserId && kickedRoomId) {
+    local.roomMembers = local.roomMembers.filter(
+      (m) => !(m.roomId === kickedRoomId && m.userId === kickedUserId)
+    );
+    delete local.activeMeetingChairs[`${kickedRoomId}:${kickedUserId}`];
   }
 
   // Merge seats
@@ -378,7 +389,16 @@ function ensureMqttBridge(): void {
           }
 
           if (msg.type === 'peer_sync' && msg.db) {
-            const merged = mergeRemoteDatabase(msg.db as StaticDatabaseSchema);
+            const evObj = msg.event as StaticRealtimeEvent | undefined;
+            const kickedUserId =
+              evObj?.payload?.type === 'member_kicked'
+                ? String(evObj.payload.kickedUserId || '')
+                : undefined;
+            const merged = mergeRemoteDatabase(
+              msg.db as StaticDatabaseSchema,
+              kickedUserId,
+              evObj?.roomId
+            );
             if (msg.event) {
               const ev = msg.event as StaticRealtimeEvent;
               for (const listener of listeners) {
@@ -531,6 +551,13 @@ function buildRoomStatePayload(db: StaticDatabaseSchema, room: RoomInfo) {
   const roomSeats = db.seats.filter((s) => s.roomId === room.id);
   const rawMembers = db.roomMembers.filter((m) => m.roomId === room.id);
 
+  if (
+    rawMembers.length > 0 &&
+    (!room.managerUserId || !rawMembers.some((m) => m.userId === room.managerUserId))
+  ) {
+    room.managerUserId = rawMembers[0].userId;
+  }
+
   const memberMap = new Map<string, StoredRoomMember>();
   for (const m of rawMembers) {
     memberMap.set(m.userId, m);
@@ -556,6 +583,7 @@ function buildRoomStatePayload(db: StaticDatabaseSchema, room: RoomInfo) {
       memberTag: m.memberTag,
       seatId: mySeat ? mySeat.seatId : null,
       meetingChairId: currentMeetingChair,
+      isManager: room.managerUserId === m.userId,
       online: true,
       joinedAt: m.joinedAt,
       lastSeenAt: m.lastSeenAt,
@@ -646,6 +674,7 @@ export async function handleStaticFallbackRequest<T>(
     }
 
     let room = db.rooms[rawRoomCode];
+    let isRoomCreator = false;
     if (!room) {
       if (createIfMissing && rawRoomCode.length >= 2 && rawRoomCode.length <= 20) {
         const newRoomId = `room_${rawRoomCode.toLowerCase()}_${randomHex(3)}`;
@@ -653,9 +682,11 @@ export async function handleStaticFallbackRequest<T>(
           id: newRoomId,
           code: rawRoomCode,
           name: `Văn phòng ${rawRoomCode}`,
+          managerUserId: null,
         };
         db.rooms[rawRoomCode] = room;
         db.seats.push(...createInitialSeatsForRoom(newRoomId));
+        isRoomCreator = true;
       } else {
         throw createApiError(
           404,
@@ -686,6 +717,15 @@ export async function handleStaticFallbackRequest<T>(
       if (body.avatarGender === 'male' || body.avatarGender === 'female') {
         account.avatarGender = body.avatarGender;
       }
+    }
+
+    const existingRoomMembers = db.roomMembers.filter((m) => m.roomId === room.id);
+    if (
+      isRoomCreator ||
+      !room.managerUserId ||
+      !existingRoomMembers.some((m) => m.userId === room.managerUserId)
+    ) {
+      room.managerUserId = account.userId;
     }
 
     let member = db.roomMembers.find(
@@ -833,6 +873,99 @@ export async function handleStaticFallbackRequest<T>(
         avatarGender: account.avatarGender,
         memberTag: account.memberTag,
       },
+    } as unknown as T;
+  }
+
+  if (subPath === 'manager/transfer' && method === 'POST') {
+    const targetUserId =
+      typeof body.targetUserId === 'string' ? body.targetUserId.trim() : '';
+
+    if (room.managerUserId !== account.userId) {
+      throw createApiError(
+        403,
+        'FORBIDDEN_NOT_MANAGER',
+        'Chỉ Trưởng phòng mới có quyền chuyển chức vụ Trưởng phòng cho người khác.'
+      );
+    }
+
+    const targetMember = db.roomMembers.find(
+      (m) => m.roomId === room.id && m.userId === targetUserId
+    );
+    if (!targetMember) {
+      throw createApiError(
+        404,
+        'MEMBER_NOT_FOUND',
+        'Thành viên được chọn không còn trong văn phòng này.'
+      );
+    }
+
+    room.managerUserId = targetMember.userId;
+    saveStaticDb(db);
+
+    const roomState = buildRoomStatePayload(db, room);
+    emitRealtimeEvent(db, room, { type: 'room_state', ...roomState });
+
+    return {
+      managerUserId: room.managerUserId,
+      ...roomState,
+    } as unknown as T;
+  }
+
+  if (subPath === 'members/kick' && method === 'POST') {
+    const targetUserId =
+      typeof body.targetUserId === 'string' ? body.targetUserId.trim() : '';
+
+    if (room.managerUserId !== account.userId) {
+      throw createApiError(
+        403,
+        'FORBIDDEN_NOT_MANAGER',
+        'Chỉ Trưởng phòng mới có quyền xóa người chơi khác ra khỏi phòng.'
+      );
+    }
+
+    if (!targetUserId || targetUserId === account.userId) {
+      throw createApiError(
+        400,
+        'CANNOT_KICK_SELF',
+        'Trưởng phòng không thể tự xóa chính mình khỏi phòng.'
+      );
+    }
+
+    const targetMember = db.roomMembers.find(
+      (m) => m.roomId === room.id && m.userId === targetUserId
+    );
+    if (!targetMember) {
+      throw createApiError(
+        404,
+        'MEMBER_NOT_FOUND',
+        'Người chơi này không còn trong phòng.'
+      );
+    }
+
+    for (const s of db.seats) {
+      if (s.roomId === room.id && s.occupiedByUserId === targetUserId) {
+        s.occupiedByUserId = null;
+        s.claimedAt = null;
+      }
+    }
+    delete db.activeMeetingChairs[`${room.id}:${targetUserId}`];
+    db.roomMembers = db.roomMembers.filter(
+      (m) => !(m.roomId === room.id && m.userId === targetUserId)
+    );
+    saveStaticDb(db);
+
+    const roomState = buildRoomStatePayload(db, room);
+    emitRealtimeEvent(db, room, {
+      type: 'member_kicked',
+      kickedUserId: targetUserId,
+      kickedNickname: targetMember.nickname,
+      ...roomState,
+    });
+
+    return {
+      kickedUserId: targetUserId,
+      kickedNickname: targetMember.nickname,
+      ...roomState,
     } as unknown as T;
   }
 

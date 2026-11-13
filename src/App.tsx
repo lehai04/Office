@@ -12,6 +12,7 @@ import {
   Eye,
   Compass,
   PenSquare,
+  Crown,
 } from 'lucide-react';
 import { OfficeScene3D, type ActiveSpeechBubble } from './components/OfficeScene3D';
 import { EntryModal } from './components/EntryModal';
@@ -40,12 +41,14 @@ import {
   getSessionNamespace,
   isUsingStaticFallback,
   joinOrRestoreRoom,
+  kickRoomMember,
   leaveWorkSeatToStand,
   loadSavedSession,
   officeApiUrl,
   sendChatMessage,
   sitAtMeetingChair,
   subscribeStaticRealtime,
+  transferRoomManager,
   updateAttendanceDay,
   updateDiaryEntry,
 } from './services/officeApi';
@@ -281,6 +284,26 @@ export function App() {
     if (!session || !room) return;
 
     const handleRealtimePayload = (data: Record<string, unknown>) => {
+      if (data.type === 'member_kicked') {
+        const kickedId = String(data.kickedUserId || '');
+        const kickedName = String(data.kickedNickname || 'Thành viên');
+        if (kickedId === session.userId) {
+          clearSavedSession();
+          setSession(null);
+          setRoom(null);
+          setActivePanel('none');
+          setEntryError('Bạn đã bị Trưởng phòng xóa ra khỏi văn phòng.');
+          return;
+        }
+        if (data.room && typeof data.room === 'object') {
+          setRoom(data.room as RoomInfo);
+        }
+        if (Array.isArray(data.members)) setMembers(data.members as RoomMember[]);
+        if (Array.isArray(data.seats)) setSeats(data.seats as WorkSeat[]);
+        showToast(`Trưởng phòng đã xóa ${kickedName} ra khỏi phòng.`);
+        return;
+      }
+
       if (data.type === 'connected' || data.type === 'room_state') {
         if (data.room && typeof data.room === 'object') {
           setRoom(data.room as RoomInfo);
@@ -343,7 +366,7 @@ export function App() {
       unsubscribeStatic();
       es.close();
     };
-  }, [session, room, triggerSpeechBubble]);
+  }, [session, room, triggerSpeechBubble, showToast]);
 
   const handleJoinRoom = async (params: {
     roomCode: string;
@@ -428,6 +451,43 @@ export function App() {
     } catch (err) {
       const msg =
         err instanceof Error ? err.message : 'Không thể ngồi vào ghế bàn họp này.';
+      setSeatError(msg);
+      showToast(msg);
+    }
+  };
+
+  const handleTransferManager = async (targetUserId: string) => {
+    if (!session || !room) return;
+    setSeatError(null);
+    try {
+      const res = await transferRoomManager(room.code, targetUserId, session.sessionToken);
+      setRoom(res.room);
+      setMembers(res.members);
+      setSeats(res.seats);
+      const targetMember = res.members.find((m) => m.userId === targetUserId);
+      showToast(
+        `👑 Đã chuyển quyền Trưởng phòng cho ${targetMember ? targetMember.nickname : 'thành viên'}.`
+      );
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : 'Không thể chuyển quyền Trưởng phòng.';
+      setSeatError(msg);
+      showToast(msg);
+    }
+  };
+
+  const handleKickMember = async (targetUserId: string) => {
+    if (!session || !room) return;
+    setSeatError(null);
+    try {
+      const res = await kickRoomMember(room.code, targetUserId, session.sessionToken);
+      setRoom(res.room);
+      setMembers(res.members);
+      setSeats(res.seats);
+      showToast(`Đã xóa ${res.kickedNickname} ra khỏi văn phòng.`);
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : 'Không thể xóa người chơi khỏi phòng.';
       setSeatError(msg);
       showToast(msg);
     }
@@ -770,12 +830,26 @@ export function App() {
 
           <span className="text-slate-600">•</span>
 
-          <div className="flex items-center gap-1.5 text-slate-200">
+          <button
+            type="button"
+            onClick={() => togglePanel('seats')}
+            title="Xem danh sách thành viên & Quản lý Trưởng phòng"
+            className="flex items-center gap-1.5 rounded-xl bg-white/5 hover:bg-white/10 px-2 py-1 text-slate-200 transition-all cursor-pointer"
+          >
             <Users className="h-3.5 w-3.5 text-sky-400" />
             <span data-testid="hud-user-nickname" className="font-bold text-white">
               {session.nickname}
             </span>
-          </div>
+            {myMember?.isManager && (
+              <span
+                data-testid="hud-manager-badge"
+                className="inline-flex items-center gap-0.5 rounded-full bg-amber-400 px-1.5 py-0.2 text-[10px] font-extrabold text-slate-950"
+              >
+                <Crown className="h-3 w-3" />
+                <span>Trưởng phòng</span>
+              </span>
+            )}
+          </button>
 
           <button
             type="button"
@@ -834,6 +908,8 @@ export function App() {
         onClaimSeat={handleSelectSeat}
         onSelectMeetingChair={handleSelectMeetingChair}
         onStandNearDoor={handleStandNearDoor}
+        onTransferManager={handleTransferManager}
+        onKickMember={handleKickMember}
         claimingSeatId={claimingSeatId}
         seatError={seatError}
       />
