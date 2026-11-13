@@ -427,8 +427,13 @@ export async function handleApiRequest(
       const nowIso = new Date().toISOString();
 
       if (!account) {
+        const authHeader = req.headers['authorization'];
+        const incomingToken =
+          typeof authHeader === 'string' && authHeader.startsWith('Bearer ')
+            ? authHeader.slice(7).trim()
+            : '';
         const userId = `usr_${crypto.randomBytes(8).toString('hex')}`;
-        const sessionToken = `tok_${crypto.randomBytes(18).toString('hex')}`;
+        const sessionToken = incomingToken || `tok_${crypto.randomBytes(18).toString('hex')}`;
         const memberTag = `#${userId.slice(4, 8).toUpperCase()}`;
         account = {
           userId,

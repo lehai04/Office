@@ -268,6 +268,7 @@ export function App() {
           nickname: saved.nickname,
           avatarGender: saved.avatarGender,
           sessionToken: saved.sessionToken,
+          createIfMissing: true,
         });
         setSession(joined.session);
         await hydrateRoomData(joined.room.code, joined.session.sessionToken, false);
