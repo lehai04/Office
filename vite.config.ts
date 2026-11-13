@@ -2,7 +2,8 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { handleApiRequest } from './server/officeServer';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
+  base: mode === 'github-pages' ? '/Office/' : '/',
   plugins: [
     react(),
     {
@@ -25,5 +26,5 @@ export default defineConfig({
       },
     },
   ],
-});
+}));
 
