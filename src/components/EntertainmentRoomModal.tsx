@@ -1,21 +1,19 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Gamepad2,
   Trophy,
   Users,
   Upload,
-  Sparkles,
   RotateCcw,
   Send,
   Volume2,
   VolumeX,
-  ArrowLeft,
   Camera,
   Trash2,
   Swords,
   Crown,
   Disc,
   Flame,
+  X,
 } from 'lucide-react';
 import type { RoomMember } from '../types/office';
 import {
@@ -27,7 +25,6 @@ import {
 export interface KnifeStageConfig {
   stage: number;
   title: string;
-  subtitle: string;
   knivesToThrow: number;
   presetKnives: number;
   applesCount: number;
@@ -39,8 +36,7 @@ export interface KnifeStageConfig {
 export const KNIFE_STAGES: KnifeStageConfig[] = [
   {
     stage: 1,
-    title: 'STAGE 1 • Khởi Động',
-    subtitle: 'Khúc gỗ xoay đều 1 chiều, chưa có dao cản.',
+    title: 'STAGE 1',
     knivesToThrow: 7,
     presetKnives: 0,
     applesCount: 1,
@@ -49,8 +45,7 @@ export const KNIFE_STAGES: KnifeStageConfig[] = [
   },
   {
     stage: 2,
-    title: 'STAGE 2 • Tăng Tốc',
-    subtitle: 'Khúc gỗ nhanh chậm theo nhịp, có 1 dao cắm sẵn.',
+    title: 'STAGE 2',
     knivesToThrow: 8,
     presetKnives: 1,
     applesCount: 2,
@@ -59,8 +54,7 @@ export const KNIFE_STAGES: KnifeStageConfig[] = [
   },
   {
     stage: 3,
-    title: 'STAGE 3 • Đảo Chiều',
-    subtitle: 'Khúc gỗ dừng nhịp rồi quay ngược chiều bất ngờ!',
+    title: 'STAGE 3',
     knivesToThrow: 9,
     presetKnives: 2,
     applesCount: 2,
@@ -69,8 +63,7 @@ export const KNIFE_STAGES: KnifeStageConfig[] = [
   },
   {
     stage: 4,
-    title: 'STAGE 4 • Biến Tốc',
-    subtitle: 'Khúc gỗ giật cục nhanh chậm liên tục, có 2 dao cắm sẵn.',
+    title: 'STAGE 4',
     knivesToThrow: 10,
     presetKnives: 2,
     applesCount: 3,
@@ -79,8 +72,7 @@ export const KNIFE_STAGES: KnifeStageConfig[] = [
   },
   {
     stage: 5,
-    title: '⚔️ BOSS STAGE 5 • Khiên Đại Chiến',
-    subtitle: 'Trùm cuối! Khúc gỗ đảo chiều cực gắt + 3 dao cắm sẵn!',
+    title: '⚔️ BOSS',
     knivesToThrow: 11,
     presetKnives: 3,
     applesCount: 4,
@@ -91,8 +83,8 @@ export const KNIFE_STAGES: KnifeStageConfig[] = [
 ];
 
 interface StuckKnife {
-  angle: number; // Góc tương đối trên khúc gỗ
-  playerIndex: 0 | 1 | -1; // -1 = dao cắm sẵn
+  angle: number;
+  playerIndex: 0 | 1 | -1;
 }
 
 interface StuckApple {
@@ -170,7 +162,6 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
   soundEnabled,
   onToggleSound,
   onBroadcastChallengeMessage,
-  activeChallengeBanner,
 }) => {
   const [selectedGameTab, setSelectedGameTab] = useState<'knife_hit' | 'wheel'>('knife_hit');
   const [gameMode, setGameMode] = useState<'campaign' | 'pvp'>('campaign');
@@ -197,7 +188,7 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
     }
   });
 
-  // Tùy chỉnh ghép ảnh người nào đó vào Khúc Gỗ Xoay (Bia phóng Knife Hit)
+  // Tùy chỉnh ghép ảnh người vào Khúc Gỗ Xoay
   const [targetPhotoUrl, setTargetPhotoUrl] = useState<string | null>(() => {
     try {
       return window.localStorage.getItem(STORAGE_CUSTOM_PHOTO_KEY) || null;
@@ -213,8 +204,7 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
     }
   });
   const [photoCoverageMode, setPhotoCoverageMode] = useState<'center' | 'full'>('full');
-  const [showPhotoCustomizer, setShowPhotoCustomizer] = useState<boolean>(false);
-  const [photoUrlInput, setPhotoUrlInput] = useState<string>('');
+  const [showPhotoPopover, setShowPhotoPopover] = useState<boolean>(false);
   const photoInputRef = useRef<HTMLInputElement | null>(null);
   const loadedImageRef = useRef<HTMLImageElement | null>(null);
 
@@ -223,9 +213,8 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
   const [selectedOpponentId, setSelectedOpponentId] = useState<string>('');
   const [activeTurnPlayer, setActiveTurnPlayer] = useState<0 | 1>(0);
   const [pvpScores, setPvpScores] = useState<[number, number]>([0, 0]);
-  const [pvpKnivesLeft, setPvpKnivesLeft] = useState<[number, number]>([7, 7]);
+  const [pvpKnivesLeft, setPvpKnivesLeft] = useState<[number, number]>([6, 6]);
 
-  // Trạng thái ván đấu Knife Hit
   const stageConfig =
     KNIFE_STAGES.find((s) => s.stage === currentStageNum) || KNIFE_STAGES[0];
   const [score, setScore] = useState<number>(0);
@@ -235,9 +224,9 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
     'playing'
   );
 
-  // Vòng quay nhân phẩm (Mini-game phụ trong Phòng Giải Trí)
+  // Vòng quay nhân phẩm
   const [wheelItemsText, setWheelItemsText] = useState<string>(
-    'Bao trà sữa cả phòng 🧋\nĐược về sớm 15 phút 🏃\nHát 1 bài tặng cả phòng 🎤\nTrực nhật dọn bàn họp 🧹\nNhận tràng pháo tay 👏\nMiễn phạt 1 lần ✨'
+    'Bao trà sữa cả phòng 🧋\nĐược về sớm 15 phút 🏃\nHát 1 bài tặng phòng 🎤\nTrực nhật dọn bàn 🧹\nNhận pháo tay 👏\nMiễn phạt 1 lần ✨'
   );
   const [spinningWheel, setSpinningWheel] = useState<boolean>(false);
   const [wheelResult, setWheelResult] = useState<string | null>(null);
@@ -263,7 +252,6 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
     vRot: number;
   } | null>(null);
 
-  // Tải ảnh HTMLImageElement mỗi khi targetPhotoUrl thay đổi
   useEffect(() => {
     if (!targetPhotoUrl) {
       loadedImageRef.current = null;
@@ -280,7 +268,6 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
     img.src = targetPhotoUrl;
   }, [targetPhotoUrl]);
 
-  // Khởi tạo đối thủ mặc định từ danh sách thành viên trong phòng
   useEffect(() => {
     const others = members.filter((m) => m.userId !== currentUserId);
     if (others.length > 0 && !selectedOpponentId) {
@@ -289,7 +276,6 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
     }
   }, [members, currentUserId, selectedOpponentId]);
 
-  // Khởi tạo màn chơi Knife Hit (Tạo dao cắm sẵn & táo trên vành gỗ)
   const initStageEntities = useCallback((cfg: KnifeStageConfig) => {
     logAngleRef.current = 0;
     logBumpYRef.current = 0;
@@ -320,6 +306,7 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
         KNIFE_STAGES.find((s) => s.stage === targetStageNum) || KNIFE_STAGES[0];
       initStageEntities(cfg);
       setStageState('playing');
+      setLastHitBanner(null);
       if (resetTotalScore) {
         setScore(0);
       }
@@ -341,7 +328,6 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
     }
   }, [isOpen, gameMode, setupStage]);
 
-  // Tạo hiệu ứng mảnh gỗ văng tung tóe khi cắm dao hoặc vỡ khúc gỗ
   const spawnSplinters = useCallback(
     (x: number, y: number, count: number, color = '#f4a261') => {
       for (let i = 0; i < count; i++) {
@@ -361,17 +347,15 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
     []
   );
 
-  // Kích hoạt hiệu ứng VỠ TUNG KHÚC GỖ thành 3 mảnh bay ra giống hệt ảnh Knife Hit!
   const triggerLogShatter = useCallback(
     (logCenterX: number, logCenterY: number) => {
       setStageState('shattering');
       if (soundEnabled) {
         playWoodShatterSound();
       }
-      spawnSplinters(logCenterX, logCenterY, 28, '#f4a261');
-      spawnSplinters(logCenterX, logCenterY, 14, '#e76f51');
+      spawnSplinters(logCenterX, logCenterY, 26, '#f4a261');
+      spawnSplinters(logCenterX, logCenterY, 12, '#e76f51');
 
-      // Chẻ khúc gỗ thành 3 miếng hình quạt văng ra 3 hướng (Trái, Phải, Dưới) đúng như ảnh mẫu
       const cuts = [
         { start: -Math.PI * 0.85, end: -Math.PI * 0.15, vx: -4.2, vy: -2.4, vRot: -0.05 },
         { start: -Math.PI * 0.15, end: Math.PI * 0.55, vx: 4.5, vy: -1.8, vRot: 0.06 },
@@ -388,11 +372,10 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
         vRot: c.vRot,
       }));
 
-      // Toàn bộ các con dao đang cắm trên gỗ cũng văng tung ra xung quanh
       flyingKnivesOutRef.current = stuckKnivesRef.current.map((sk) => {
         const worldAngle = sk.angle + logAngleRef.current;
-        const kx = logCenterX + Math.cos(worldAngle) * 95;
-        const ky = logCenterY + Math.sin(worldAngle) * 95;
+        const kx = logCenterX + Math.cos(worldAngle) * 90;
+        const ky = logCenterY + Math.sin(worldAngle) * 90;
         return {
           x: kx,
           y: ky,
@@ -404,14 +387,6 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
         };
       });
 
-      const targetLabel = targetPersonName.trim();
-      setLastHitBanner(
-        targetLabel
-          ? `💥 PHÁ ĐẢO! Đã chẻ đôi khúc gỗ "${targetLabel}"!`
-          : `💥 STAGE CLEAR! Khúc gỗ đã vỡ tung!`
-      );
-
-      // Chuyển sang Stage kế tiếp sau 1.15 giây (hoặc kết thúc ván PvP)
       window.setTimeout(() => {
         if (gameMode === 'campaign') {
           const nextStg = currentStageNum < KNIFE_STAGES.length ? currentStageNum + 1 : 1;
@@ -433,19 +408,11 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
         } else {
           setStageState('pvp_over');
         }
-      }, 1150);
+      }, 1100);
     },
-    [
-      soundEnabled,
-      spawnSplinters,
-      targetPersonName,
-      gameMode,
-      currentStageNum,
-      initStageEntities,
-    ]
+    [soundEnabled, spawnSplinters, gameMode, currentStageNum, initStageEntities]
   );
 
-  // Phóng con dao từ phía dưới lên khúc gỗ xoay!
   const handleThrowKnife = useCallback(() => {
     if (stageState !== 'playing') return;
     if (activeThrowRef.current) return;
@@ -461,7 +428,6 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
     };
   }, [stageState, gameMode, activeTurnPlayer]);
 
-  // Hỗ trợ bấm phím Space để phóng dao nhanh trên máy tính
   useEffect(() => {
     if (!isOpen || selectedGameTab !== 'knife_hit') return;
     const onKeyDown = (e: KeyboardEvent) => {
@@ -476,7 +442,7 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [isOpen, selectedGameTab, handleThrowKnife]);
 
-  // Vòng lặp vẽ Canvas Knife Hit 60FPS chuẩn phong cách ảnh mẫu
+  // Vòng lặp vẽ Canvas Knife Hit 60FPS
   useEffect(() => {
     if (!isOpen || selectedGameTab !== 'knife_hit') return;
     const canvas = canvasRef.current;
@@ -499,16 +465,14 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
       c.translate(x, y);
       c.rotate(rotationRad);
 
-      // Lưỡi dao sắc nhọn hướng lên trên (-Y)
       c.beginPath();
-      c.moveTo(0, -34); // Mũi nhọn
+      c.moveTo(0, -34);
       c.lineTo(7.5, -4);
       c.lineTo(-7.5, -4);
       c.closePath();
       c.fillStyle = '#e0f2fe';
       c.fill();
 
-      // Nửa lưỡi dao ánh xanh thép giống ảnh mẫu
       c.beginPath();
       c.moveTo(0, -34);
       c.lineTo(7.5, -4);
@@ -517,13 +481,11 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
       c.fillStyle = '#38bdf8';
       c.fill();
 
-      // Chắn tay vàng kim (Crossguard)
       c.fillStyle = '#f59e0b';
       c.beginPath();
       c.roundRect(-10, -4, 20, 6, 3);
       c.fill();
 
-      // Chuôi dao (Đỏ cho P1, Xanh ngọc cho P2, Tím cho dao cắm sẵn)
       const handleColor =
         playerIdx === -1 ? '#a855f7' : playerIdx === 0 ? '#dc2626' : '#06b6d4';
       c.fillStyle = handleColor;
@@ -531,7 +493,6 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
       c.roundRect(-5, 2, 10, 22, 2);
       c.fill();
 
-      // Đế chuôi vàng
       c.fillStyle = '#fbbf24';
       c.fillRect(-5.5, 20, 11, 5);
 
@@ -560,19 +521,16 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
         c.clip();
       }
 
-      // 1. Vỏ cây nâu sẫm ngoài cùng
       c.beginPath();
       c.arc(0, 0, radius, 0, Math.PI * 2);
       c.fillStyle = '#9a4d22';
       c.fill();
 
-      // 2. Thân gỗ vàng cam ấm áp
       c.beginPath();
       c.arc(0, 0, radius - 8, 0, Math.PI * 2);
       c.fillStyle = '#f4a261';
       c.fill();
 
-      // 3. Các vòng vân gỗ đồng tâm giống hệt ảnh Knife Hit
       const grainRadii = [radius * 0.76, radius * 0.54, radius * 0.32];
       grainRadii.forEach((gr, idx) => {
         c.beginPath();
@@ -582,7 +540,6 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
         c.stroke();
       });
 
-      // 4. NẾU NGƯỜI CHƠI GHÉP ẢNH VÀO KHÚC GỖ -> Vẽ ảnh xoay theo khúc gỗ (và bị chẻ vỡ theo mảnh gỗ khi nổ!)
       if (loadedImageRef.current) {
         const photoR =
           photoCoverageMode === 'full' ? radius - 9 : radius * 0.56;
@@ -600,14 +557,12 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
           photoR * 2
         );
 
-        // Viền vàng quanh ảnh trên khúc gỗ
         c.strokeStyle = 'rgba(245, 158, 11, 0.85)';
         c.lineWidth = 3;
         c.stroke();
         c.restore();
       }
 
-      // Nhãn tên mục tiêu xoay cùng khúc gỗ
       if (targetPersonName.trim() && !isWedge) {
         c.save();
         c.font = 'bold 12px Inter, sans-serif';
@@ -636,19 +591,16 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
       const baseLogY = 148;
       const logRadius = 76;
 
-      // Hồi phục độ nảy của khúc gỗ khi bị dao cắm vào
       logBumpYRef.current *= 0.78;
       logFlashRef.current = Math.max(0, logFlashRef.current - dt * 5);
       const logY = baseLogY + logBumpYRef.current;
 
-      // 1. NỀN XANH Đậm RỪNG ĐÊM CHUẨN KNIFE HIT (#072b35 -> #03171d)
       const bgGrad = ctx.createLinearGradient(0, 0, 0, h);
       bgGrad.addColorStop(0, '#072e38');
       bgGrad.addColorStop(1, '#03161c');
       ctx.fillStyle = bgGrad;
       ctx.fillRect(0, 0, w, h);
 
-      // Các vệt vân gỗ dọc mờ ở hậu cảnh giống ảnh mẫu
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
       ctx.lineWidth = 2;
       for (let x = 28; x < w; x += 44) {
@@ -658,7 +610,6 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
         ctx.stroke();
       }
 
-      // 2. CẬP NHẬT GÓC XOAY CỦA KHÚC GỖ THEO PATTERN CỦA STAGE
       if (stageState === 'playing') {
         let angularVel = stageConfig.baseSpeed;
         if (stageConfig.pattern === 'sine_wave') {
@@ -677,11 +628,9 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
         logAngleRef.current = normalizeAngle(logAngleRef.current + angularVel * dt);
       }
 
-      // 3. XỬ LÝ CON DAO ĐANG BAY LÊN (HOẶC DỘI NGƯỢC RƠI XUỐNG KHI TRÚNG DAO KHÁC)
       if (activeThrowRef.current) {
         const tk = activeThrowRef.current;
         if (!tk.bouncing) {
-          // Vệt gió xám trắng thẳng đứng phía sau con dao đang phóng lên (giống ảnh mẫu!)
           ctx.save();
           const trailGrad = ctx.createLinearGradient(logX, tk.y, logX, 410);
           trailGrad.addColorStop(0, 'rgba(226, 232, 240, 0.45)');
@@ -698,21 +647,18 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
 
           tk.y += tk.vy;
 
-          // Kiểm tra khi mũi dao chạm tới mép dưới của Khúc Gỗ (góc Math.PI / 2 trong hệ tọa độ Canvas)
           const hitThresholdY = logY + logRadius + 16;
           if (tk.y <= hitThresholdY) {
-            const impactWorldAngle = Math.PI / 2; // Mép dưới cùng của khúc gỗ
+            const impactWorldAngle = Math.PI / 2;
             const relativeImpactAngle = normalizeAngle(
               impactWorldAngle - logAngleRef.current
             );
 
-            // Kiểm tra xem có đụng phải con dao nào đang cắm trên gỗ không
             const hitExistingKnife = stuckKnivesRef.current.some(
               (sk) => shortestAngleDiff(sk.angle, relativeImpactAngle) < 0.175
             );
 
             if (hitExistingKnife) {
-              // KENG! Đụng trúng dao đã cắm -> Dội ngược xoay vòng rơi xuống!
               tk.bouncing = true;
               tk.vx = (Math.random() > 0.5 ? 1 : -1) * 4.5;
               tk.vy = 6.5;
@@ -723,17 +669,10 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
               spawnSplinters(logX, hitThresholdY, 12, '#fde047');
 
               if (gameMode === 'campaign') {
-                setLastHitBanner('💥 KENG! Phóng trúng dao đã cắm trên gỗ!');
                 window.setTimeout(() => {
                   setStageState('failed');
                 }, 420);
               } else {
-                // Chế độ Solo PvP: Trúng dao bị mất lượt và trừ 1 dao
-                setLastHitBanner(
-                  `💥 KENG! ${
-                    tk.playerIndex === 0 ? currentNickname : opponentName
-                  } phóng trúng dao đã cắm! Đổi lượt!`
-                );
                 setPvpKnivesLeft((prev) => {
                   const next: [number, number] = [...prev] as [number, number];
                   next[tk.playerIndex] = Math.max(0, next[tk.playerIndex] - 1);
@@ -747,7 +686,6 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
                 });
               }
             } else {
-              // CẮM THÀNH CÔNG VÀO KHÚC GỖ!
               activeThrowRef.current = null;
               stuckKnivesRef.current.push({
                 angle: relativeImpactAngle,
@@ -757,7 +695,6 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
               logFlashRef.current = 1;
               spawnSplinters(logX, logY + logRadius, 9, '#f4a261');
 
-              // Kiểm tra xem có chém trúng quả Táo 🍎 nào trên vành gỗ không
               let hitApple = false;
               stuckApplesRef.current.forEach((ap) => {
                 if (!ap.sliced && shortestAngleDiff(ap.angle, relativeImpactAngle) < 0.26) {
@@ -802,15 +739,11 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
                 setKnivesRemaining((prevLeft) => {
                   const nextLeft = prevLeft - 1;
                   if (nextLeft <= 0) {
-                    // CẮM CON DAO CUỐI CÙNG -> NỔ VỠ TUNG KHÚC GỖ NHƯ TRONG ẢNH!
                     triggerLogShatter(logX, logY);
-                  } else if (hitApple) {
-                    setLastHitBanner('🍎 Chém trúng Táo Vàng! (+2 🍎)');
                   }
                   return nextLeft;
                 });
               } else {
-                // Chế độ Solo 2 người (PvP)
                 setPvpScores((prev) => {
                   const next: [number, number] = [...prev] as [number, number];
                   next[tk.playerIndex] += gainedPts;
@@ -833,7 +766,6 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
             }
           }
         } else {
-          // Con dao đang bị dội ngược rơi xuống
           tk.x = (tk.x ?? logX) + tk.vx;
           tk.y += tk.vy;
           tk.vy += 0.55;
@@ -844,9 +776,7 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
         }
       }
 
-      // 4. VẼ KHÚC GỖ & CÁC CON DAO ĐANG CẮM (HOẶC HIỆU ỨNG KHÚC GỖ VỠ TUNG NHƯ ẢNH MẪU)
       if (stageState === 'shattering') {
-        // Vòng chấm gạch tròn tỏa ra khi khúc gỗ vỡ giống hệt bức ảnh bạn gửi!
         ctx.save();
         ctx.beginPath();
         ctx.arc(logX, baseLogY, logRadius + 38, 0, Math.PI * 2);
@@ -856,7 +786,6 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
         ctx.stroke();
         ctx.restore();
 
-        // Vẽ các con dao văng tung ra
         for (const fk of flyingKnivesOutRef.current) {
           fk.x += fk.vx;
           fk.y += fk.vy;
@@ -864,7 +793,6 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
           drawKnifeSprite(ctx, fk.x, fk.y, fk.rot, fk.playerIndex);
         }
 
-        // Vẽ 3 mảnh khúc gỗ vỡ bay ra 3 phía (kèm cả mảnh ảnh người trên đó!)
         for (const wedge of shatterWedgesRef.current) {
           wedge.x += wedge.vx;
           wedge.y += wedge.vy;
@@ -881,16 +809,13 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
           );
         }
       } else {
-        // Vẽ các con dao đã cắm trên vành gỗ trước (để phần mũi dao nằm dưới lớp gỗ)
         for (const sk of stuckKnivesRef.current) {
           const worldAngle = sk.angle + logAngleRef.current;
           const kx = logX + Math.cos(worldAngle) * (logRadius + 14);
           const ky = logY + Math.sin(worldAngle) * (logRadius + 14);
-          // Mũi dao luôn hướng vào tâm khúc gỗ
           drawKnifeSprite(ctx, kx, ky, worldAngle - Math.PI / 2, sk.playerIndex);
         }
 
-        // Vẽ các quả Táo 🍎 bám trên vành khúc gỗ
         for (const ap of stuckApplesRef.current) {
           if (ap.sliced) continue;
           const worldAngle = ap.angle + logAngleRef.current;
@@ -906,7 +831,6 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
           ctx.strokeStyle = '#fef08a';
           ctx.lineWidth = 1.5;
           ctx.stroke();
-          // Cuống lá xanh
           ctx.fillStyle = '#22c55e';
           ctx.beginPath();
           ctx.ellipse(3, -10, 4, 2, -0.5, 0, Math.PI * 2);
@@ -914,10 +838,8 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
           ctx.restore();
         }
 
-        // Vẽ Khúc Gỗ Xoay chính giữa
         drawWoodLogSlice(ctx, logX, logY, logRadius, logAngleRef.current);
 
-        // Hiệu ứng chớp sáng nhẹ trên mặt gỗ vừa bị dao cắm trúng
         if (logFlashRef.current > 0.05) {
           ctx.save();
           ctx.beginPath();
@@ -928,7 +850,6 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
         }
       }
 
-      // 5. VẼ CÁC MẢNH VỤN GỖ BAY TUNG TÓE
       for (let i = particlesRef.current.length - 1; i >= 0; i--) {
         const p = particlesRef.current[i];
         p.x += p.vx;
@@ -947,7 +868,6 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
         ctx.restore();
       }
 
-      // 6. VẼ CON DAO CHỜ PHÓNG Ở DƯỚI CÙNG (HOẶC ĐANG BAY)
       if (activeThrowRef.current) {
         const tk = activeThrowRef.current;
         drawKnifeSprite(ctx, tk.x ?? logX, tk.y, tk.rot, tk.playerIndex);
@@ -961,7 +881,6 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
         );
       }
 
-      // 7. VẼ DÃY ICON DAO CÒN LẠI Ở GÓC DƯỚI BÊN TRÁI (Chuẩn giao diện Knife Hit)
       const totalIcons =
         gameMode === 'campaign'
           ? stageConfig.knivesToThrow
@@ -987,9 +906,8 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
         ctx.restore();
       }
 
-      // 8. VẼ HUD TRÊN ĐỈNH CANVAS GIỐNG HỆT ẢNH KNIFE HIT (Điểm bên trái • Stage ở giữa • Táo bên phải)
+      // HUD trên đỉnh Canvas giống hệt ảnh Knife Hit
       ctx.save();
-      // Điểm số góc trên trái
       ctx.font = 'bold 20px Inter, sans-serif';
       ctx.fillStyle = '#f59e0b';
       ctx.textAlign = 'left';
@@ -999,7 +917,6 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
         30
       );
 
-      // Chấm tròn Stage + Chữ STAGE ở chính giữa trên cùng
       const dotStartX = w / 2 - 36;
       for (let s = 1; s <= 4; s++) {
         ctx.beginPath();
@@ -1022,12 +939,11 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
       ctx.fillText(
         gameMode === 'campaign'
           ? `STAGE ${currentStageNum}`
-          : `LƯỢT: ${activeTurnPlayer === 0 ? currentNickname : opponentName}`,
+          : `${activeTurnPlayer === 0 ? currentNickname : opponentName}`,
         w / 2,
         44
       );
 
-      // Số lượng Táo góc trên phải
       ctx.font = 'bold 18px Inter, sans-serif';
       ctx.fillStyle = '#f59e0b';
       ctx.textAlign = 'right';
@@ -1062,7 +978,6 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
     triggerLogShatter,
   ]);
 
-  // Xử lý tải ảnh từ máy tính / điện thoại để gắn vào Khúc Gỗ Xoay
   const handleUploadTargetPhoto = (file: File) => {
     const reader = new FileReader();
     reader.onload = () => {
@@ -1083,13 +998,12 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
             // ignore
           }
         }
-        setLastHitBanner('📸 Đã ghép ảnh vào Khúc Gỗ Xoay! Phóng hết dao để chẻ vỡ nào!');
+        setShowPhotoPopover(false);
       }
     };
     reader.readAsDataURL(file);
   };
 
-  // Chọn nhanh thành viên trong phòng để ghép lên khúc gỗ
   const handleSelectMemberAsTarget = (member: RoomMember) => {
     const svgCanvas = document.createElement('canvas');
     svgCanvas.width = 256;
@@ -1133,7 +1047,7 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
       } catch {
         // ignore
       }
-      setLastHitBanner(`🎯 Đã gắn "${member.nickname}" lên Khúc Gỗ Xoay!`);
+      setShowPhotoPopover(false);
     }
   };
 
@@ -1146,24 +1060,21 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
     } catch {
       // ignore
     }
-    setLastHitBanner('Đã khôi phục Khúc Gỗ truyền thống.');
   };
 
   const handleSendRoomChallenge = () => {
     const targetMember = members.find((m) => m.userId === selectedOpponentId);
     const opponentLabel = targetMember ? targetMember.nickname : opponentName;
-    const targetInfo = targetPersonName
-      ? ` (Mục tiêu trên gỗ: "${targetPersonName}")`
-      : '';
-    const msg = `🎯 [THÁCH ĐẤU PHI TIÊU] ${currentNickname} vừa thách đấu @${opponentLabel} chơi 🗡️ Knife Hit (Phóng Dao Cắm Gỗ)${targetInfo} trong 🎮 Phòng Giải Trí!`;
+    const targetInfo = targetPersonName ? ` (Bia gỗ: "${targetPersonName}")` : '';
+    const msg = `🎯 [THÁCH ĐẤU PHI TIÊU] ${currentNickname} thách đấu @${opponentLabel} chơi 🗡️ Knife Hit${targetInfo} trong 🎮 Phòng Giải Trí!`;
     onBroadcastChallengeMessage(msg);
-    setLastHitBanner(`📣 Đã gửi lời thách đấu Knife Hit tới ${opponentLabel}!`);
+    setLastHitBanner(`📣 Đã mời ${opponentLabel}!`);
   };
 
   const handleShareMatchResult = () => {
     if (gameMode === 'campaign') {
-      const msg = `🗡️ [KNIFE HIT] ${currentNickname} vừa đạt ${score} dao liên tiếp (Tới Stage ${currentStageNum}, thu thập ${appleCount} 🍎)${
-        targetPersonName ? ` — Đã chẻ vỡ mục tiêu "${targetPersonName}"` : ''
+      const msg = `🗡️ [KNIFE HIT] ${currentNickname} đạt ${score} dao liên tiếp (Stage ${currentStageNum}, ${appleCount} 🍎)${
+        targetPersonName ? ` — Chẻ vỡ bia "${targetPersonName}"` : ''
       }!`;
       onBroadcastChallengeMessage(msg);
     } else {
@@ -1172,11 +1083,11 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
           ? `${currentNickname} thắng!`
           : pvpScores[1] > pvpScores[0]
             ? `${opponentName} thắng!`
-            : 'Hòa kịch tính!';
-      const msg = `⚔️ [SOLO KNIFE HIT] ${currentNickname} (${pvpScores[0]}đ) vs ${opponentName} (${pvpScores[1]}đ) — Kết quả: 🏆 ${winner}`;
+            : 'Hòa!';
+      const msg = `⚔️ [SOLO KNIFE HIT] ${currentNickname} (${pvpScores[0]}đ) vs ${opponentName} (${pvpScores[1]}đ) — 🏆 ${winner}`;
       onBroadcastChallengeMessage(msg);
     }
-    setLastHitBanner('📣 Đã khoe thành tích Knife Hit lên kênh Chat của phòng!');
+    setLastHitBanner('📣 Đã gửi điểm ra phòng!');
   };
 
   const handleSpinWheel = () => {
@@ -1191,7 +1102,7 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
       const chosen = items[Math.floor(Math.random() * items.length)];
       setWheelResult(chosen);
       setSpinningWheel(false);
-    }, 1100);
+    }, 1000);
   };
 
   if (!isOpen) return null;
@@ -1201,68 +1112,103 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
   return (
     <div
       data-testid="entertainment-room-overlay"
-      className="fixed inset-0 z-30 flex items-center justify-center bg-slate-950/75 p-2 sm:p-4 backdrop-blur-md"
+      className="fixed inset-0 z-30 flex items-center justify-center bg-slate-950/75 p-2 backdrop-blur-sm"
     >
-      <div className="relative flex max-h-[92dvh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-teal-400/35 bg-slate-900/95 text-slate-100 shadow-2xl">
-        {/* HEADER PHÒNG GIẢI TRÍ */}
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 bg-gradient-to-r from-[#072e38] via-slate-900 to-indigo-950/90 px-3.5 py-2.5 sm:px-5 sm:py-3">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-amber-500/20 text-amber-300 ring-1 ring-amber-400/40">
-              <Gamepad2 className="h-5 w-5" />
-            </div>
-            <div>
-              <h2 className="text-sm sm:text-base font-extrabold text-white flex items-center gap-2">
-                <span>🗡️ Phòng Giải Trí — Knife Hit 3D</span>
-                <span className="hidden sm:inline-flex items-center gap-1 rounded-full bg-amber-400/20 border border-amber-400/40 px-2.5 py-0.5 text-[11px] font-bold text-amber-300">
-                  <Trophy className="h-3 w-3" /> Kỷ lục: {bestScore} dao • {appleCount} 🍎
-                </span>
-              </h2>
-              <p className="text-[11px] text-slate-300">
-                Phóng dao cắm khúc gỗ xoay vượt Stage hoặc đấu Solo • Ghép ảnh vào khúc gỗ để chẻ vỡ tung!
-              </p>
-            </div>
+      {/* KHUNG GAME DỌC GỌN GÀNG NHƯ ĐIỆN THOẠI (Vừa khít 1 màn hình, không cần cuộn) */}
+      <div className="relative flex w-full max-w-[380px] sm:max-w-[400px] flex-col overflow-hidden rounded-3xl border border-teal-400/35 bg-[#041d24] text-slate-100 shadow-2xl">
+        {/* Input file ảnh ẩn */}
+        <input
+          ref={photoInputRef}
+          type="file"
+          accept="image/*"
+          data-testid="dart-photo-file-input"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) {
+              handleUploadTargetPhoto(file);
+            }
+          }}
+        />
+
+        {/* THANH ĐẦU GỌN 1 DÒNG: Đổi tab game • Ghép ảnh • Đổi chế độ Solo • Âm thanh • Thoát */}
+        <div className="flex items-center justify-between gap-1 border-b border-white/10 bg-slate-950/80 px-2.5 py-2">
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              data-testid="game-tab-darts"
+              onClick={() => setSelectedGameTab('knife_hit')}
+              className={`inline-flex items-center gap-1 rounded-xl px-2.5 py-1 text-xs font-extrabold transition-all cursor-pointer ${
+                selectedGameTab === 'knife_hit'
+                  ? 'bg-amber-400 text-slate-950 shadow'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Flame className="h-3.5 w-3.5" />
+              <span>Knife Hit</span>
+            </button>
+
+            <button
+              type="button"
+              data-testid="game-tab-wheel"
+              onClick={() => setSelectedGameTab('wheel')}
+              className={`inline-flex items-center gap-1 rounded-xl px-2 py-1 text-xs font-bold transition-all cursor-pointer ${
+                selectedGameTab === 'wheel'
+                  ? 'bg-fuchsia-500 text-white shadow'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Disc className="h-3.5 w-3.5" />
+              <span>Vòng Quay</span>
+            </button>
           </div>
 
-          <div className="flex items-center gap-1.5 sm:gap-2">
-            <div className="flex items-center rounded-xl bg-slate-950/80 p-1 border border-white/10">
-              <button
-                type="button"
-                data-testid="game-tab-darts"
-                onClick={() => setSelectedGameTab('knife_hit')}
-                className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-bold transition-all cursor-pointer ${
-                  selectedGameTab === 'knife_hit'
-                    ? 'bg-amber-500 text-slate-950 shadow'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <Flame className="h-3.5 w-3.5" />
-                <span>Knife Hit</span>
-              </button>
-              <button
-                type="button"
-                data-testid="game-tab-wheel"
-                onClick={() => setSelectedGameTab('wheel')}
-                className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-bold transition-all cursor-pointer ${
-                  selectedGameTab === 'wheel'
-                    ? 'bg-fuchsia-500 text-white shadow'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <Disc className="h-3.5 w-3.5" />
-                <span>Vòng Quay</span>
-              </button>
-            </div>
+          <div className="flex items-center gap-1">
+            {selectedGameTab === 'knife_hit' && (
+              <>
+                {/* Nút bật/tắt bảng Ghép Ảnh vào Khúc Gỗ */}
+                <button
+                  type="button"
+                  data-testid="toggle-photo-customizer-btn"
+                  onClick={() => setShowPhotoPopover((v) => !v)}
+                  className={`inline-flex items-center gap-1 rounded-xl px-2.5 py-1 text-xs font-bold border transition-all cursor-pointer ${
+                    targetPhotoUrl || showPhotoPopover
+                      ? 'border-amber-300 bg-amber-400/20 text-amber-200'
+                      : 'border-white/15 bg-slate-800 text-slate-200 hover:bg-slate-700'
+                  }`}
+                  title="Ghép ảnh người vào Khúc Gỗ"
+                >
+                  <Camera className="h-3.5 w-3.5 text-amber-300" />
+                  <span>Ghép ảnh</span>
+                </button>
+
+                {/* Nút chuyển nhanh 1 Mình <-> Solo Bạn Bè */}
+                <button
+                  type="button"
+                  data-testid={gameMode === 'campaign' ? 'mode-pvp-btn' : 'mode-campaign-btn'}
+                  onClick={() => setGameMode((m) => (m === 'campaign' ? 'pvp' : 'campaign'))}
+                  className={`inline-flex items-center gap-1 rounded-xl px-2.5 py-1 text-xs font-bold border transition-all cursor-pointer ${
+                    gameMode === 'pvp'
+                      ? 'border-rose-400 bg-rose-500 text-white'
+                      : 'border-white/15 bg-slate-800 text-slate-200 hover:bg-slate-700'
+                  }`}
+                  title="Đổi chế độ 1 mình / Solo cùng bạn bè"
+                >
+                  <Swords className="h-3.5 w-3.5" />
+                  <span>{gameMode === 'pvp' ? 'Solo' : '1 Mình'}</span>
+                </button>
+              </>
+            )}
 
             <button
               type="button"
               onClick={onToggleSound}
-              className="rounded-xl bg-slate-800 hover:bg-slate-700 p-2 text-slate-300 cursor-pointer"
-              title={soundEnabled ? 'Tắt âm thanh game' : 'Bật âm thanh game'}
+              className="rounded-xl bg-slate-800 hover:bg-slate-700 p-1.5 text-slate-300 cursor-pointer"
             >
               {soundEnabled ? (
-                <Volume2 className="h-4 w-4 text-emerald-400" />
+                <Volume2 className="h-3.5 w-3.5 text-emerald-400" />
               ) : (
-                <VolumeX className="h-4 w-4 text-slate-500" />
+                <VolumeX className="h-3.5 w-3.5 text-slate-500" />
               )}
             </button>
 
@@ -1270,298 +1216,132 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
               type="button"
               data-testid="exit-game-room-btn"
               onClick={onExitGameRoom}
-              className="inline-flex items-center gap-1 rounded-xl bg-slate-800 hover:bg-slate-700 border border-white/15 px-3 py-1.5 text-xs font-semibold text-slate-200 cursor-pointer"
+              className="rounded-xl bg-slate-800 hover:bg-rose-500/30 border border-white/15 p-1.5 text-slate-200 cursor-pointer"
+              title="Đóng Phòng Giải Trí"
             >
-              <ArrowLeft className="h-3.5 w-3.5" />
-              <span>Về văn phòng</span>
+              <X className="h-4 w-4" />
             </button>
           </div>
         </div>
 
-        {activeChallengeBanner && (
-          <div className="bg-amber-500/20 border-b border-amber-400/40 px-4 py-1.5 text-center text-xs font-semibold text-amber-200">
-            {activeChallengeBanner}
-          </div>
-        )}
-
-        {/* NỘI DUNG CHÍNH */}
-        <div className="flex-1 overflow-y-auto p-3 sm:p-4">
-          {selectedGameTab === 'knife_hit' ? (
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
-              {/* CỘT TRÁI (7/12): MÀN HÌNH DỌC KNIFE HIT CHUẨN NHƯ ẢNH MẪU */}
-              <div className="lg:col-span-7 flex flex-col items-center bg-[#041d24] rounded-2xl border border-teal-500/30 p-3 shadow-inner">
-                <div className="relative w-full max-w-[330px] aspect-[320/420] rounded-2xl overflow-hidden border-2 border-teal-400/35 shadow-2xl">
-                  <canvas
-                    ref={canvasRef}
-                    data-testid="dartboard-canvas"
-                    width={320}
-                    height={420}
-                    onPointerDown={handleThrowKnife}
-                    className="w-full h-full cursor-pointer touch-none select-none"
-                  />
-
-                  {/* Màn hình Khi Đụng Phải Dao Khác (Failed) hoặc Kết thúc ván Solo PvP */}
-                  {(stageState === 'failed' || stageState === 'pvp_over') && (
-                    <div
-                      data-testid="dart-round-summary"
-                      className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/88 p-4 text-center backdrop-blur-md animate-fade-in"
-                    >
-                      {stageState === 'failed' ? (
-                        <>
-                          <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-500/20 text-rose-300 ring-2 ring-rose-400/50">
-                            <Flame className="h-6 w-6" />
-                          </div>
-                          <h3 className="text-base sm:text-lg font-extrabold text-white">
-                            💥 Trúng Dao Đã Cắm!
-                          </h3>
-                          <p className="mt-1 text-xs text-slate-300">
-                            Bạn đã phóng trúng liên tiếp{' '}
-                            <strong className="text-amber-400 text-sm">{score}</strong> con dao (Tới{' '}
-                            <strong>Stage {currentStageNum}</strong>)
-                          </p>
-                          <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-                            <button
-                              type="button"
-                              data-testid="dart-retry-btn"
-                              onClick={() => setupStage(currentStageNum, 'campaign', true)}
-                              className="inline-flex items-center gap-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 px-4 py-2 text-xs font-extrabold text-slate-950 shadow-lg cursor-pointer"
-                            >
-                              <RotateCcw className="h-3.5 w-3.5" />
-                              <span>Chơi lại Stage {currentStageNum}</span>
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={handleShareMatchResult}
-                              className="inline-flex items-center gap-1.5 rounded-xl bg-teal-500/25 hover:bg-teal-500/35 border border-teal-400/40 px-3.5 py-2 text-xs font-bold text-teal-200 cursor-pointer"
-                            >
-                              <Send className="h-3.5 w-3.5" />
-                              <span>Khoe điểm lên phòng</span>
-                            </button>
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-400/20 text-amber-300 ring-2 ring-amber-400/50">
-                            <Crown className="h-6 w-6" />
-                          </div>
-                          <h3 className="text-base sm:text-lg font-extrabold text-white">
-                            {pvpScores[0] > pvpScores[1]
-                              ? `🏆 ${currentNickname} Chiến Thắng!`
-                              : pvpScores[1] > pvpScores[0]
-                                ? `🏆 ${opponentName} Chiến Thắng!`
-                                : '🤝 Trận Đấu Hòa Kịch Tính!'}
-                          </h3>
-                          <p className="mt-1 text-xs text-slate-300">
-                            🔴 {currentNickname}:{' '}
-                            <strong className="text-rose-300">{pvpScores[0]}đ</strong> — 🔵{' '}
-                            {opponentName}:{' '}
-                            <strong className="text-cyan-300">{pvpScores[1]}đ</strong>
-                          </p>
-                          <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => setupStage(currentStageNum, 'pvp', true)}
-                              className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 px-4 py-2 text-xs font-extrabold text-slate-950 cursor-pointer"
-                            >
-                              <RotateCcw className="h-3.5 w-3.5" />
-                              <span>Tái đấu ván mới</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={handleShareMatchResult}
-                              className="inline-flex items-center gap-1.5 rounded-xl bg-teal-500/25 hover:bg-teal-500/35 border border-teal-400/40 px-3.5 py-2 text-xs font-bold text-teal-200 cursor-pointer"
-                            >
-                              <Send className="h-3.5 w-3.5" />
-                              <span>Báo kết quả lên phòng</span>
-                            </button>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* Dòng hướng dẫn & thông báo dưới màn hình Knife Hit */}
-                <div className="mt-2 min-h-[26px] flex items-center justify-center text-center">
-                  {lastHitBanner ? (
-                    <span
-                      data-testid="dart-hit-banner"
-                      className="rounded-full bg-amber-500/20 border border-amber-400/40 px-3.5 py-1 text-xs font-bold text-amber-200"
-                    >
-                      {lastHitBanner}
-                    </span>
-                  ) : (
-                    <span className="text-[11px] text-teal-200/80">
-                      💡 Chạm vào màn hình gỗ hoặc bấm phím <strong>Space</strong> để phóng dao! Đừng phóng trúng dao đã cắm!
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* CỘT PHẢI (5/12): CHỌN CHẾ ĐỘ • CHỌN STAGE • GHÉP ẢNH VÀO KHÚC GỖ • MỜI BẠN BÈ */}
-              <div className="lg:col-span-5 flex flex-col gap-3">
-                {/* 1. CHỌN CHẾ ĐỘ: VƯỢT STAGE 1 MÌNH vs SOLO CÙNG BẠN BÈ */}
-                <div className="rounded-2xl border border-white/10 bg-slate-950/65 p-3 space-y-2.5">
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      data-testid="mode-campaign-btn"
-                      onClick={() => setGameMode('campaign')}
-                      className={`flex items-center justify-center gap-1.5 rounded-xl py-2 px-3 text-xs font-bold transition-all cursor-pointer ${
-                        gameMode === 'campaign'
-                          ? 'bg-amber-400 text-slate-950 shadow-lg shadow-amber-400/25'
-                          : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                      }`}
-                    >
-                      <Trophy className="h-3.5 w-3.5" />
-                      <span>Vượt Stage (1 Mình)</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      data-testid="mode-pvp-btn"
-                      onClick={() => setGameMode('pvp')}
-                      className={`flex items-center justify-center gap-1.5 rounded-xl py-2 px-3 text-xs font-bold transition-all cursor-pointer ${
-                        gameMode === 'pvp'
-                          ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/25'
-                          : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                      }`}
-                    >
-                      <Swords className="h-3.5 w-3.5" />
-                      <span>Solo cùng bạn bè</span>
-                    </button>
-                  </div>
-
-                  {gameMode === 'campaign' ? (
-                    <div className="space-y-1.5">
-                      <p className="text-[11px] font-semibold text-slate-400">
-                        Chọn Stage thử thách (Cắm đủ dao khúc gỗ sẽ nổ tung qua màn):
-                      </p>
-                      <div className="grid grid-cols-5 gap-1.5">
-                        {KNIFE_STAGES.map((stg) => {
-                          const active = currentStageNum === stg.stage;
-                          return (
-                            <button
-                              key={stg.stage}
-                              type="button"
-                              data-testid={`dart-level-${stg.stage}`}
-                              onClick={() => {
-                                setCurrentStageNum(stg.stage);
-                                setupStage(stg.stage, 'campaign', false);
-                              }}
-                              className={`flex flex-col items-center justify-center rounded-xl border py-1.5 text-xs font-bold transition-all cursor-pointer ${
-                                active
-                                  ? 'border-amber-300 bg-amber-400 text-slate-950 shadow'
-                                  : stg.stage <= unlockedStage
-                                    ? 'border-teal-400/30 bg-teal-500/10 text-teal-200 hover:bg-teal-500/20'
-                                    : 'border-white/10 bg-slate-900 text-slate-400 hover:bg-slate-800'
-                              }`}
-                            >
-                              <span>{stg.isBoss ? '⚔️ Boss' : `Stg.${stg.stage}`}</span>
-                              <span className="text-[9px] opacity-80">{stg.knivesToThrow} 🗡️</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                      <p className="text-[11px] text-slate-400 pt-0.5">{stageConfig.subtitle}</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      <p className="text-[11px] text-slate-300 font-medium">
-                        Đấu luân phiên trên cùng 1 khúc gỗ xoay (Trúng gỗ +10đ, trúng Táo +25đ, đụng dao mất lượt!):
-                      </p>
-
-                      {otherMembers.length > 0 && (
-                        <div className="flex flex-wrap gap-1.5">
-                          {otherMembers.map((m) => (
-                            <button
-                              key={m.userId}
-                              type="button"
-                              onClick={() => {
-                                setSelectedOpponentId(m.userId);
-                                setOpponentName(m.nickname);
-                                setupStage(currentStageNum, 'pvp', true);
-                              }}
-                              className={`rounded-xl px-2.5 py-1 text-xs font-semibold border transition-all cursor-pointer ${
-                                opponentName === m.nickname
-                                  ? 'border-cyan-400 bg-cyan-500/25 text-cyan-200'
-                                  : 'border-white/10 bg-slate-800 text-slate-300 hover:bg-slate-700'
-                              }`}
-                            >
-                              👤 {m.nickname}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="text"
-                          value={opponentName}
-                          onChange={(e) => setOpponentName(e.target.value)}
-                          placeholder="Tên đối thủ..."
-                          className="flex-1 rounded-xl border border-white/15 bg-slate-900 px-3 py-1.5 text-xs text-white outline-none focus:border-rose-400"
-                        />
+        {selectedGameTab === 'knife_hit' ? (
+          <>
+            {/* THANH PHỤ GỌN 1 DÒNG: Chọn nhanh Stage 1..5 HOẶC Chọn Đối Thủ Solo */}
+            <div className="flex items-center justify-between gap-1 bg-[#05252e] px-2.5 py-1.5 border-b border-teal-500/20">
+              {gameMode === 'campaign' ? (
+                <div className="flex items-center justify-between w-full gap-1">
+                  <div className="flex items-center gap-1">
+                    {KNIFE_STAGES.map((stg) => {
+                      const active = currentStageNum === stg.stage;
+                      return (
                         <button
+                          key={stg.stage}
                           type="button"
-                          data-testid="invite-friend-dart-btn"
-                          onClick={handleSendRoomChallenge}
-                          className="inline-flex items-center gap-1 rounded-xl bg-rose-500 hover:bg-rose-400 px-3 py-1.5 text-xs font-bold text-white shadow cursor-pointer"
+                          data-testid={`dart-level-${stg.stage}`}
+                          onClick={() => {
+                            setCurrentStageNum(stg.stage);
+                            setupStage(stg.stage, 'campaign', false);
+                          }}
+                          className={`rounded-lg px-2 py-0.5 text-[11px] font-extrabold transition-all cursor-pointer ${
+                            active
+                              ? 'bg-amber-400 text-slate-950 shadow'
+                              : stg.stage <= unlockedStage
+                                ? 'bg-teal-900/70 text-teal-200 hover:bg-teal-800'
+                                : 'bg-slate-900/70 text-slate-400'
+                          }`}
                         >
-                          <Users className="h-3.5 w-3.5" />
-                          <span>Mời đấu</span>
+                          {stg.isBoss ? '⚔️5' : `S${stg.stage}`}
                         </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
+                      );
+                    })}
+                  </div>
 
-                {/* 2. CHỨC NĂNG ĐẶC BIỆT: THAY ẢNH NGƯỜI NÀO ĐÓ VÀO KHÚC GỖ XOAY */}
-                <div className="rounded-2xl border border-amber-400/35 bg-gradient-to-br from-amber-500/10 via-slate-950/80 to-rose-500/10 p-3 space-y-2.5">
+                  <span className="text-[11px] font-bold text-amber-300 whitespace-nowrap">
+                    🏆 Kỷ lục: {bestScore}
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between w-full gap-1.5">
+                  <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
+                    {otherMembers.length > 0 ? (
+                      otherMembers.map((m) => (
+                        <button
+                          key={m.userId}
+                          type="button"
+                          onClick={() => {
+                            setSelectedOpponentId(m.userId);
+                            setOpponentName(m.nickname);
+                            setupStage(currentStageNum, 'pvp', true);
+                          }}
+                          className={`rounded-lg px-2 py-0.5 text-[11px] font-bold whitespace-nowrap cursor-pointer ${
+                            opponentName === m.nickname
+                              ? 'bg-cyan-400 text-slate-950'
+                              : 'bg-slate-800 text-slate-300'
+                          }`}
+                        >
+                          vs {m.nickname}
+                        </button>
+                      ))
+                    ) : (
+                      <input
+                        type="text"
+                        value={opponentName}
+                        onChange={(e) => setOpponentName(e.target.value)}
+                        className="w-28 rounded-lg bg-slate-900 border border-white/15 px-2 py-0.5 text-[11px] text-white outline-none"
+                        placeholder="Tên đối thủ..."
+                      />
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    data-testid="invite-friend-dart-btn"
+                    onClick={handleSendRoomChallenge}
+                    className="inline-flex items-center gap-1 rounded-lg bg-rose-500 hover:bg-rose-400 px-2.5 py-0.5 text-[11px] font-bold text-white shrink-0 cursor-pointer"
+                  >
+                    <Users className="h-3 w-3" />
+                    <span>Mời đấu</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* KHUNG GAME KNIFE HIT CHÍNH (Chiếm trọn diện tích, không vướng chữ thừa) */}
+            <div className="relative w-full aspect-[320/410] max-h-[68dvh] bg-[#041d24] flex items-center justify-center overflow-hidden">
+              <canvas
+                ref={canvasRef}
+                data-testid="dartboard-canvas"
+                width={320}
+                height={420}
+                onPointerDown={handleThrowKnife}
+                className="w-full h-full object-contain cursor-pointer touch-none select-none"
+              />
+
+              {/* POPOVER GHÉP ẢNH VÀO KHÚC GỖ (Chỉ hiện khi bấm nút "📸 Ghép ảnh") */}
+              {showPhotoPopover && (
+                <div className="absolute inset-x-3 top-3 z-20 rounded-2xl border border-amber-400/50 bg-slate-950/95 p-3 shadow-2xl backdrop-blur-xl space-y-2.5">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Camera className="h-4 w-4 text-amber-300" />
-                      <h3 className="text-xs font-extrabold text-amber-200 uppercase tracking-wider">
-                        Ghép ảnh người vào Khúc Gỗ Xoay
-                      </h3>
-                    </div>
+                    <span className="text-xs font-extrabold text-amber-300">
+                      📸 Ghép ảnh người vào Khúc Gỗ
+                    </span>
                     <button
                       type="button"
-                      data-testid="toggle-photo-customizer-btn"
-                      onClick={() => setShowPhotoCustomizer((v) => !v)}
-                      className="text-[11px] font-bold text-amber-300 hover:underline cursor-pointer"
+                      onClick={() => setShowPhotoPopover(false)}
+                      className="text-xs font-bold text-slate-400 hover:text-white cursor-pointer"
                     >
-                      {showPhotoCustomizer ? 'Thu gọn ▴' : 'Mở tùy chỉnh ▾'}
+                      Đóng ✕
                     </button>
                   </div>
 
-                  <p className="text-[11px] text-slate-300 leading-relaxed">
-                    Ảnh được gắn tròn lên mặt khúc gỗ, xoay theo gỗ và <strong>vỡ tung thành 3 mảnh</strong> khi bạn cắm nhát dao cuối cùng!
-                  </p>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    <input
-                      ref={photoInputRef}
-                      type="file"
-                      accept="image/*"
-                      data-testid="dart-photo-file-input"
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          handleUploadTargetPhoto(file);
-                        }
-                      }}
-                    />
+                  <div className="flex items-center gap-1.5">
                     <button
                       type="button"
                       data-testid="dart-upload-photo-btn"
                       onClick={() => photoInputRef.current?.click()}
-                      className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 px-3 py-2 text-xs font-extrabold text-slate-950 shadow cursor-pointer"
+                      className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 py-2 px-3 text-xs font-extrabold text-slate-950 cursor-pointer"
                     >
                       <Upload className="h-3.5 w-3.5" />
-                      <span>Chọn ảnh từ máy / điện thoại</span>
+                      <span>Chọn ảnh từ máy</span>
                     </button>
 
                     {targetPhotoUrl && (
@@ -1569,194 +1349,229 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
                         type="button"
                         data-testid="dart-clear-photo-btn"
                         onClick={handleClearTargetPhoto}
-                        className="inline-flex items-center gap-1 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 border border-rose-400/40 px-2.5 py-2 text-xs font-semibold text-rose-200 cursor-pointer"
-                        title="Xóa ảnh trên khúc gỗ"
+                        className="rounded-xl bg-rose-500/20 border border-rose-400/40 p-2 text-rose-300 cursor-pointer"
+                        title="Xóa ảnh"
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        <span>Xóa ảnh</span>
+                        <Trash2 className="h-4 w-4" />
                       </button>
                     )}
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      data-testid="dart-target-name-input"
-                      value={targetPersonName}
-                      onChange={(e) => {
-                        setTargetPersonName(e.target.value);
-                        try {
-                          window.localStorage.setItem(STORAGE_CUSTOM_NAME_KEY, e.target.value);
-                        } catch {
-                          // ignore
-                        }
-                      }}
-                      placeholder="Nhập tên trên khúc gỗ (VD: Deadline, Bug, Bạn thân...)"
-                      className="w-full rounded-xl border border-white/15 bg-slate-900/90 px-3 py-1.5 text-xs text-white outline-none focus:border-amber-400"
-                    />
+                  <input
+                    type="text"
+                    data-testid="dart-target-name-input"
+                    value={targetPersonName}
+                    onChange={(e) => {
+                      setTargetPersonName(e.target.value);
+                      try {
+                        window.localStorage.setItem(STORAGE_CUSTOM_NAME_KEY, e.target.value);
+                      } catch {
+                        // ignore
+                      }
+                    }}
+                    placeholder="Tên trên khúc gỗ (VD: Deadline, Sếp...)"
+                    className="w-full rounded-xl border border-white/15 bg-slate-900 px-2.5 py-1.5 text-xs text-white outline-none focus:border-amber-400"
+                  />
+
+                  <div className="flex items-center justify-between text-[11px] text-slate-300">
+                    <span>Cỡ ảnh:</span>
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setPhotoCoverageMode('full')}
+                        className={`rounded-lg px-2 py-0.5 font-bold cursor-pointer ${
+                          photoCoverageMode === 'full'
+                            ? 'bg-amber-400 text-slate-950'
+                            : 'bg-slate-800 text-slate-300'
+                        }`}
+                      >
+                        Tràn gỗ
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPhotoCoverageMode('center')}
+                        className={`rounded-lg px-2 py-0.5 font-bold cursor-pointer ${
+                          photoCoverageMode === 'center'
+                            ? 'bg-amber-400 text-slate-950'
+                            : 'bg-slate-800 text-slate-300'
+                        }`}
+                      >
+                        Tâm gỗ
+                      </button>
+                    </div>
                   </div>
 
-                  {showPhotoCustomizer && (
-                    <div className="space-y-2 pt-1 border-t border-white/10">
-                      <div className="flex items-center justify-between text-[11px] text-slate-300">
-                        <span>Kích cỡ ảnh trên khúc gỗ:</span>
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => setPhotoCoverageMode('full')}
-                            className={`rounded-lg px-2 py-0.5 font-semibold cursor-pointer ${
-                              photoCoverageMode === 'full'
-                                ? 'bg-amber-400 text-slate-950'
-                                : 'bg-slate-800 text-slate-300'
-                            }`}
-                          >
-                            Tràn mặt gỗ
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setPhotoCoverageMode('center')}
-                            className={`rounded-lg px-2 py-0.5 font-semibold cursor-pointer ${
-                              photoCoverageMode === 'center'
-                                ? 'bg-amber-400 text-slate-950'
-                                : 'bg-slate-800 text-slate-300'
-                            }`}
-                          >
-                            Giữa tâm gỗ
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-1.5">
-                        <input
-                          type="url"
-                          value={photoUrlInput}
-                          onChange={(e) => setPhotoUrlInput(e.target.value)}
-                          placeholder="Hoặc dán link ảnh https://..."
-                          className="flex-1 rounded-xl border border-white/15 bg-slate-900 px-2.5 py-1 text-xs text-white outline-none"
-                        />
+                  {members.length > 0 && (
+                    <div className="flex flex-wrap gap-1 pt-1 border-t border-white/10">
+                      {members.map((m) => (
                         <button
+                          key={m.userId}
                           type="button"
-                          onClick={() => {
-                            if (photoUrlInput.trim()) {
-                              setTargetPhotoUrl(photoUrlInput.trim());
-                              setPhotoUrlInput('');
-                            }
-                          }}
-                          className="rounded-xl bg-slate-800 hover:bg-slate-700 border border-white/15 px-2.5 py-1 text-xs font-semibold text-amber-300 cursor-pointer"
+                          data-testid={`target-member-${m.nickname}`}
+                          onClick={() => handleSelectMemberAsTarget(m)}
+                          className="rounded-lg bg-slate-800 hover:bg-slate-700 border border-white/10 px-2 py-1 text-[11px] text-slate-200 cursor-pointer"
                         >
-                          Gắn link
+                          🎯 {m.nickname}
                         </button>
-                      </div>
-
-                      {members.length > 0 && (
-                        <div className="space-y-1">
-                          <span className="text-[11px] text-slate-400">
-                            Hoặc gắn nhanh thành viên trong phòng lên khúc gỗ:
-                          </span>
-                          <div className="flex flex-wrap gap-1">
-                            {members.map((m) => (
-                              <button
-                                key={m.userId}
-                                type="button"
-                                data-testid={`target-member-${m.nickname}`}
-                                onClick={() => handleSelectMemberAsTarget(m)}
-                                className="rounded-lg bg-slate-800 hover:bg-slate-700 border border-white/10 px-2 py-1 text-[11px] text-slate-200 cursor-pointer"
-                              >
-                                🎯 {m.nickname}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
+                      ))}
                     </div>
                   )}
                 </div>
+              )}
 
-                {/* 3. NÚT CHƠI LẠI & KHOE THÀNH TÍCH */}
-                <div className="flex items-center justify-between gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setupStage(currentStageNum, gameMode, true)}
-                    className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-white/10 py-2 text-xs font-semibold text-slate-200 cursor-pointer"
-                  >
-                    <RotateCcw className="h-3.5 w-3.5" />
-                    <span>Làm mới màn chơi</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleShareMatchResult}
-                    className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-teal-500/20 hover:bg-teal-500/30 border border-teal-400/40 py-2 text-xs font-bold text-teal-200 cursor-pointer"
-                  >
-                    <Send className="h-3.5 w-3.5" />
-                    <span>Khoe điểm ra phòng</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          ) : (
-            /* TAB 2: VÒNG QUAY NHÂN PHẨM VĂN PHÒNG */
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center bg-slate-950/70 rounded-2xl border border-fuchsia-500/25 p-4">
-              <div className="flex flex-col items-center justify-center text-center p-4 space-y-3">
+              {/* Màn hình Kết thúc khi Đụng Dao hoặc Xong Ván Solo */}
+              {(stageState === 'failed' || stageState === 'pvp_over') && (
                 <div
-                  className={`flex h-28 w-28 items-center justify-center rounded-full border-4 border-fuchsia-400 bg-gradient-to-br from-fuchsia-600/40 to-indigo-600/40 shadow-2xl ${
-                    spinningWheel ? 'animate-spin' : ''
-                  }`}
+                  data-testid="dart-round-summary"
+                  className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/90 p-4 text-center backdrop-blur-md"
                 >
-                  <Disc className="h-14 w-14 text-fuchsia-300" />
-                </div>
-                <h3 className="text-base font-extrabold text-white">
-                  🎡 Vòng Quay Nhân Phẩm Văn Phòng
-                </h3>
-                <p className="text-xs text-slate-400 max-w-sm">
-                  Dùng để bốc thăm vui cùng đồng nghiệp: Ai khao trà sữa, ai thuyết trình trước, hoặc nhận quẻ vui trong ngày!
-                </p>
-
-                {wheelResult && (
-                  <div className="rounded-2xl border border-amber-300/60 bg-amber-500/20 px-4 py-2.5 text-sm font-extrabold text-amber-200 shadow-lg">
-                    🎉 Kết quả: {wheelResult}
-                  </div>
-                )}
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleSpinWheel}
-                    disabled={spinningWheel}
-                    className="rounded-2xl bg-gradient-to-r from-fuchsia-500 to-indigo-500 hover:from-fuchsia-400 hover:to-indigo-400 px-5 py-2.5 text-xs font-extrabold text-white shadow-lg cursor-pointer"
-                  >
-                    {spinningWheel ? 'Đang quay...' : '🎲 Quay ngay!'}
-                  </button>
-                  {wheelResult && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onBroadcastChallengeMessage(
-                          `🎡 [VÒNG QUAY NHÂN PHẨM] ${currentNickname} vừa quay trúng: "${wheelResult}"!`
-                        )
-                      }
-                      className="rounded-2xl bg-slate-800 hover:bg-slate-700 border border-white/15 px-3.5 py-2.5 text-xs font-bold text-slate-200 cursor-pointer"
-                    >
-                      📣 Báo lên phòng
-                    </button>
+                  {stageState === 'failed' ? (
+                    <>
+                      <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-2xl bg-rose-500/20 text-rose-300 ring-2 ring-rose-400/50">
+                        <Flame className="h-5 w-5" />
+                      </div>
+                      <h3 className="text-base font-extrabold text-white">
+                        💥 Đụng Trúng Dao!
+                      </h3>
+                      <p className="mt-1 text-xs text-slate-300">
+                        Điểm: <strong className="text-amber-400 text-sm">{score}</strong> dao • Stage{' '}
+                        {currentStageNum}
+                      </p>
+                      <div className="mt-3 flex items-center justify-center gap-2">
+                        <button
+                          type="button"
+                          data-testid="dart-retry-btn"
+                          onClick={() => setupStage(currentStageNum, 'campaign', true)}
+                          className="inline-flex items-center gap-1 rounded-xl bg-amber-400 hover:bg-amber-300 px-3.5 py-2 text-xs font-extrabold text-slate-950 shadow cursor-pointer"
+                        >
+                          <RotateCcw className="h-3.5 w-3.5" />
+                          <span>Chơi lại</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleShareMatchResult}
+                          className="inline-flex items-center gap-1 rounded-xl bg-teal-500/25 border border-teal-400/40 px-3 py-2 text-xs font-bold text-teal-200 cursor-pointer"
+                        >
+                          <Send className="h-3.5 w-3.5" />
+                          <span>Khoe điểm</span>
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-400/20 text-amber-300 ring-2 ring-amber-400/50">
+                        <Crown className="h-5 w-5" />
+                      </div>
+                      <h3 className="text-base font-extrabold text-white">
+                        {pvpScores[0] > pvpScores[1]
+                          ? `🏆 ${currentNickname} Thắng!`
+                          : pvpScores[1] > pvpScores[0]
+                            ? `🏆 ${opponentName} Thắng!`
+                            : '🤝 Hòa Kịch Tính!'}
+                      </h3>
+                      <p className="mt-1 text-xs text-slate-300">
+                        🔴 {currentNickname}: <strong className="text-rose-300">{pvpScores[0]}đ</strong> — 🔵{' '}
+                        {opponentName}: <strong className="text-cyan-300">{pvpScores[1]}đ</strong>
+                      </p>
+                      <div className="mt-3 flex items-center justify-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setupStage(currentStageNum, 'pvp', true)}
+                          className="inline-flex items-center gap-1 rounded-xl bg-emerald-500 hover:bg-emerald-400 px-3.5 py-2 text-xs font-extrabold text-slate-950 cursor-pointer"
+                        >
+                          <RotateCcw className="h-3.5 w-3.5" />
+                          <span>Đấu lại</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleShareMatchResult}
+                          className="inline-flex items-center gap-1 rounded-xl bg-teal-500/25 border border-teal-400/40 px-3 py-2 text-xs font-bold text-teal-200 cursor-pointer"
+                        >
+                          <Send className="h-3.5 w-3.5" />
+                          <span>Báo phòng</span>
+                        </button>
+                      </div>
+                    </>
                   )}
                 </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="block text-xs font-bold text-slate-300">
-                  Danh sách các ô trên Vòng Quay (mỗi dòng 1 mục):
-                </label>
-                <textarea
-                  rows={6}
-                  value={wheelItemsText}
-                  onChange={(e) => setWheelItemsText(e.target.value)}
-                  className="w-full rounded-2xl border border-white/15 bg-slate-900 p-3 text-xs text-slate-100 outline-none focus:border-fuchsia-400"
-                />
-              </div>
+              )}
             </div>
-          )}
-        </div>
+
+            {/* THANH DƯỚI CÙNG SIÊU GỌN: Chơi lại • Khoe điểm */}
+            <div className="flex items-center justify-between gap-2 bg-slate-950/90 px-3 py-2 border-t border-white/10">
+              <button
+                type="button"
+                onClick={() => setupStage(currentStageNum, gameMode, true)}
+                className="inline-flex items-center gap-1 rounded-xl bg-slate-800 hover:bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-200 cursor-pointer"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                <span>Chơi lại</span>
+              </button>
+
+              <span className="text-[11px] font-medium text-teal-200/80 truncate">
+                {lastHitBanner || 'Chạm vào gỗ để phóng dao'}
+              </span>
+
+              <button
+                type="button"
+                onClick={handleShareMatchResult}
+                className="inline-flex items-center gap-1 rounded-xl bg-teal-500/20 hover:bg-teal-500/30 border border-teal-400/40 px-3 py-1.5 text-xs font-bold text-teal-200 shrink-0 cursor-pointer"
+              >
+                <Send className="h-3.5 w-3.5" />
+                <span>Khoe điểm</span>
+              </button>
+            </div>
+          </>
+        ) : (
+          /* TAB 2: VÒNG QUAY NHÂN PHẨM GỌN CHO ĐIỆN THOẠI */
+          <div className="flex flex-col items-center p-4 space-y-3 bg-slate-950/80">
+            <div
+              className={`flex h-20 w-20 items-center justify-center rounded-full border-4 border-fuchsia-400 bg-gradient-to-br from-fuchsia-600/40 to-indigo-600/40 shadow-xl ${
+                spinningWheel ? 'animate-spin' : ''
+              }`}
+            >
+              <Disc className="h-10 w-10 text-fuchsia-300" />
+            </div>
+
+            {wheelResult && (
+              <div className="rounded-xl border border-amber-300/60 bg-amber-500/20 px-3 py-1.5 text-xs font-extrabold text-amber-200">
+                🎉 {wheelResult}
+              </div>
+            )}
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleSpinWheel}
+                disabled={spinningWheel}
+                className="rounded-xl bg-fuchsia-500 hover:bg-fuchsia-400 px-4 py-2 text-xs font-extrabold text-white shadow cursor-pointer"
+              >
+                {spinningWheel ? 'Đang quay...' : '🎲 Quay ngay!'}
+              </button>
+              {wheelResult && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    onBroadcastChallengeMessage(
+                      `🎡 [VÒNG QUAY] ${currentNickname} quay trúng: "${wheelResult}"!`
+                    )
+                  }
+                  className="rounded-xl bg-slate-800 border border-white/15 px-3 py-2 text-xs font-bold text-slate-200 cursor-pointer"
+                >
+                  📣 Báo phòng
+                </button>
+              )}
+            </div>
+
+            <textarea
+              rows={4}
+              value={wheelItemsText}
+              onChange={(e) => setWheelItemsText(e.target.value)}
+              className="w-full rounded-xl border border-white/15 bg-slate-900 p-2.5 text-xs text-slate-100 outline-none focus:border-fuchsia-400"
+              placeholder="Mỗi dòng 1 mục..."
+            />
+          </div>
+        )}
       </div>
     </div>
   );
