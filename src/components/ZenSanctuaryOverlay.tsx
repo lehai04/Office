@@ -1,5 +1,13 @@
-import React, { useRef } from 'react';
-import { Sparkles, Flame, Volume2, VolumeX, HeartHandshake, ArrowLeft, Eye, Music, Upload } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import {
+  Volume2,
+  VolumeX,
+  ArrowLeft,
+  Music,
+  Upload,
+  ChevronDown,
+  ChevronUp,
+} from 'lucide-react';
 import { ZEN_MUSIC_TRACKS, type ZenTrackId } from '../utils/zenSound';
 
 export type DeityType = 'buddha' | 'ong_dia' | 'than_tai';
@@ -121,237 +129,282 @@ export const ZenSanctuaryOverlay: React.FC<ZenSanctuaryOverlayProps> = ({
   onToggleSound,
 }) => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [showMusicMenu, setShowMusicMenu] = useState(false);
+
   if (!isOpen) return null;
 
   const currentMeta = DEITY_OPTIONS[selectedDeity];
+  const pillBaseClass =
+    'flex items-center gap-2.5 w-[142px] sm:w-[158px] rounded-2xl border px-3.5 py-2 text-xs font-semibold shadow-lg backdrop-blur-md transition-all active:scale-95 cursor-pointer select-none';
+  const pillDefaultStyle =
+    'border-amber-500/35 bg-[#211811]/90 hover:bg-[#312318]/95 text-amber-50 hover:border-amber-400/60';
+  const pillActiveStyle =
+    'border-amber-300/80 bg-gradient-to-r from-[#4b341c]/95 to-[#332211]/95 text-amber-200 ring-1 ring-amber-400/50';
 
   return (
     <div
       data-testid="zen-sanctuary-overlay"
-      className="pointer-events-none fixed inset-x-0 bottom-16 sm:bottom-20 z-30 flex flex-col items-center px-3"
+      className="pointer-events-none fixed inset-0 z-30"
     >
-      {/* Lời chúc phúc / Quẻ tịnh tâm nổi lên khi Lạy khấn */}
-      {activeBlessing && (
-        <div
-          data-testid="zen-blessing-banner"
-          className="pointer-events-auto mb-3 max-w-md rounded-2xl border border-amber-300/60 bg-slate-950/90 px-4 py-3 text-center text-xs sm:text-sm font-medium text-amber-100 shadow-2xl backdrop-blur-xl animate-bounce-short"
-        >
-          {activeBlessing}
-        </div>
-      )}
-
-      {/* Bảng điều khiển Phòng Tịnh Tâm kính mờ gọn ở phía dưới */}
-      <div className="pointer-events-auto w-full max-w-2xl max-h-[52dvh] sm:max-h-none overflow-y-auto rounded-3xl border border-amber-400/30 bg-slate-900/90 p-3 sm:p-4 shadow-2xl backdrop-blur-xl text-slate-100 space-y-2.5 sm:space-y-3">
-        {/* Hàng trên: Tiêu đề + Điểm Công Đức / Tịnh Tâm + Nút Góc nhìn thứ nhất + Quay về văn phòng */}
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-2.5">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-amber-500/20 text-amber-300 ring-1 ring-amber-400/40">
-              <Sparkles className="h-5 w-5" />
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-amber-200 leading-tight">
-                {currentMeta.title}
-              </h3>
-              <p className="text-[11px] text-slate-400">{currentMeta.subtitle}</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {/* Bộ đếm Công đức / Tịnh tâm */}
-            <div
-              data-testid="zen-merit-counter"
-              className="rounded-xl bg-amber-500/20 border border-amber-400/40 px-3 py-1 text-xs font-bold text-amber-300"
-            >
-              ✨ Tịnh tâm: {meritCount}
-            </div>
-
-            {/* Đổi góc nhìn Thứ nhất / Toàn cảnh ngay trong phòng Tịnh Tâm */}
-            <button
-              type="button"
-              data-testid="zen-toggle-fpv-btn"
-              onClick={onToggleCameraMode}
-              className={`inline-flex items-center gap-1 rounded-xl px-2.5 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
-                cameraMode === 'first_person'
-                  ? 'bg-emerald-500 text-slate-950 font-bold'
-                  : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-white/10'
-              }`}
-              title="Chuyển đổi góc nhìn thứ nhất của nhân vật"
-            >
-              <Eye className="h-3.5 w-3.5" />
-              <span>{cameraMode === 'first_person' ? 'Góc nhìn thứ 1' : 'Góc nhìn 3D'}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={onToggleSound}
-              className="rounded-xl bg-slate-800 hover:bg-slate-700 p-1.5 text-slate-300 cursor-pointer"
-              title={soundEnabled ? 'Tắt âm thanh mõ/chuông' : 'Bật âm thanh mõ/chuông'}
-            >
-              {soundEnabled ? <Volume2 className="h-4 w-4 text-amber-300" /> : <VolumeX className="h-4 w-4 text-slate-500" />}
-            </button>
-
-            <button
-              type="button"
-              data-testid="exit-zen-room-btn"
-              onClick={onExitZenRoom}
-              className="inline-flex items-center gap-1 rounded-xl bg-slate-800 hover:bg-slate-700 border border-white/15 px-3 py-1.5 text-xs font-semibold text-slate-200 cursor-pointer"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" />
-              <span>Về bàn làm việc</span>
-            </button>
-          </div>
+      {/* Huy hiệu Điểm Tịnh Tâm + Quẻ Chúc Phúc nhỏ gọn ở phía trên (không che bàn thờ ở giữa) */}
+      <div className="pointer-events-none fixed top-14 sm:top-16 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 px-3 max-w-md w-full">
+        <div className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-amber-400/40 bg-[#1e1610]/85 px-3.5 py-1 text-xs font-bold text-amber-200 shadow-xl backdrop-blur-md">
+          <span>
+            {selectedDeity === 'buddha'
+              ? '🪷 Bàn thờ Phật'
+              : selectedDeity === 'ong_dia'
+                ? '🪭 Bàn thờ Ông Địa'
+                : '🪙 Bàn thờ Thần Tài'}
+          </span>
+          <span className="text-amber-500/60">•</span>
+          <span data-testid="zen-merit-counter" className="text-amber-300">
+            ✨ Tịnh tâm: {meritCount}
+          </span>
         </div>
 
-        {/* Hàng chọn vị tôn tượng: Phật • Ông Địa • Thần Tài */}
-        <div className="grid grid-cols-3 gap-2">
-          {(['buddha', 'ong_dia', 'than_tai'] as DeityType[]).map((key) => {
-            const item = DEITY_OPTIONS[key];
-            const active = selectedDeity === key;
-            return (
+        {activeBlessing && (
+          <div
+            data-testid="zen-blessing-banner"
+            className="pointer-events-auto rounded-2xl border border-amber-300/60 bg-[#1c140e]/95 px-4 py-2.5 text-center text-xs sm:text-sm font-medium text-amber-100 shadow-2xl backdrop-blur-xl animate-bounce-short"
+          >
+            {activeBlessing}
+          </div>
+        )}
+      </div>
+
+      {/* CỘT NÚT BẤM BÊN PHẢI MÀN HÌNH (Phong cách gọn sang 1 bên như Hình 2, không che bàn thờ) */}
+      <div className="pointer-events-auto fixed right-2.5 sm:right-4 bottom-16 sm:bottom-20 top-16 flex flex-col items-end justify-end gap-1.5">
+        {/* Bảng chọn nhạc thiền nhỏ bật ra bên trái cột nút khi bấm "Nhạc thiền" */}
+        {showMusicMenu && !isCollapsed && (
+          <div className="mb-1 w-64 rounded-2xl border border-amber-400/40 bg-[#1c140d]/95 p-3 text-amber-50 shadow-2xl backdrop-blur-xl space-y-2">
+            <div className="flex items-center justify-between border-b border-amber-500/20 pb-1.5">
+              <span className="flex items-center gap-1.5 text-xs font-bold text-amber-300">
+                <Music className="h-3.5 w-3.5" />
+                Chọn nhạc Phòng Thiền
+              </span>
               <button
-                key={key}
                 type="button"
-                data-testid={`deity-select-${key}`}
-                onClick={() => onSelectDeity(key)}
-                className={`flex flex-col items-center justify-center rounded-2xl border py-2 px-3 transition-all cursor-pointer ${
-                  active
-                    ? `bg-gradient-to-br ${item.colorClass} ring-2 ring-amber-300/60 font-bold`
-                    : 'border-white/10 bg-slate-800/60 text-slate-300 hover:bg-slate-800'
+                onClick={() => setShowMusicMenu(false)}
+                className="text-[11px] text-amber-200/70 hover:text-amber-100 cursor-pointer"
+              >
+                Đóng ✕
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              {ZEN_MUSIC_TRACKS.filter((t) => t.id !== 'custom_mp3').map((track) => {
+                const isSelected = selectedTrackId === track.id;
+                return (
+                  <button
+                    key={track.id}
+                    type="button"
+                    data-testid={`zen-music-${track.id}`}
+                    onClick={() => onSelectTrack(track.id)}
+                    className={`flex items-center justify-between rounded-xl px-2.5 py-1.5 text-left text-xs font-medium transition-all cursor-pointer ${
+                      isSelected
+                        ? 'bg-amber-400 text-slate-950 font-bold shadow-sm'
+                        : 'bg-white/5 text-amber-100/90 hover:bg-white/10 border border-amber-500/20'
+                    }`}
+                    title={track.description}
+                  >
+                    <span>{track.name}</span>
+                    {isSelected && <span className="text-[10px]">●</span>}
+                  </button>
+                );
+              })}
+
+              <button
+                type="button"
+                data-testid="zen-upload-mp3-btn"
+                onClick={() => fileInputRef.current?.click()}
+                className={`flex items-center justify-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
+                  selectedTrackId === 'custom_mp3'
+                    ? 'bg-emerald-400 text-slate-950 font-bold shadow-sm'
+                    : 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 border border-emerald-400/30'
                 }`}
               >
-                <span className="text-xs sm:text-sm">
-                  {key === 'buddha' ? '🪷 Đức Phật' : key === 'ong_dia' ? '🪭 Ông Địa' : '🪙 Thần Tài'}
-                </span>
-                <span className="text-[10px] opacity-80 hidden sm:inline">
-                  {key === 'buddha'
-                    ? 'Tịnh tâm • Bình an'
-                    : key === 'ong_dia'
-                      ? 'Hòa thuận • Suôn sẻ'
-                      : 'Tài lộc • Thăng tiến'}
+                <Upload className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">
+                  {customTrackName ? `🎵 ${customTrackName}` : 'Chọn nhạc MP3 từ máy'}
                 </span>
               </button>
-            );
-          })}
-        </div>
+            </div>
+          </div>
+        )}
 
-        {/* Hàng nút tương tác: Gõ Mõ • Tự động Gõ Mõ • Thành tâm Lạy • Thắp Nhang • Thỉnh Chuông */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-          <button
-            type="button"
-            data-testid="zen-strike-mo-btn"
-            onClick={onStrikeMo}
-            className="flex items-center justify-center gap-1.5 rounded-2xl bg-amber-500 hover:bg-amber-400 active:scale-95 px-3 py-2.5 text-xs font-bold text-slate-950 shadow-lg shadow-amber-500/25 transition-all cursor-pointer"
-          >
-            <span>🪵 Gõ Mõ (Cốc!)</span>
-          </button>
+        {/* Input file MP3 ẩn */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="audio/*"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) {
+              onUploadCustomMp3(file);
+            }
+          }}
+        />
 
+        {/* Danh sách các nút dọc bên phải (Có thanh cuộn nhẹ nếu màn hình điện thoại thấp) */}
+        <div
+          className={`flex flex-col items-end gap-1.5 overflow-y-auto no-scrollbar max-h-[calc(100dvh-160px)] pr-0.5 transition-all ${
+            isCollapsed ? 'hidden' : 'flex'
+          }`}
+        >
+          {/* Cụm chuyển đổi 3 bàn thờ: Phật • Ông Địa • Thần Tài */}
+          <div className="flex items-center gap-1 rounded-2xl border border-amber-500/35 bg-[#211811]/90 p-1 shadow-lg backdrop-blur-md w-[142px] sm:w-[158px]">
+            {(['buddha', 'ong_dia', 'than_tai'] as DeityType[]).map((key) => {
+              const active = selectedDeity === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  data-testid={`deity-select-${key}`}
+                  onClick={() => onSelectDeity(key)}
+                  title={DEITY_OPTIONS[key].title}
+                  className={`flex-1 rounded-xl py-1 text-[11px] font-bold transition-all cursor-pointer ${
+                    active
+                      ? 'bg-amber-400 text-slate-950 shadow-sm'
+                      : 'text-amber-100/80 hover:bg-white/10'
+                  }`}
+                >
+                  {key === 'buddha' ? '🪷 Phật' : key === 'ong_dia' ? '🪭 Địa' : '🪙 Tài'}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* 1. Lạy Phật / Khấn */}
           <button
             type="button"
             data-testid="zen-bow-btn"
             disabled={isBowing}
             onClick={onBow}
-            className="flex items-center justify-center gap-1.5 rounded-2xl bg-rose-500 hover:bg-rose-400 disabled:opacity-60 active:scale-95 px-3 py-2.5 text-xs font-bold text-white shadow-lg shadow-rose-500/25 transition-all cursor-pointer"
+            className={`${pillBaseClass} ${isBowing ? pillActiveStyle : pillDefaultStyle} disabled:opacity-60`}
+            title={currentMeta.subtitle}
           >
-            <HeartHandshake className="h-4 w-4" />
-            <span>{isBowing ? 'Đang lạy 3 lạy...' : '🙏 Lạy & Khấn'}</span>
+            <span className="text-base leading-none">🙇</span>
+            <span>{isBowing ? 'Đang lạy...' : `Lạy ${currentMeta.name}`}</span>
           </button>
 
+          {/* 2. Dâng hương */}
           <button
             type="button"
             data-testid="zen-incense-btn"
             onClick={onLightIncense}
-            className={`flex items-center justify-center gap-1.5 rounded-2xl border px-3 py-2.5 text-xs font-semibold transition-all cursor-pointer ${
-              incenseLit
-                ? 'border-orange-400 bg-orange-500/20 text-orange-200'
-                : 'border-white/15 bg-slate-800 hover:bg-slate-700 text-slate-200'
-            }`}
+            className={`${pillBaseClass} ${incenseLit ? pillActiveStyle : pillDefaultStyle}`}
           >
-            <Flame className="h-4 w-4 text-orange-400" />
-            <span>{incenseLit ? 'Đang cháy 3 nén nhang' : '🔥 Thắp 3 nén nhang'}</span>
+            <span className="text-base leading-none">🪔</span>
+            <span>{incenseLit ? 'Dâng hương (Bật)' : 'Dâng hương'}</span>
           </button>
 
+          {/* 3. Gõ mõ */}
           <button
             type="button"
-            data-testid="zen-bell-btn"
-            onClick={onRingBell}
-            className="flex items-center justify-center gap-1.5 rounded-2xl border border-amber-400/40 bg-amber-500/15 hover:bg-amber-500/25 px-3 py-2.5 text-xs font-semibold text-amber-200 transition-all cursor-pointer"
+            data-testid="zen-strike-mo-btn"
+            onClick={onStrikeMo}
+            className={`${pillBaseClass} ${pillDefaultStyle}`}
           >
-            <span>🔔 Thỉnh Chuông</span>
+            <span className="text-base leading-none">🪵</span>
+            <span>Gõ mõ</span>
           </button>
 
+          {/* 4. Tự gõ mõ */}
           <button
             type="button"
             data-testid="zen-auto-mo-btn"
             onClick={onToggleAutoMo}
-            className={`col-span-2 sm:col-span-1 flex items-center justify-center gap-1.5 rounded-2xl border px-3 py-2.5 text-xs font-semibold transition-all cursor-pointer ${
-              autoMo
-                ? 'border-emerald-400 bg-emerald-500/25 text-emerald-200 ring-2 ring-emerald-400/40'
-                : 'border-white/15 bg-slate-800 hover:bg-slate-700 text-slate-300'
+            className={`${pillBaseClass} ${autoMo ? pillActiveStyle : pillDefaultStyle}`}
+          >
+            <span className="text-base leading-none">📿</span>
+            <span>{autoMo ? 'Tự gõ (Đang bật)' : 'Tự gõ mõ'}</span>
+          </button>
+
+          {/* 5. Thỉnh chuông */}
+          <button
+            type="button"
+            data-testid="zen-bell-btn"
+            onClick={onRingBell}
+            className={`${pillBaseClass} ${pillDefaultStyle}`}
+          >
+            <span className="text-base leading-none">🔔</span>
+            <span>Thỉnh chuông</span>
+          </button>
+
+          {/* 6. Nhạc thiền */}
+          <button
+            type="button"
+            data-testid="zen-music-menu-btn"
+            onClick={() => setShowMusicMenu((v) => !v)}
+            className={`${pillBaseClass} ${showMusicMenu ? pillActiveStyle : pillDefaultStyle}`}
+          >
+            <span className="text-base leading-none">🎵</span>
+            <span>Nhạc thiền</span>
+          </button>
+
+          {/* 7. Góc nhìn */}
+          <button
+            type="button"
+            data-testid="zen-toggle-fpv-btn"
+            onClick={onToggleCameraMode}
+            className={`${pillBaseClass} ${
+              cameraMode === 'first_person' ? pillActiveStyle : pillDefaultStyle
             }`}
           >
-            <span>{autoMo ? '⏸ Dừng tự gõ' : '🔄 Tự gõ mõ'}</span>
+            <span className="text-base leading-none">🎥</span>
+            <span>{cameraMode === 'first_person' ? 'Góc nhìn thứ 1' : 'Góc nhìn 3D'}</span>
+          </button>
+
+          {/* 8. Âm thanh */}
+          <button
+            type="button"
+            onClick={onToggleSound}
+            className={`${pillBaseClass} ${soundEnabled ? pillDefaultStyle : 'border-rose-500/40 bg-[#211811]/90 text-rose-200'}`}
+          >
+            {soundEnabled ? (
+              <Volume2 className="h-4 w-4 text-amber-300 shrink-0" />
+            ) : (
+              <VolumeX className="h-4 w-4 text-rose-400 shrink-0" />
+            )}
+            <span>{soundEnabled ? 'Âm thanh: Bật' : 'Âm thanh: Tắt'}</span>
+          </button>
+
+          {/* 9. Về bàn làm việc */}
+          <button
+            type="button"
+            data-testid="exit-zen-room-btn"
+            onClick={onExitZenRoom}
+            className={`${pillBaseClass} ${pillDefaultStyle}`}
+          >
+            <ArrowLeft className="h-4 w-4 text-amber-300 shrink-0" />
+            <span>Về bàn làm việc</span>
           </button>
         </div>
 
-        {/* Hàng Đổi nhạc nền Phòng Thiền + Nút tải file MP3 từ máy */}
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2">
-          <div className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-300">
-            <Music className="h-3.5 w-3.5 shrink-0" />
-            <span>Nhạc thiền:</span>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-1.5">
-            {ZEN_MUSIC_TRACKS.filter((t) => t.id !== 'custom_mp3').map((track) => {
-              const isSelected = selectedTrackId === track.id;
-              return (
-                <button
-                  key={track.id}
-                  type="button"
-                  data-testid={`zen-music-${track.id}`}
-                  onClick={() => onSelectTrack(track.id)}
-                  className={`rounded-xl px-2.5 py-1 text-[11px] font-medium transition-all cursor-pointer ${
-                    isSelected
-                      ? 'bg-amber-400 text-slate-950 font-bold shadow-sm'
-                      : 'bg-slate-800/90 text-slate-300 hover:bg-slate-700 border border-white/10'
-                  }`}
-                  title={track.description}
-                >
-                  {track.name}
-                </button>
-              );
-            })}
-
-            {/* Nút chọn file nhạc .mp3 / .wav từ điện thoại hoặc máy tính */}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="audio/*"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) {
-                  onUploadCustomMp3(file);
-                }
-              }}
-            />
-            <button
-              type="button"
-              data-testid="zen-upload-mp3-btn"
-              onClick={() => fileInputRef.current?.click()}
-              className={`inline-flex items-center gap-1 rounded-xl px-2.5 py-1 text-[11px] font-semibold transition-all cursor-pointer ${
-                selectedTrackId === 'custom_mp3'
-                  ? 'bg-emerald-400 text-slate-950 font-bold shadow-sm'
-                  : 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 border border-emerald-400/30'
-              }`}
-              title="Chọn file nhạc MP3/WAV từ điện thoại hoặc máy tính của bạn"
-            >
-              <Upload className="h-3 w-3" />
-              <span className="max-w-[130px] truncate">
-                {customTrackName ? `🎵 ${customTrackName}` : 'Chọn nhạc MP3 từ máy'}
-              </span>
-            </button>
-          </div>
-        </div>
+        {/* Nút Thu gọn / Mở rộng ở dưới cùng cột phải giống Hình 2 */}
+        <button
+          type="button"
+          data-testid="zen-collapse-btn"
+          onClick={() => {
+            setIsCollapsed((v) => !v);
+            setShowMusicMenu(false);
+          }}
+          className="flex items-center justify-center gap-1.5 rounded-full border border-amber-500/40 bg-[#1c140d]/90 hover:bg-[#2c2015]/95 px-4 py-1.5 text-xs font-semibold text-amber-200 shadow-lg backdrop-blur-md transition-all cursor-pointer"
+        >
+          {isCollapsed ? (
+            <>
+              <ChevronUp className="h-3.5 w-3.5" />
+              <span>Mở rộng</span>
+            </>
+          ) : (
+            <>
+              <ChevronDown className="h-3.5 w-3.5" />
+              <span>Thu gọn</span>
+            </>
+          )}
+        </button>
       </div>
     </div>
   );

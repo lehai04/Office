@@ -45,6 +45,19 @@ export const ZEN_MUSIC_TRACKS: ZenMusicTrack[] = [
   },
 ];
 
+// ============================================================================
+// CẤU HÌNH ÂM THANH GÕ MÕ & THỈNH CHUÔNG (Hiệu ứng âm thanh khi bấm nút)
+// ============================================================================
+// - Nếu để trống (''), hệ thống sẽ tự tạo tiếng Mõ Gỗ ("Cốc!") và Chuông Đồng ("Boong...")
+//   bằng bộ tổng hợp âm thanh Web Audio ở hàm playWoodenFishSound() & playTempleBellSound() bên dưới.
+// - Nếu bạn muốn thay bằng file âm thanh .mp3/.wav thật của riêng bạn:
+//   1. Bỏ file (ví dụ: tieng-mo.mp3, tieng-chuong.mp3) vào thư mục public/
+//   2. Điền đường dẫn vào bên dưới (ví dụ: './tieng-mo.mp3' hoặc link https://...mp3)
+export const ZEN_SFX_CONFIG = {
+  woodenFishAudioUrl: '', // Ví dụ: './tieng-mo.mp3'
+  templeBellAudioUrl: '', // Ví dụ: './tieng-chuong.mp3'
+};
+
 let sharedAudioCtx: AudioContext | null = null;
 let bgMusicTimer: number | null = null;
 let bgDroneNodes: { oscs: OscillatorNode[]; masterGain: GainNode } | null = null;
@@ -211,14 +224,27 @@ export function startZenBackgroundMusic(
 
 /**
  * Phát tiếng gõ mõ gỗ ("Cốc!") ấm và vang tự nhiên
+ * - Nếu ZEN_SFX_CONFIG.woodenFishAudioUrl có đường dẫn file .mp3/.wav -> ưu tiên phát file đó
+ * - Nếu để trống -> phát âm thanh mõ gỗ tổng hợp bằng Web Audio API (có thể chỉnh tần số bên dưới)
  */
 export function playWoodenFishSound(): void {
+  if (ZEN_SFX_CONFIG.woodenFishAudioUrl && typeof window !== 'undefined') {
+    try {
+      const sfx = new Audio(ZEN_SFX_CONFIG.woodenFishAudioUrl);
+      sfx.volume = 0.85;
+      sfx.play().catch(() => {});
+      return;
+    } catch {
+      // Nếu lỗi tải file thì tự động dùng âm thanh mõ tổng hợp bên dưới
+    }
+  }
+
   const ctx = getAudioContext();
   if (!ctx) return;
 
   const now = ctx.currentTime;
 
-  // Âm thân gỗ chính (Resonant hollow wood tone)
+  // Âm thân gỗ chính (Resonant hollow wood tone) — chỉnh 640 -> 490 để đổi độ trầm/ổng của tiếng mõ
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
   const filter = ctx.createBiquadFilter();
@@ -261,12 +287,26 @@ export function playWoodenFishSound(): void {
 
 /**
  * Phát tiếng chuông đồng / chuông xoay tịnh tâm ("Boong...") ngân dài
+ * - Nếu ZEN_SFX_CONFIG.templeBellAudioUrl có đường dẫn file .mp3/.wav -> ưu tiên phát file đó
+ * - Nếu để trống -> phát âm thanh chuông đồng 432Hz tổng hợp bằng Web Audio API
  */
 export function playTempleBellSound(): void {
+  if (ZEN_SFX_CONFIG.templeBellAudioUrl && typeof window !== 'undefined') {
+    try {
+      const sfx = new Audio(ZEN_SFX_CONFIG.templeBellAudioUrl);
+      sfx.volume = 0.85;
+      sfx.play().catch(() => {});
+      return;
+    } catch {
+      // Nếu lỗi tải file thì tự động dùng âm thanh chuông tổng hợp bên dưới
+    }
+  }
+
   const ctx = getAudioContext();
   if (!ctx) return;
 
   const now = ctx.currentTime;
+  // Chỉnh freq (tần số Hz) hoặc decay (độ ngân dài tính bằng giây) của tiếng chuông tại đây:
   const harmonics = [
     { freq: 432, amp: 0.35, decay: 3.2 },
     { freq: 864, amp: 0.18, decay: 2.2 },
