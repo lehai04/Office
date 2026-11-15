@@ -14,10 +14,13 @@ import {
   Flame,
   X,
   ArrowLeft,
-  Lock,
   Sparkles,
-  Hammer,
-  Bomb,
+  Heart,
+  ShoppingBag,
+  Gift,
+  Backpack,
+  Check,
+  Trees,
 } from 'lucide-react';
 import type { RoomMember } from '../types/office';
 import {
@@ -25,6 +28,16 @@ import {
   playKnifeClangSound,
   playWoodShatterSound,
 } from '../utils/zenSound';
+import {
+  CAT_BREEDS,
+  CAT_SHOP_ITEMS,
+  getActivityLabel,
+  type CatActivity,
+  type CatBreedId,
+  type CatGiftRequest,
+  type CatShopItem,
+  type OfficeCatProfile,
+} from '../utils/officeCatsData';
 
 export interface KnifeStageConfig {
   stage: number;
@@ -86,15 +99,14 @@ export const KNIFE_STAGES: KnifeStageConfig[] = [
   },
 ];
 
-type PlayableGameId = 'knife_hit' | 'whack_bug' | 'pass_bomb' | 'wheel';
+type PlayableGameId = 'office_cat' | 'knife_hit' | 'wheel';
 
 interface GameCatalogItem {
   id: string;
-  playableId?: PlayableGameId;
+  playableId: PlayableGameId;
   title: string;
   playersText: string;
   badge?: string;
-  locked?: boolean;
   bgGradient: string;
   sceneRender: () => React.ReactNode;
 }
@@ -135,9 +147,89 @@ const CuteBlob: React.FC<{
 );
 
 /**
- * Danh sách các thẻ Game dễ thương phong cách Bloop Party trong Phòng Giải Trí
+ * Minh họa Bé Mèo dễ thương cho thẻ game và trang Mèo của tôi
+ */
+const CuteCatAvatar: React.FC<{
+  breedId: CatBreedId;
+  activity?: CatActivity;
+  sizeClass?: string;
+}> = ({ breedId, activity = 'walking', sizeClass = 'h-20 w-20' }) => {
+  const breed = CAT_BREEDS.find((b) => b.id === breedId) || CAT_BREEDS[0];
+  return (
+    <div className={`relative inline-flex items-center justify-center ${sizeClass}`}>
+      {/* Hai tai mèo */}
+      <div
+        className="absolute -top-1.5 left-2 h-6 w-6 rotate-[-18deg] rounded-tl-xl rounded-tr-sm border-2 border-[#3d2b1f]/25"
+        style={{ backgroundColor: breed.earColor }}
+      />
+      <div
+        className="absolute -top-1.5 right-2 h-6 w-6 rotate-[18deg] rounded-tr-xl rounded-tl-sm border-2 border-[#3d2b1f]/25"
+        style={{ backgroundColor: breed.earColor }}
+      />
+      {/* Thân/mặt mèo tròn */}
+      <div
+        className="relative z-10 flex h-full w-full flex-col items-center justify-center rounded-full border-[3px] border-white shadow-md"
+        style={{ backgroundColor: breed.bodyColor }}
+      >
+        {/* Bụng/má trắng */}
+        <div
+          className="absolute bottom-1 h-1/2 w-3/4 rounded-full opacity-85"
+          style={{ backgroundColor: breed.bellyColor }}
+        />
+        {/* Mắt mèo */}
+        <div className="relative z-10 flex items-center gap-3 -mt-1">
+          {activity === 'sleeping' ? (
+            <>
+              <span className="h-1 w-3 rounded-full bg-slate-800" />
+              <span className="h-1 w-3 rounded-full bg-slate-800" />
+            </>
+          ) : (
+            <>
+              <span className="h-2.5 w-2.5 rounded-full bg-slate-900 ring-2 ring-white/60" />
+              <span className="h-2.5 w-2.5 rounded-full bg-slate-900 ring-2 ring-white/60" />
+            </>
+          )}
+        </div>
+        {/* Mũi hồng & miệng mèo ω */}
+        <div className="relative z-10 mt-1 flex flex-col items-center">
+          <span className="h-1.5 w-2 rounded-full bg-pink-500" />
+          <span className="text-[11px] font-black leading-none text-slate-800">ω</span>
+        </div>
+        {/* Má hồng */}
+        <span className="absolute left-2.5 top-1/2 h-1.5 w-2.5 rounded-full bg-rose-400/75" />
+        <span className="absolute right-2.5 top-1/2 h-1.5 w-2.5 rounded-full bg-rose-400/75" />
+      </div>
+      {/* Biểu tượng trạng thái nhỏ */}
+      <span className="absolute -top-2 -right-2 z-20 rounded-full bg-white px-1.5 py-0.5 text-xs shadow">
+        {activity === 'sleeping' ? '💤' : activity === 'playing' ? '🧶' : '🐾'}
+      </span>
+    </div>
+  );
+};
+
+/**
+ * Danh sách chỉ giữ lại đúng 3 Game theo yêu cầu:
+ * 1. Nuôi Mèo Văn Phòng (Mèo của tôi)
+ * 2. Phóng Phi Tiêu (Knife Hit)
+ * 3. Vòng Quay (Vòng Quay Trà Sữa / Nhân Phẩm)
  */
 const GAME_CATALOG: GameCatalogItem[] = [
+  {
+    id: 'office_cat',
+    playableId: 'office_cat',
+    title: 'Nuôi Mèo Văn Phòng',
+    playersText: 'Mỗi người 1 bé mèo',
+    badge: 'MỚI • Sân 3D',
+    bgGradient: 'from-amber-100 via-rose-100 to-emerald-100',
+    sceneRender: () => (
+      <div className="relative flex h-full w-full items-center justify-center gap-2 overflow-hidden">
+        <CuteCatAvatar breedId="orange" activity="playing" sizeClass="h-14 w-14" />
+        <span className="text-lg animate-bounce">🐟</span>
+        <span className="absolute bottom-1.5 right-3 text-base">🧶</span>
+        <span className="absolute top-1.5 left-3 text-sm">🐾</span>
+      </div>
+    ),
+  },
   {
     id: 'knife_hit',
     playableId: 'knife_hit',
@@ -165,178 +257,18 @@ const GAME_CATALOG: GameCatalogItem[] = [
     ),
   },
   {
-    id: 'whack_bug',
-    playableId: 'whack_bug',
-    title: 'Đập Chuột Deadline',
-    playersText: '1-2 người',
-    badge: 'Chơi ngay',
-    bgGradient: 'from-lime-200 via-emerald-100 to-teal-200',
-    sceneRender: () => (
-      <div className="relative flex h-full w-full items-center justify-center">
-        <div className="mt-4 h-6 w-14 rounded-full bg-amber-900/75 flex items-center justify-center">
-          <CuteBlob
-            color="#a855f7"
-            size="h-9 w-9"
-            className="-mt-6"
-            expression="surprised"
-          />
-        </div>
-        <span className="absolute top-2 right-6 text-xl -rotate-12 drop-shadow">
-          🔨
-        </span>
-        <CuteBlob
-          color="#4ade80"
-          size="h-6 w-6"
-          className="absolute bottom-2 left-4"
-        />
-      </div>
-    ),
-  },
-  {
-    id: 'pass_bomb',
-    playableId: 'pass_bomb',
-    title: 'Truyền Bom Hẹn Giờ',
-    playersText: '1-4 người',
-    badge: 'Party',
-    bgGradient: 'from-amber-100 via-orange-200 to-rose-200',
-    sceneRender: () => (
-      <div className="relative flex h-full w-full items-center justify-center gap-2">
-        <CuteBlob color="#f472b6" size="h-8 w-8" expression="surprised" />
-        <span className="text-xl animate-bounce">💣</span>
-        <CuteBlob color="#4ade80" size="h-7 w-7" />
-      </div>
-    ),
-  },
-  {
     id: 'wheel',
     playableId: 'wheel',
-    title: 'Vòng Quay Trà Sữa',
+    title: 'Vòng Quay',
     playersText: '1-8 người',
     badge: 'Party',
     bgGradient: 'from-fuchsia-200 via-pink-100 to-indigo-200',
     sceneRender: () => (
       <div className="relative flex h-full w-full items-center justify-center gap-1">
-        <div className="h-12 w-12 rounded-full border-4 border-white bg-gradient-to-tr from-rose-400 via-amber-300 to-sky-400 shadow flex items-center justify-center">
-          <span className="text-sm">🧋</span>
+        <div className="h-14 w-14 rounded-full border-4 border-white bg-gradient-to-tr from-rose-400 via-amber-300 to-sky-400 shadow flex items-center justify-center">
+          <span className="text-base">🎡</span>
         </div>
-        <CuteBlob color="#fbbf24" size="h-7 w-7" className="-ml-2 mt-4" />
-      </div>
-    ),
-  },
-  {
-    id: 'big_fish',
-    title: 'Cá Lớn Nuốt Cá Bé',
-    playersText: '1-4 người',
-    locked: true,
-    bgGradient: 'from-sky-200 via-cyan-100 to-blue-200',
-    sceneRender: () => (
-      <div className="relative flex h-full w-full items-center justify-center gap-2">
-        <CuteBlob color="#38bdf8" size="h-10 w-10" expression="surprised" />
-        <CuteBlob color="#fb7185" size="h-6 w-6" />
-        <CuteBlob color="#4ade80" size="h-7 w-7" />
-      </div>
-    ),
-  },
-  {
-    id: 'boom_boss',
-    title: 'Vua Đặt Boom',
-    playersText: '2-4 người',
-    locked: true,
-    bgGradient: 'from-orange-200 via-amber-100 to-yellow-200',
-    sceneRender: () => (
-      <div className="relative flex h-full w-full items-center justify-center gap-1.5">
-        <CuteBlob color="#ef4444" size="h-10 w-10" expression="angry" />
-        <span className="text-lg">💥</span>
-        <CuteBlob color="#a855f7" size="h-7 w-7" />
-      </div>
-    ),
-  },
-  {
-    id: 'snow_roll',
-    title: 'Lăn Cầu Tuyết',
-    playersText: '2-4 người',
-    locked: true,
-    bgGradient: 'from-slate-100 via-sky-100 to-indigo-100',
-    sceneRender: () => (
-      <div className="relative flex h-full w-full items-center justify-center gap-2">
-        <div className="h-11 w-11 rounded-full bg-white border-2 border-sky-200 shadow-inner flex items-center justify-center">
-          <CuteBlob color="#60a5fa" size="h-6 w-6" />
-        </div>
-        <CuteBlob color="#f472b6" size="h-7 w-7" />
-      </div>
-    ),
-  },
-  {
-    id: 'catch_chicken',
-    title: 'Bắt Gà Văn Phòng',
-    playersText: '1-4 người',
-    locked: true,
-    bgGradient: 'from-lime-200 via-green-100 to-emerald-200',
-    sceneRender: () => (
-      <div className="relative flex h-full w-full items-center justify-center gap-2">
-        <span className="text-xl">🐔</span>
-        <CuteBlob color="#38bdf8" size="h-8 w-8" />
-        <span className="text-lg">🐥</span>
-      </div>
-    ),
-  },
-  {
-    id: 'laser_dodge',
-    title: 'Né Tia Laser',
-    playersText: '1-4 người',
-    locked: true,
-    bgGradient: 'from-rose-200 via-amber-100 to-orange-200',
-    sceneRender: () => (
-      <div className="relative flex h-full w-full items-center justify-center">
-        <div className="h-0.5 w-full bg-rose-500 rotate-12 shadow" />
-        <CuteBlob
-          color="#f43f5e"
-          size="h-8 w-8"
-          className="absolute"
-          expression="surprised"
-        />
-      </div>
-    ),
-  },
-  {
-    id: 'hide_light',
-    title: 'Trốn Đèn Sếp Soi',
-    playersText: '1-4 người',
-    locked: true,
-    bgGradient: 'from-slate-700 via-slate-800 to-amber-900',
-    sceneRender: () => (
-      <div className="relative flex h-full w-full items-center justify-center">
-        <div className="h-12 w-12 rounded-full bg-amber-200/90 flex items-center justify-center">
-          <CuteBlob color="#fb7185" size="h-7 w-7" expression="surprised" />
-        </div>
-      </div>
-    ),
-  },
-  {
-    id: 'math_quiz',
-    title: 'Đố Toán Tốc Độ',
-    playersText: '1-4 người',
-    locked: true,
-    bgGradient: 'from-amber-200 via-yellow-100 to-orange-100',
-    sceneRender: () => (
-      <div className="relative flex h-full w-full items-center justify-center gap-2">
-        <span className="rounded-lg bg-amber-700/20 px-2 py-0.5 text-xs font-black text-amber-900">
-          1 + 1 = ?
-        </span>
-        <CuteBlob color="#a855f7" size="h-8 w-8" />
-      </div>
-    ),
-  },
-  {
-    id: 'king_crown',
-    title: 'Giành Vương Miện',
-    playersText: '2-4 người',
-    locked: true,
-    bgGradient: 'from-yellow-200 via-amber-100 to-rose-100',
-    sceneRender: () => (
-      <div className="relative flex h-full w-full items-center justify-center gap-2">
-        <CuteBlob color="#4ade80" size="h-9 w-9" expression="king" />
-        <CuteBlob color="#38bdf8" size="h-7 w-7" />
+        <CuteBlob color="#fbbf24" size="h-8 w-8" className="-ml-2 mt-4" />
       </div>
     ),
   },
@@ -394,6 +326,16 @@ interface EntertainmentRoomModalProps {
   onToggleSound: () => void;
   onBroadcastChallengeMessage: (text: string) => void;
   activeChallengeBanner?: string | null;
+  // Props kết nối Tiền Công Đức của Phòng Tịnh Tâm & Hệ thống Nuôi Mèo Văn Phòng
+  meritCount: number;
+  onSpendMerit: (amount: number) => boolean;
+  roomCats: Record<string, OfficeCatProfile>;
+  myCatInventory: Record<string, number>;
+  giftRequests: CatGiftRequest[];
+  onAdoptOrUpdateMyCat: (cat: OfficeCatProfile, notice?: string) => void;
+  onUpdateMyCatInventory: (nextInv: Record<string, number>) => void;
+  onCreateGiftRequest: (req: CatGiftRequest) => void;
+  onFulfillGiftRequest: (reqId: string) => void;
 }
 
 const STORAGE_CUSTOM_PHOTO_KEY = 'van_phong_ao_dart_target_photo';
@@ -422,11 +364,33 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
   soundEnabled,
   onToggleSound,
   onBroadcastChallengeMessage,
+  meritCount,
+  onSpendMerit,
+  roomCats,
+  myCatInventory,
+  giftRequests,
+  onAdoptOrUpdateMyCat,
+  onUpdateMyCatInventory,
+  onCreateGiftRequest,
+  onFulfillGiftRequest,
 }) => {
   // Mặc định khi bấm vào Phòng Giải Trí -> hiện Sảnh Danh Sách Game dễ thương (lobby)
   const [activeView, setActiveView] = useState<'lobby' | PlayableGameId>('lobby');
-  const [lobbyNotice, setLobbyNotice] = useState<string | null>(null);
 
+  // ==================== STATE CHO GAME 1: NUÔI MÈO VĂN PHÒNG ====================
+  const myCat: OfficeCatProfile | undefined = roomCats[currentUserId];
+  const [catSubTab, setCatSubTab] = useState<'my_cat' | 'shop' | 'gifts' | 'bag'>('my_cat');
+  const [adoptBreed, setAdoptBreed] = useState<CatBreedId>('orange');
+  const [adoptNameDraft, setAdoptNameDraft] = useState<string>('Miu Cam');
+  const [catNotice, setCatNotice] = useState<string | null>(null);
+  const [showFeedPicker, setShowFeedPicker] = useState<boolean>(false);
+  const [showRequestGiftForm, setShowRequestGiftForm] = useState<boolean>(false);
+  const [requestItemId, setRequestItemId] = useState<string>('tuna_pate');
+  const [requestTargetUserId, setRequestTargetUserId] = useState<string>(''); // '' = đăng vào mục Quà tặng của phòng
+  const [pendingShopBuyItem, setPendingShopBuyItem] = useState<CatShopItem | null>(null);
+  const [pendingFulfillRequest, setPendingFulfillRequest] = useState<CatGiftRequest | null>(null);
+
+  // ==================== STATE CHO GAME 2: PHÓNG PHI TIÊU (KNIFE HIT) ====================
   const [gameMode, setGameMode] = useState<'campaign' | 'pvp'>('campaign');
   const [currentStageNum, setCurrentStageNum] = useState<number>(1);
   const [unlockedStage, setUnlockedStage] = useState<number>(() => {
@@ -487,18 +451,7 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
     'playing'
   );
 
-  // Mini-game 2: Đập Chuột Deadline (Whack-a-Bug)
-  const [whackScore, setWhackScore] = useState<number>(0);
-  const [whackTimeLeft, setWhackTimeLeft] = useState<number>(20);
-  const [whackRunning, setWhackRunning] = useState<boolean>(false);
-  const [activeMoleHole, setActiveMoleHole] = useState<number>(2);
-
-  // Mini-game 3: Truyền Bom Hẹn Giờ (Pass the Bomb)
-  const [bombHolderName, setBombHolderName] = useState<string>(currentNickname);
-  const [bombTicking, setBombTicking] = useState<boolean>(false);
-  const [bombExploded, setBombExploded] = useState<boolean>(false);
-
-  // Mini-game 4: Vòng quay nhân phẩm
+  // ==================== STATE CHO GAME 3: VÒNG QUAY ====================
   const [wheelItemsText, setWheelItemsText] = useState<string>(
     'Bao trà sữa cả phòng 🧋\nĐược về sớm 15 phút 🏃\nHát 1 bài tặng phòng 🎤\nTrực nhật dọn bàn 🧹\nNhận pháo tay 👏\nMiễn phạt 1 lần ✨'
   );
@@ -530,7 +483,9 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setActiveView('lobby');
-      setLobbyNotice(null);
+      setCatNotice(null);
+      setPendingShopBuyItem(null);
+      setPendingFulfillRequest(null);
     }
   }, [isOpen]);
 
@@ -609,38 +564,6 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
       setupStage(currentStageNum, gameMode, true);
     }
   }, [isOpen, activeView, gameMode, setupStage]);
-
-  // Bộ đếm cho mini-game Đập Chuột Deadline
-  useEffect(() => {
-    if (!whackRunning || activeView !== 'whack_bug') return;
-    const moleTimer = window.setInterval(() => {
-      setActiveMoleHole(Math.floor(Math.random() * 9));
-    }, 620);
-    const clockTimer = window.setInterval(() => {
-      setWhackTimeLeft((t) => {
-        if (t <= 1) {
-          setWhackRunning(false);
-          return 0;
-        }
-        return t - 1;
-      });
-    }, 1000);
-    return () => {
-      window.clearInterval(moleTimer);
-      window.clearInterval(clockTimer);
-    };
-  }, [whackRunning, activeView]);
-
-  // Bộ đếm cho mini-game Truyền Bom Hẹn Giờ
-  useEffect(() => {
-    if (!bombTicking || activeView !== 'pass_bomb') return;
-    const timer = window.setTimeout(() => {
-      setBombTicking(false);
-      setBombExploded(true);
-      if (soundEnabled) playWoodShatterSound();
-    }, 4500 + Math.random() * 4000);
-    return () => window.clearTimeout(timer);
-  }, [bombTicking, activeView, soundEnabled]);
 
   const spawnSplinters = useCallback(
     (x: number, y: number, count: number, color = '#f4a261') => {
@@ -1419,12 +1342,173 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
     }, 1000);
   };
 
+  // ==================== CÁC THAO TÁC TRONG GAME NUÔI MÈO VĂN PHÒNG ====================
+  const handleAdoptCat = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = adoptNameDraft.trim() || 'Miu Xinh';
+    const newCat: OfficeCatProfile = {
+      ownerUserId: currentUserId,
+      ownerNickname: currentNickname,
+      catName: trimmed,
+      breedId: adoptBreed,
+      activity: 'walking',
+      fullness: 75,
+      happiness: 85,
+      petCount: 1,
+      placedYardItems: [],
+      updatedAt: Date.now(),
+    };
+    onAdoptOrUpdateMyCat(
+      newCat,
+      `🐾 ${currentNickname} vừa nhận nuôi bé mèo "${trimmed}"! Ra khu vực bên ngoài văn phòng để ngắm bé nhé!`
+    );
+    setCatSubTab('my_cat');
+    setCatNotice(`🎉 Nhận nuôi thành công bé mèo "${trimmed}"!`);
+  };
+
+  const handleFeedMyCat = (item: CatShopItem) => {
+    if (!myCat) return;
+    const count = myCatInventory[item.id] || 0;
+    if (count <= 0) {
+      setCatNotice(`⚠️ Trong túi đồ đã hết "${item.name}". Hãy vào Cửa hàng mèo hoặc Xin quà nhé!`);
+      return;
+    }
+    const nextInv = { ...myCatInventory, [item.id]: Math.max(0, count - 1) };
+    if (nextInv[item.id] === 0) delete nextInv[item.id];
+    onUpdateMyCatInventory(nextInv);
+
+    const updatedCat: OfficeCatProfile = {
+      ...myCat,
+      fullness: Math.min(100, myCat.fullness + item.fullnessBoost),
+      happiness: Math.min(100, myCat.happiness + item.happinessBoost),
+      activity: 'playing',
+      updatedAt: Date.now(),
+    };
+    onAdoptOrUpdateMyCat(updatedCat);
+    setShowFeedPicker(false);
+    setCatNotice(
+      `🐟 Đã cho ${myCat.catName} ăn 1 phần ${item.name} (+${item.fullnessBoost}% Độ no)!`
+    );
+  };
+
+  const handlePetMyCat = () => {
+    if (!myCat) return;
+    const nextActs: CatActivity[] = ['walking', 'playing', 'sleeping'];
+    const pickedAct = nextActs[(myCat.petCount + 1) % nextActs.length];
+    const updatedCat: OfficeCatProfile = {
+      ...myCat,
+      happiness: Math.min(100, myCat.happiness + 12),
+      petCount: myCat.petCount + 1,
+      activity: pickedAct,
+      updatedAt: Date.now(),
+    };
+    onAdoptOrUpdateMyCat(updatedCat);
+    setCatNotice(`🤚 Bạn vừa vuốt ve ${myCat.catName} — Bé kêu "Meow~" đầy hạnh phúc! 💕`);
+  };
+
+  const handlePlayWithMyCat = () => {
+    if (!myCat) return;
+    const updatedCat: OfficeCatProfile = {
+      ...myCat,
+      happiness: Math.min(100, myCat.happiness + 18),
+      fullness: Math.max(10, myCat.fullness - 4),
+      activity: 'playing',
+      updatedAt: Date.now(),
+    };
+    onAdoptOrUpdateMyCat(updatedCat);
+    setCatNotice(`🧶 Bạn vừa chơi đùa cùng ${myCat.catName}! (+18% Vui vẻ)`);
+  };
+
+  const handleConfirmBuyShopItem = () => {
+    if (!pendingShopBuyItem) return;
+    const item = pendingShopBuyItem;
+    if (meritCount < item.priceMerit) {
+      setCatNotice(
+        `⚠️ Bạn cần ${item.priceMerit} Công đức (hiện có ${meritCount}). Hãy vào Phòng Tịnh Tâm gõ mõ tích thêm công đức hoặc chọn Xin quà từ đồng nghiệp nhé!`
+      );
+      setPendingShopBuyItem(null);
+      return;
+    }
+    const ok = onSpendMerit(item.priceMerit);
+    if (!ok) return;
+
+    const currentQty = myCatInventory[item.id] || 0;
+    const nextInv = { ...myCatInventory, [item.id]: currentQty + 1 };
+    onUpdateMyCatInventory(nextInv);
+    setPendingShopBuyItem(null);
+    setCatNotice(
+      `✅ Mua thành công 1x ${item.icon} ${item.name}! Đã cất vào Túi đồ của bạn.`
+    );
+  };
+
+  const handleSubmitGiftRequest = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!myCat) return;
+    const item = CAT_SHOP_ITEMS.find((i) => i.id === requestItemId) || CAT_SHOP_ITEMS[0];
+    const targetMember = members.find((m) => m.userId === requestTargetUserId);
+    const newReq: CatGiftRequest = {
+      id: `gift-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      requesterUserId: currentUserId,
+      requesterNickname: currentNickname,
+      catName: myCat.catName,
+      itemId: item.id,
+      targetUserId: targetMember ? targetMember.userId : null,
+      targetNickname: targetMember ? targetMember.nickname : null,
+      status: 'open',
+      createdAt: Date.now(),
+    };
+    onCreateGiftRequest(newReq);
+    setShowRequestGiftForm(false);
+    setCatSubTab('gifts');
+    setCatNotice(
+      targetMember
+        ? `🎁 Đã gửi lời nhắn xin "${item.name}" đến đồng nghiệp ${targetMember.nickname} và mục Quà tặng!`
+        : `🎁 Đã đăng yêu cầu xin "${item.name}" vào mục Quà tặng của phòng!`
+    );
+  };
+
+  const handleTogglePlaceYardItem = (item: CatShopItem) => {
+    if (!myCat) return;
+    const alreadyPlaced = myCat.placedYardItems.includes(item.id);
+    if (alreadyPlaced) {
+      // Thu hồi từ sân về lại túi đồ
+      const nextPlaced = myCat.placedYardItems.filter((id) => id !== item.id);
+      const nextInv = {
+        ...myCatInventory,
+        [item.id]: (myCatInventory[item.id] || 0) + 1,
+      };
+      onUpdateMyCatInventory(nextInv);
+      onAdoptOrUpdateMyCat({
+        ...myCat,
+        placedYardItems: nextPlaced,
+        updatedAt: Date.now(),
+      });
+      setCatNotice(`🎒 Đã cất ${item.icon} ${item.name} vào lại Túi đồ.`);
+    } else {
+      const count = myCatInventory[item.id] || 0;
+      if (count <= 0) return;
+      const nextInv = { ...myCatInventory, [item.id]: Math.max(0, count - 1) };
+      if (nextInv[item.id] === 0) delete nextInv[item.id];
+      onUpdateMyCatInventory(nextInv);
+      onAdoptOrUpdateMyCat({
+        ...myCat,
+        placedYardItems: [...myCat.placedYardItems, item.id],
+        activity: item.category === 'bed' ? 'sleeping' : 'playing',
+        updatedAt: Date.now(),
+      });
+      setCatNotice(
+        `🏡 Đã đặt ${item.icon} ${item.name} ở khu vực bên ngoài văn phòng cho các bé mèo sử dụng!`
+      );
+    }
+  };
+
   if (!isOpen) return null;
 
   const otherMembers = members.filter((m) => m.userId !== currentUserId);
+  const openGiftRequestsCount = giftRequests.filter((r) => r.status === 'open').length;
 
   // ============================================================================
-  // LUỒNG 1: SẢNH CHỌN GAME DỄ THƯƠNG PHONG CÁCH BLOOP PARTY (Khi mới vào Phòng Giải Trí)
+  // LUỒNG 1: SẢNH CHỌN GAME DỄ THƯƠNG (CHỈ GIỮ LẠI 3 GAME: NUÔI MÈO • PHI TIÊU • VÒNG QUAY)
   // ============================================================================
   if (activeView === 'lobby') {
     return (
@@ -1432,19 +1516,19 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
         data-testid="entertainment-room-overlay"
         className="fixed inset-0 z-30 flex items-center justify-center bg-slate-950/70 p-2 sm:p-4 backdrop-blur-sm"
       >
-        <div className="relative flex max-h-[90dvh] w-full max-w-5xl flex-col overflow-hidden rounded-[28px] border-4 border-[#e8dfd1] bg-[#fdf8f0] text-[#3d2b1f] shadow-2xl">
-          {/* HEADER PHONG CÁCH BLOOP PARTY */}
+        <div className="relative flex max-h-[90dvh] w-full max-w-3xl flex-col overflow-hidden rounded-[28px] border-4 border-[#e8dfd1] bg-[#fdf8f0] text-[#3d2b1f] shadow-2xl">
+          {/* HEADER PHONG CÁCH DỄ THƯƠNG */}
           <div className="flex items-center justify-between gap-2 border-b border-[#ece2d0] bg-[#fbf4e8] px-3.5 py-2.5 sm:px-6 sm:py-3.5">
             <div className="flex items-baseline gap-2">
               <h2 className="text-base sm:text-xl font-black tracking-tight text-[#3d2b1f]">
                 Chọn game
               </h2>
               <span className="hidden sm:inline text-xs font-semibold text-[#8c7865]">
-                {GAME_CATALOG.length} game giải trí văn phòng
+                3 trò chơi giải trí văn phòng
               </span>
             </div>
 
-            {/* Logo chữ nổi dễ thương ở giữa giống "bloop" */}
+            {/* Logo chữ nổi dễ thương ở giữa */}
             <div className="flex items-center gap-0.5 select-none">
               <span className="text-lg sm:text-2xl font-black tracking-tight text-[#4a3326]">
                 p
@@ -1456,7 +1540,7 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
               </span>
             </div>
 
-            {/* Cụm nút bên phải: Số người trong phòng • Âm thanh • Đóng */}
+            {/* Cụm nút bên phải: Số người trong phòng • Âm thanh (mặc định tắt) • Đóng */}
             <div className="flex items-center gap-1.5 sm:gap-2">
               <div className="inline-flex items-center gap-1.5 rounded-full border border-[#e2d6c3] bg-white px-2.5 py-1 text-xs font-extrabold text-[#4a3326] shadow-sm">
                 <span className="h-2.5 w-2.5 rounded-full bg-sky-400" />
@@ -1466,9 +1550,10 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
 
               <button
                 type="button"
+                data-testid="lobby-sound-toggle-btn"
                 onClick={onToggleSound}
                 className="rounded-full border border-[#e2d6c3] bg-white hover:bg-[#f5ede0] p-1.5 text-[#4a3326] shadow-sm cursor-pointer"
-                title={soundEnabled ? 'Tắt âm thanh' : 'Bật âm thanh'}
+                title={soundEnabled ? 'Tắt âm thanh' : 'Bật âm thanh (Mặc định tắt)'}
               >
                 {soundEnabled ? (
                   <Volume2 className="h-4 w-4 text-amber-600" />
@@ -1489,133 +1574,55 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
             </div>
           </div>
 
-          {/* Thông báo nhỏ khi bấm vào game sắp ra mắt */}
-          {lobbyNotice && (
-            <div className="bg-amber-100 border-b border-amber-200 px-4 py-1.5 text-center text-xs font-bold text-amber-900">
-              {lobbyNotice}
-            </div>
-          )}
-
-          {/* LƯỚI DANH SÁCH CÁC GAME DỄ THƯƠNG (2 cột trên điện thoại, 3-4 cột trên màn hình lớn) */}
-          <div className="flex-1 overflow-y-auto p-3 sm:p-5">
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 sm:gap-3.5">
-              {/* Ô ĐẦU TIÊN: PARTY NGẪU NHIÊN (Giống ô P-A-R-T-Y viền xanh trong ảnh mẫu) */}
-              <button
-                type="button"
-                onClick={() => {
-                  const playableList: PlayableGameId[] = [
-                    'knife_hit',
-                    'whack_bug',
-                    'pass_bomb',
-                    'wheel',
-                  ];
-                  const pick =
-                    playableList[Math.floor(Math.random() * playableList.length)];
-                  setActiveView(pick);
-                }}
-                className="group relative flex flex-col justify-between rounded-2xl border-[3px] border-sky-400 bg-white p-2.5 text-left shadow-sm hover:shadow-md transition-all active:scale-95 cursor-pointer min-h-[126px] sm:min-h-[142px]"
-              >
-                <div className="flex items-center gap-1">
-                  {[
-                    { ch: 'P', bg: 'bg-sky-400' },
-                    { ch: 'A', bg: 'bg-pink-400' },
-                    { ch: 'R', bg: 'bg-amber-400' },
-                    { ch: 'T', bg: 'bg-emerald-400' },
-                    { ch: 'Y', bg: 'bg-purple-400' },
-                  ].map((item, i) => (
-                    <span
-                      key={i}
-                      className={`${item.bg} inline-flex h-5 w-5 sm:h-6 sm:w-6 items-center justify-center rounded-md text-[11px] sm:text-xs font-black text-white shadow-sm -rotate-3 group-hover:rotate-3 transition-transform`}
-                    >
-                      {item.ch}
-                    </span>
-                  ))}
-                </div>
-
-                <div className="flex items-center justify-center py-1">
-                  <CuteBlob color="#60a5fa" size="h-8 w-8" />
-                  <CuteBlob color="#f472b6" size="h-9 w-9" className="-ml-2" />
-                  <CuteBlob color="#4ade80" size="h-7 w-7" className="-ml-2" />
-                </div>
-
-                <div>
-                  <div className="text-xs sm:text-sm font-black text-[#3d2b1f]">
-                    Chơi Ngẫu Nhiên
-                  </div>
-                  <span className="mt-0.5 inline-block rounded-md bg-[#f3ece0] px-2 py-0.5 text-[10px] font-bold text-[#7c6855]">
-                    1-4 người
-                  </span>
-                </div>
-              </button>
-
-              {/* CÁC THẺ GAME TRONG DANH SÁCH */}
-              {GAME_CATALOG.map((game) => {
-                const isPlayable = Boolean(game.playableId);
-                return (
-                  <button
-                    key={game.id}
-                    type="button"
-                    data-testid={`lobby-game-${game.id}`}
-                    onClick={() => {
-                      if (game.playableId) {
-                        setActiveView(game.playableId);
-                        setLobbyNotice(null);
-                      } else {
-                        setLobbyNotice(
-                          `✨ Game "${game.title}" đang được hoàn thiện và sẽ sớm mở khóa! Hãy thử Phóng Phi Tiêu, Đập Chuột, Truyền Bom hoặc Vòng Quay nhé!`
-                        );
-                      }
-                    }}
-                    className={`group relative flex flex-col justify-between overflow-hidden rounded-2xl border-2 bg-white p-2 text-left transition-all active:scale-95 cursor-pointer min-h-[126px] sm:min-h-[142px] ${
-                      isPlayable
-                        ? 'border-[#e5dccb] hover:border-sky-400 hover:ring-2 hover:ring-sky-300 shadow-sm hover:shadow-md'
-                        : 'border-[#ebe3d5] opacity-80 hover:opacity-100'
-                    }`}
+          {/* LƯỚI 3 GAME DUY NHẤT: NUÔI MÈO VĂN PHÒNG • PHÓNG PHI TIÊU • VÒNG QUAY */}
+          <div className="flex-1 overflow-y-auto p-3.5 sm:p-6">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 sm:gap-4">
+              {GAME_CATALOG.map((game) => (
+                <button
+                  key={game.id}
+                  type="button"
+                  data-testid={`lobby-game-${game.id}`}
+                  onClick={() => {
+                    setActiveView(game.playableId);
+                    setCatNotice(null);
+                  }}
+                  className="group relative flex flex-col justify-between overflow-hidden rounded-2xl border-2 border-[#e5dccb] bg-white p-3 text-left transition-all hover:border-sky-400 hover:ring-2 hover:ring-sky-300 shadow-sm hover:shadow-md active:scale-95 cursor-pointer min-h-[160px] sm:min-h-[190px]"
+                >
+                  {/* Hình minh họa dễ thương ở nửa trên thẻ */}
+                  <div
+                    className={`relative h-24 sm:h-28 w-full overflow-hidden rounded-xl bg-gradient-to-br ${game.bgGradient} border border-black/5`}
                   >
-                    {/* Hình minh họa dễ thương ở nửa trên thẻ */}
-                    <div
-                      className={`relative h-16 sm:h-20 w-full overflow-hidden rounded-xl bg-gradient-to-br ${game.bgGradient} border border-black/5`}
-                    >
-                      {game.sceneRender()}
+                    {game.sceneRender()}
 
-                      {/* Huy hiệu góc phải trên */}
-                      {game.badge && (
-                        <span className="absolute top-1.5 right-1.5 rounded-full bg-rose-500 px-2 py-0.5 text-[9px] font-black text-white shadow">
-                          {game.badge}
-                        </span>
-                      )}
+                    {game.badge && (
+                      <span className="absolute top-2 right-2 rounded-full bg-rose-500 px-2.5 py-0.5 text-[10px] font-black text-white shadow">
+                        {game.badge}
+                      </span>
+                    )}
+                  </div>
 
-                      {/* Ổ khóa cho các game Sắp ra mắt giống ảnh Bloop Party */}
-                      {game.locked && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-white/35 backdrop-blur-[1px]">
-                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-[#7c6855] shadow">
-                            <Lock className="h-4 w-4" />
-                          </div>
-                          <span className="absolute top-1.5 right-1.5 rounded-full bg-[#8c7865]/90 px-2 py-0.5 text-[9px] font-bold text-white">
-                            Sắp ra mắt
-                          </span>
-                        </div>
-                      )}
+                  {/* Tên game & Số người chơi ở nửa dưới thẻ */}
+                  <div className="pt-2.5 px-1">
+                    <div className="text-sm sm:text-base font-black text-[#3d2b1f]">
+                      {game.title}
                     </div>
-
-                    {/* Tên game & Số người chơi ở nửa dưới thẻ */}
-                    <div className="pt-1.5 px-0.5">
-                      <div className="truncate text-xs sm:text-sm font-black text-[#3d2b1f]">
-                        {game.title}
-                      </div>
-                      <span className="mt-0.5 inline-block rounded-md bg-[#f3ece0] px-2 py-0.5 text-[10px] font-bold text-[#7c6855]">
+                    <div className="mt-1 flex items-center justify-between">
+                      <span className="inline-block rounded-md bg-[#f3ece0] px-2 py-0.5 text-[11px] font-bold text-[#7c6855]">
                         {game.playersText}
                       </span>
+                      <span className="text-xs font-extrabold text-sky-600 group-hover:translate-x-0.5 transition-transform">
+                        Vào chơi →
+                      </span>
                     </div>
-                  </button>
-                );
-              })}
+                  </div>
+                </button>
+              ))}
             </div>
           </div>
 
           {/* CHÂN TRANG GỌN */}
-          <div className="border-t border-[#ece2d0] bg-[#fbf4e8] px-4 py-2 text-center text-[11px] font-bold text-[#7c6855]">
-            <span className="text-emerald-600">{currentNickname}</span> đang chọn game • Chạm vào game bất kỳ để bắt đầu chơi hoặc mời bạn bè!
+          <div className="border-t border-[#ece2d0] bg-[#fbf4e8] px-4 py-2.5 text-center text-[11px] font-bold text-[#7c6855]">
+            <span className="text-emerald-600">{currentNickname}</span> đang ở Phòng Giải Trí • Âm thanh mặc định tắt ({soundEnabled ? 'Đang bật 🔊' : 'Đang tắt 🔇'})
           </div>
         </div>
       </div>
@@ -1623,7 +1630,904 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
   }
 
   // ============================================================================
-  // LUỒNG 2: MÀN HÌNH CHƠI GAME CỤ THỂ (Gọn gàng 1 khung dọc chuẩn điện thoại, có nút "⬅ Chọn game")
+  // LUỒNG 2A: GAME MỚI — NUÔI MÈO VĂN PHÒNG (MÈO CỦA TÔI • CỬA HÀNG MÈO • QUÀ TẶNG • TÚI ĐỒ)
+  // ============================================================================
+  if (activeView === 'office_cat') {
+    const myFoodItems = CAT_SHOP_ITEMS.filter(
+      (item) => item.category === 'food' && (myCatInventory[item.id] || 0) > 0
+    );
+    const myBagItems = CAT_SHOP_ITEMS.filter(
+      (item) =>
+        (myCatInventory[item.id] || 0) > 0 ||
+        (myCat && myCat.placedYardItems.includes(item.id))
+    );
+
+    return (
+      <div
+        data-testid="entertainment-room-overlay"
+        className="fixed inset-0 z-30 flex items-center justify-center bg-slate-950/75 p-2 sm:p-4 backdrop-blur-sm"
+      >
+        <div className="relative flex max-h-[92dvh] w-full max-w-lg flex-col overflow-hidden rounded-[28px] border-4 border-[#e8dfd1] bg-[#fdf8f0] text-[#3d2b1f] shadow-2xl">
+          {/* THANH ĐẦU: Nút Chọn game • Số dư Tiền công đức • Âm thanh • Đóng */}
+          <div className="flex items-center justify-between gap-1.5 border-b border-[#ece2d0] bg-[#fbf4e8] px-3 py-2.5">
+            <button
+              type="button"
+              data-testid="back-to-game-lobby-btn"
+              onClick={() => setActiveView('lobby')}
+              className="inline-flex items-center gap-1 rounded-xl bg-amber-400 hover:bg-amber-300 px-2.5 py-1 text-xs font-extrabold text-slate-950 shadow cursor-pointer"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              <span>Chọn game</span>
+            </button>
+
+            <div className="flex items-center gap-1.5">
+              <div
+                data-testid="cat-merit-balance-pill"
+                className="inline-flex items-center gap-1 rounded-full border border-amber-400/60 bg-amber-100 px-2.5 py-1 text-xs font-black text-amber-900 shadow-sm"
+                title="Tiền công đức tích lũy từ Phòng Tịnh Tâm dùng để mua thức ăn và đồ cho mèo"
+              >
+                <Sparkles className="h-3.5 w-3.5 text-amber-600" />
+                <span>Công đức: {meritCount}</span>
+              </div>
+
+              <button
+                type="button"
+                onClick={onToggleSound}
+                className="rounded-full border border-[#e2d6c3] bg-white p-1.5 text-[#4a3326] cursor-pointer"
+                title={soundEnabled ? 'Tắt âm thanh' : 'Bật âm thanh'}
+              >
+                {soundEnabled ? (
+                  <Volume2 className="h-3.5 w-3.5 text-amber-600" />
+                ) : (
+                  <VolumeX className="h-3.5 w-3.5 text-slate-400" />
+                )}
+              </button>
+
+              <button
+                type="button"
+                data-testid="exit-game-room-btn"
+                onClick={onExitGameRoom}
+                className="rounded-full border border-[#e2d6c3] bg-white hover:bg-rose-50 p-1.5 text-[#4a3326] cursor-pointer"
+                title="Đóng"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* THANH CHUYỂN MỤC TRONG GAME MÈO (Khi đã nhận nuôi mèo) */}
+          {myCat && (
+            <div className="grid grid-cols-4 gap-1 border-b border-[#ece2d0] bg-[#f6eee0] px-2.5 py-1.5">
+              <button
+                type="button"
+                data-testid="cat-tab-my-cat"
+                onClick={() => setCatSubTab('my_cat')}
+                className={`flex items-center justify-center gap-1 rounded-xl py-1.5 text-xs font-extrabold transition-all cursor-pointer ${
+                  catSubTab === 'my_cat'
+                    ? 'bg-amber-400 text-slate-950 shadow'
+                    : 'text-[#6e5a47] hover:bg-white/60'
+                }`}
+              >
+                <span>🐾 Mèo của tôi</span>
+              </button>
+
+              <button
+                type="button"
+                data-testid="cat-tab-shop"
+                onClick={() => setCatSubTab('shop')}
+                className={`flex items-center justify-center gap-1 rounded-xl py-1.5 text-xs font-extrabold transition-all cursor-pointer ${
+                  catSubTab === 'shop'
+                    ? 'bg-amber-400 text-slate-950 shadow'
+                    : 'text-[#6e5a47] hover:bg-white/60'
+                }`}
+              >
+                <ShoppingBag className="h-3.5 w-3.5" />
+                <span>Cửa hàng mèo</span>
+              </button>
+
+              <button
+                type="button"
+                data-testid="cat-tab-gifts"
+                onClick={() => setCatSubTab('gifts')}
+                className={`relative flex items-center justify-center gap-1 rounded-xl py-1.5 text-xs font-extrabold transition-all cursor-pointer ${
+                  catSubTab === 'gifts'
+                    ? 'bg-amber-400 text-slate-950 shadow'
+                    : 'text-[#6e5a47] hover:bg-white/60'
+                }`}
+              >
+                <Gift className="h-3.5 w-3.5" />
+                <span>Quà tặng</span>
+                {openGiftRequestsCount > 0 && (
+                  <span className="ml-0.5 rounded-full bg-rose-500 px-1.5 py-0.2 text-[10px] font-black text-white">
+                    {openGiftRequestsCount}
+                  </span>
+                )}
+              </button>
+
+              <button
+                type="button"
+                data-testid="cat-tab-bag"
+                onClick={() => setCatSubTab('bag')}
+                className={`flex items-center justify-center gap-1 rounded-xl py-1.5 text-xs font-extrabold transition-all cursor-pointer ${
+                  catSubTab === 'bag'
+                    ? 'bg-amber-400 text-slate-950 shadow'
+                    : 'text-[#6e5a47] hover:bg-white/60'
+                }`}
+              >
+                <Backpack className="h-3.5 w-3.5" />
+                <span>Túi đồ</span>
+              </button>
+            </div>
+          )}
+
+          {/* Thông báo thao tác */}
+          {catNotice && (
+            <div
+              data-testid="cat-action-notice"
+              className="border-b border-emerald-200 bg-emerald-100/90 px-3.5 py-2 text-center text-xs font-bold text-emerald-950"
+            >
+              {catNotice}
+            </div>
+          )}
+
+          {/* NỘI DUNG CHÍNH CỦA GAME NUÔI MÈO */}
+          <div className="flex-1 overflow-y-auto p-3.5 sm:p-5 space-y-4">
+            {/* TRƯỜNG HỢP 1: LẦN ĐẦU VÀO GAME -> CHỌN MỘT BÉ MÈO VÀ ĐẶT TÊN */}
+            {!myCat ? (
+              <form
+                onSubmit={handleAdoptCat}
+                data-testid="cat-adopt-form"
+                className="space-y-4"
+              >
+                <div className="text-center space-y-1">
+                  <span className="inline-block rounded-full bg-amber-200/80 px-3 py-0.5 text-[11px] font-black text-amber-900">
+                    🐾 Lần đầu vào game
+                  </span>
+                  <h3 className="text-lg font-black text-[#3d2b1f]">
+                    Nhận Nuôi Bé Mèo Của Riêng Bạn
+                  </h3>
+                  <p className="text-xs text-[#7c6855]">
+                    Chọn một bé mèo yêu thích và đặt tên. Khi ra ngoài văn phòng 3D, bạn sẽ gặp mèo của mình và mèo của đồng nghiệp!
+                  </p>
+                </div>
+
+                {/* Xem trước bé mèo đang chọn */}
+                <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-[#e5dccb] bg-gradient-to-b from-amber-50 to-orange-50/70 py-4">
+                  <CuteCatAvatar
+                    breedId={adoptBreed}
+                    activity="playing"
+                    sizeClass="h-24 w-24"
+                  />
+                  <span className="mt-2.5 text-sm font-black text-[#3d2b1f]">
+                    {CAT_BREEDS.find((b) => b.id === adoptBreed)?.name}
+                  </span>
+                  <span className="text-[11px] font-semibold text-[#8c7865]">
+                    {CAT_BREEDS.find((b) => b.id === adoptBreed)?.badge}
+                  </span>
+                </div>
+
+                {/* Danh sách 5 giống mèo để chọn */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-extrabold text-[#4a3326]">
+                    1. Chọn bé mèo bạn muốn nhận nuôi:
+                  </label>
+                  <div className="grid grid-cols-5 gap-1.5">
+                    {CAT_BREEDS.map((b) => {
+                      const selected = adoptBreed === b.id;
+                      return (
+                        <button
+                          key={b.id}
+                          type="button"
+                          data-testid={`select-breed-${b.id}`}
+                          onClick={() => setAdoptBreed(b.id)}
+                          className={`flex flex-col items-center rounded-xl border-2 p-2 transition-all cursor-pointer ${
+                            selected
+                              ? 'border-amber-500 bg-amber-100/80 shadow'
+                              : 'border-[#e5dccb] bg-white hover:bg-amber-50/50'
+                          }`}
+                        >
+                          <CuteCatAvatar
+                            breedId={b.id}
+                            activity="walking"
+                            sizeClass="h-10 w-10"
+                          />
+                          <span className="mt-1.5 text-[10px] font-extrabold text-center leading-tight text-[#3d2b1f]">
+                            {b.name.replace('Mèo ', '')}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Đặt tên cho bé mèo */}
+                <div className="space-y-1.5">
+                  <label
+                    htmlFor="cat-name-input"
+                    className="block text-xs font-extrabold text-[#4a3326]"
+                  >
+                    2. Đặt tên cho bé mèo:
+                  </label>
+                  <input
+                    id="cat-name-input"
+                    data-testid="adopt-cat-name-input"
+                    type="text"
+                    maxLength={24}
+                    value={adoptNameDraft}
+                    onChange={(e) => setAdoptNameDraft(e.target.value)}
+                    placeholder="Nhập tên bé mèo (VD: Miu Cam, Bông Gòn...)"
+                    className="w-full rounded-xl border-2 border-[#decab4] bg-white px-3.5 py-2 text-sm font-bold text-[#3d2b1f] outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  data-testid="confirm-adopt-cat-btn"
+                  className="w-full rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 py-3 text-sm font-black text-white shadow-lg cursor-pointer"
+                >
+                  🐾 Nhận nuôi bé mèo ngay
+                </button>
+              </form>
+            ) : (
+              <>
+                {/* ==================== MỤC 1: MÈO CỦA TÔI ==================== */}
+                {catSubTab === 'my_cat' && (
+                  <div data-testid="my-cat-panel" className="space-y-3.5">
+                    {/* Khung hiển thị bé mèo & trạng thái đang làm gì */}
+                    <div className="relative flex flex-col items-center rounded-2xl border-2 border-[#e5dccb] bg-gradient-to-b from-amber-50 via-orange-50/50 to-emerald-50/60 p-4 text-center shadow-sm">
+                      <span
+                        data-testid="my-cat-activity-badge"
+                        className="mb-2 inline-flex items-center gap-1 rounded-full bg-white/90 border border-[#e5dccb] px-3 py-0.5 text-xs font-extrabold text-emerald-700 shadow-sm"
+                      >
+                        {getActivityLabel(myCat.activity)}
+                      </span>
+
+                      <CuteCatAvatar
+                        breedId={myCat.breedId}
+                        activity={myCat.activity}
+                        sizeClass="h-24 w-24"
+                      />
+
+                      <h3
+                        data-testid="my-cat-name-heading"
+                        className="mt-2.5 text-lg font-black text-[#3d2b1f]"
+                      >
+                        {myCat.catName}
+                      </h3>
+                      <p className="text-xs font-semibold text-[#7c6855]">
+                        Người nuôi: <strong className="text-[#3d2b1f]">{currentNickname}</strong> • Được vuốt ve{' '}
+                        <strong>{myCat.petCount}</strong> lần
+                      </p>
+
+                      {/* Thanh Độ no & Vui vẻ */}
+                      <div className="mt-3 grid w-full grid-cols-2 gap-2.5 text-left">
+                        <div className="rounded-xl bg-white/85 p-2 border border-[#ece2d0]">
+                          <div className="flex justify-between text-[11px] font-extrabold text-[#5c4938]">
+                            <span>🐟 Độ no</span>
+                            <span>{myCat.fullness}%</span>
+                          </div>
+                          <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-[#ebe1d1]">
+                            <div
+                              className="h-full rounded-full bg-amber-500 transition-all"
+                              style={{ width: `${myCat.fullness}%` }}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="rounded-xl bg-white/85 p-2 border border-[#ece2d0]">
+                          <div className="flex justify-between text-[11px] font-extrabold text-[#5c4938]">
+                            <span>💕 Vui vẻ</span>
+                            <span>{myCat.happiness}%</span>
+                          </div>
+                          <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-[#ebe1d1]">
+                            <div
+                              className="h-full rounded-full bg-rose-500 transition-all"
+                              style={{ width: `${myCat.happiness}%` }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 3 thao tác chăm mèo: Cho ăn • Vuốt ve • Chơi cùng mèo */}
+                    <div className="grid grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        data-testid="cat-feed-open-btn"
+                        onClick={() => {
+                          setShowFeedPicker((v) => !v);
+                          setShowRequestGiftForm(false);
+                        }}
+                        className="flex flex-col items-center justify-center gap-1 rounded-2xl border-2 border-amber-300 bg-amber-100/80 hover:bg-amber-200/80 py-2.5 px-2 text-xs font-black text-amber-950 shadow-sm cursor-pointer active:scale-95 transition-transform"
+                      >
+                        <span className="text-lg">🐟</span>
+                        <span>Cho ăn</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        data-testid="cat-pet-btn"
+                        onClick={handlePetMyCat}
+                        className="flex flex-col items-center justify-center gap-1 rounded-2xl border-2 border-rose-300 bg-rose-100/80 hover:bg-rose-200/80 py-2.5 px-2 text-xs font-black text-rose-950 shadow-sm cursor-pointer active:scale-95 transition-transform"
+                      >
+                        <span className="text-lg">🤚</span>
+                        <span>Vuốt ve</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        data-testid="cat-play-btn"
+                        onClick={handlePlayWithMyCat}
+                        className="flex flex-col items-center justify-center gap-1 rounded-2xl border-2 border-sky-300 bg-sky-100/80 hover:bg-sky-200/80 py-2.5 px-2 text-xs font-black text-sky-950 shadow-sm cursor-pointer active:scale-95 transition-transform"
+                      >
+                        <span className="text-lg">🧶</span>
+                        <span>Chơi cùng mèo</span>
+                      </button>
+                    </div>
+
+                    {/* Hộp chọn thức ăn trong Túi đồ khi bấm "Cho ăn" */}
+                    {showFeedPicker && (
+                      <div
+                        data-testid="cat-feed-picker-box"
+                        className="rounded-2xl border-2 border-amber-400 bg-white p-3 space-y-2 shadow-md"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-black text-[#3d2b1f]">
+                            🎒 Chọn thức ăn trong Túi đồ (Mỗi lần dùng 1 phần):
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setShowFeedPicker(false)}
+                            className="text-[11px] font-bold text-[#8c7865] cursor-pointer"
+                          >
+                            Đóng ✕
+                          </button>
+                        </div>
+
+                        {myFoodItems.length === 0 ? (
+                          <div className="rounded-xl bg-amber-50 p-3 text-center space-y-2">
+                            <p className="text-xs font-semibold text-amber-900">
+                              Túi đồ của bạn chưa có thức ăn nào.
+                            </p>
+                            <div className="flex items-center justify-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setShowFeedPicker(false);
+                                  setCatSubTab('shop');
+                                }}
+                                className="rounded-xl bg-amber-500 px-3 py-1.5 text-xs font-extrabold text-white cursor-pointer"
+                              >
+                                🛒 Tới Cửa hàng mèo
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setShowFeedPicker(false);
+                                  setShowRequestGiftForm(true);
+                                }}
+                                className="rounded-xl bg-rose-500 px-3 py-1.5 text-xs font-extrabold text-white cursor-pointer"
+                              >
+                                🎁 Xin quà đồng nghiệp
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-2 gap-2">
+                            {myFoodItems.map((food) => {
+                              const qty = myCatInventory[food.id] || 0;
+                              return (
+                                <button
+                                  key={food.id}
+                                  type="button"
+                                  data-testid={`feed-use-item-${food.id}`}
+                                  onClick={() => handleFeedMyCat(food)}
+                                  className="flex items-center justify-between rounded-xl border border-[#e5dccb] bg-amber-50/70 hover:bg-amber-100 p-2 text-left cursor-pointer"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xl">{food.icon}</span>
+                                    <div>
+                                      <div className="text-xs font-black text-[#3d2b1f]">
+                                        {food.name}
+                                      </div>
+                                      <div className="text-[10px] font-bold text-emerald-700">
+                                        +{food.fullnessBoost}% No
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <span className="rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-black text-white">
+                                    x{qty}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Các nút Xin quà đồng nghiệp & Ra khu vực bên ngoài văn phòng */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        data-testid="cat-request-gift-open-btn"
+                        onClick={() => {
+                          setShowRequestGiftForm((v) => !v);
+                          setShowFeedPicker(false);
+                        }}
+                        className="inline-flex items-center justify-center gap-1.5 rounded-xl border-2 border-[#e2d6c3] bg-white hover:bg-rose-50 py-2.5 px-3 text-xs font-extrabold text-[#3d2b1f] shadow-sm cursor-pointer"
+                      >
+                        <Gift className="h-4 w-4 text-rose-500" />
+                        <span>Xin quà đồng nghiệp</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        data-testid="go-outdoor-cats-3d-btn"
+                        onClick={onExitGameRoom}
+                        className="inline-flex items-center justify-center gap-1.5 rounded-xl border-2 border-emerald-400 bg-emerald-500 hover:bg-emerald-400 py-2.5 px-3 text-xs font-extrabold text-white shadow-sm cursor-pointer"
+                      >
+                        <Trees className="h-4 w-4" />
+                        <span>Ra sân ngoài văn phòng</span>
+                      </button>
+                    </div>
+
+                    {/* Hộp biểu mẫu "Xin quà" ngay trong Mèo của tôi */}
+                    {showRequestGiftForm && (
+                      <form
+                        onSubmit={handleSubmitGiftRequest}
+                        data-testid="cat-request-gift-form"
+                        className="rounded-2xl border-2 border-rose-300 bg-white p-3.5 space-y-3 shadow-md"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-black text-rose-900">
+                            🎁 Nhờ đồng nghiệp tặng đồ (Thức ăn, Đệm ngủ, Đồ chơi)
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setShowRequestGiftForm(false)}
+                            className="text-[11px] font-bold text-[#8c7865] cursor-pointer"
+                          >
+                            Đóng ✕
+                          </button>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="block text-[11px] font-bold text-[#5c4938]">
+                            Chọn món cần xin:
+                          </label>
+                          <select
+                            data-testid="gift-request-item-select"
+                            value={requestItemId}
+                            onChange={(e) => setRequestItemId(e.target.value)}
+                            className="w-full rounded-xl border border-[#d8cbb8] bg-[#fdf8f0] px-2.5 py-1.5 text-xs font-bold text-[#3d2b1f] outline-none"
+                          >
+                            {CAT_SHOP_ITEMS.map((item) => (
+                              <option key={item.id} value={item.id}>
+                                {item.icon} {item.name} (
+                                {item.category === 'food'
+                                  ? 'Thức ăn'
+                                  : item.category === 'bed'
+                                    ? 'Đệm ngủ'
+                                    : 'Đồ chơi'}
+                                )
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="block text-[11px] font-bold text-[#5c4938]">
+                            Gửi đến đồng nghiệp hoặc đăng vào mục Quà tặng của phòng:
+                          </label>
+                          <select
+                            data-testid="gift-request-target-select"
+                            value={requestTargetUserId}
+                            onChange={(e) => setRequestTargetUserId(e.target.value)}
+                            className="w-full rounded-xl border border-[#d8cbb8] bg-[#fdf8f0] px-2.5 py-1.5 text-xs font-bold text-[#3d2b1f] outline-none"
+                          >
+                            <option value="">
+                              📢 Đăng chung vào mục Quà tặng của phòng (Ai rảnh cũng tặng được)
+                            </option>
+                            {otherMembers.map((m) => (
+                              <option key={m.userId} value={m.userId}>
+                                👤 Gửi trực tiếp cho đồng nghiệp: {m.nickname}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <button
+                          type="submit"
+                          data-testid="submit-gift-request-btn"
+                          className="w-full rounded-xl bg-rose-500 hover:bg-rose-400 py-2 text-xs font-black text-white shadow cursor-pointer"
+                        >
+                          📨 Gửi yêu cầu xin quà
+                        </button>
+                      </form>
+                    )}
+                  </div>
+                )}
+
+                {/* ==================== MỤC 2: CỬA HÀNG MÈO (MUA BẰNG TIỀN CÔNG ĐỨC) ==================== */}
+                {catSubTab === 'shop' && (
+                  <div data-testid="cat-shop-panel" className="space-y-3">
+                    <div className="flex items-center justify-between rounded-2xl bg-amber-100/80 border border-amber-300 px-3.5 py-2">
+                      <div>
+                        <div className="text-xs font-black text-amber-950">
+                          🛒 Cửa hàng mèo — Thanh toán bằng Tiền công đức
+                        </div>
+                        <div className="text-[11px] text-amber-800">
+                          Gõ mõ & Lạy khấn ở Phòng Tịnh Tâm để tích thêm tiền công đức.
+                        </div>
+                      </div>
+                      <span className="rounded-xl bg-amber-500 px-2.5 py-1 text-xs font-black text-white shrink-0">
+                        ✨ {meritCount} Công đức
+                      </span>
+                    </div>
+
+                    {/* HỘP XÁC NHẬN TRƯỚC KHI MUA: Hiển thị Giá và Số dư còn lại */}
+                    {pendingShopBuyItem && (
+                      <div
+                        data-testid="shop-confirm-modal"
+                        className="rounded-2xl border-2 border-amber-500 bg-amber-50 p-3.5 space-y-2.5 shadow-lg"
+                      >
+                        <div className="text-xs font-black text-amber-950">
+                          📋 Xác nhận thanh toán bằng Tiền công đức
+                        </div>
+                        <div className="rounded-xl bg-white p-2.5 border border-amber-200 space-y-1 text-xs">
+                          <div className="flex justify-between">
+                            <span className="text-[#7c6855]">Món chọn mua:</span>
+                            <strong className="text-[#3d2b1f]">
+                              {pendingShopBuyItem.icon} {pendingShopBuyItem.name}
+                            </strong>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-[#7c6855]">Giá thanh toán:</span>
+                            <strong
+                              data-testid="shop-confirm-price"
+                              className="text-amber-700"
+                            >
+                              {pendingShopBuyItem.priceMerit} Công đức
+                            </strong>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-[#7c6855]">Số dư hiện tại:</span>
+                            <strong className="text-[#3d2b1f]">
+                              {meritCount} Công đức
+                            </strong>
+                          </div>
+                          <div className="flex justify-between border-t border-amber-100 pt-1">
+                            <span className="font-bold text-[#3d2b1f]">
+                              Số dư còn lại sau khi mua:
+                            </span>
+                            <strong
+                              data-testid="shop-confirm-remaining-balance"
+                              className={
+                                meritCount - pendingShopBuyItem.priceMerit >= 0
+                                  ? 'text-emerald-700 font-black'
+                                  : 'text-rose-600 font-black'
+                              }
+                            >
+                              {meritCount - pendingShopBuyItem.priceMerit} Công đức
+                            </strong>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setPendingShopBuyItem(null)}
+                            className="rounded-xl border border-[#d8cbb8] bg-white px-3 py-1.5 text-xs font-bold text-[#5c4938] cursor-pointer"
+                          >
+                            Hủy
+                          </button>
+                          <button
+                            type="button"
+                            data-testid="shop-confirm-buy-btn"
+                            disabled={meritCount < pendingShopBuyItem.priceMerit}
+                            onClick={handleConfirmBuyShopItem}
+                            className={`inline-flex items-center gap-1 rounded-xl px-3.5 py-1.5 text-xs font-black text-white shadow cursor-pointer ${
+                              meritCount >= pendingShopBuyItem.priceMerit
+                                ? 'bg-emerald-600 hover:bg-emerald-500'
+                                : 'bg-slate-400 cursor-not-allowed'
+                            }`}
+                          >
+                            <Check className="h-3.5 w-3.5" />
+                            <span>
+                              {meritCount >= pendingShopBuyItem.priceMerit
+                                ? 'Xác nhận mua'
+                                : 'Không đủ Công đức'}
+                            </span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Danh sách các mặt hàng trong Cửa hàng mèo */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      {CAT_SHOP_ITEMS.map((item) => {
+                        const owned = myCatInventory[item.id] || 0;
+                        return (
+                          <div
+                            key={item.id}
+                            className="flex flex-col justify-between rounded-2xl border-2 border-[#e5dccb] bg-white p-3 shadow-sm"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-2xl">
+                                  {item.icon}
+                                </span>
+                                <div>
+                                  <div className="text-xs font-black text-[#3d2b1f]">
+                                    {item.name}
+                                  </div>
+                                  <span className="inline-block rounded bg-[#f3ece0] px-1.5 py-0.2 text-[10px] font-bold text-[#7c6855]">
+                                    {item.category === 'food'
+                                      ? `Thức ăn (+${item.fullnessBoost}% No)`
+                                      : item.category === 'bed'
+                                        ? 'Đệm ngủ sân ngoài'
+                                        : 'Đồ chơi sân ngoài'}
+                                  </span>
+                                </div>
+                              </div>
+                              {owned > 0 && (
+                                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-800">
+                                  Túi: {owned}
+                                </span>
+                              )}
+                            </div>
+
+                            <p className="mt-2 text-[11px] text-[#7c6855] leading-snug">
+                              {item.description}
+                            </p>
+
+                            <div className="mt-2.5 flex items-center justify-between border-t border-[#f3ece0] pt-2">
+                              <span className="text-xs font-black text-amber-700">
+                                ✨ {item.priceMerit} Công đức
+                              </span>
+                              <button
+                                type="button"
+                                data-testid={`shop-buy-${item.id}`}
+                                onClick={() => setPendingShopBuyItem(item)}
+                                className="rounded-xl bg-amber-400 hover:bg-amber-300 px-3 py-1 text-xs font-extrabold text-slate-950 shadow-sm cursor-pointer"
+                              >
+                                Mua
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* ==================== MỤC 3: QUÀ TẶNG (NHỜ ĐỒNG NGHIỆP TẶNG ĐỒ) ==================== */}
+                {catSubTab === 'gifts' && (
+                  <div data-testid="cat-gifts-panel" className="space-y-3">
+                    <div className="flex items-center justify-between rounded-2xl bg-rose-100/70 border border-rose-200 px-3.5 py-2">
+                      <div>
+                        <div className="text-xs font-black text-rose-950">
+                          🎁 Mục Quà Tặng Của Phòng
+                        </div>
+                        <div className="text-[11px] text-rose-800">
+                          Đồng nghiệp rảnh có thể xem yêu cầu và bấm Tặng nếu có sẵn món đó trong túi đồ.
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCatSubTab('my_cat');
+                          setShowRequestGiftForm(true);
+                        }}
+                        className="rounded-xl bg-rose-500 hover:bg-rose-400 px-2.5 py-1.5 text-[11px] font-black text-white shrink-0 cursor-pointer"
+                      >
+                        + Xin quà
+                      </button>
+                    </div>
+
+                    {/* HỘP XÁC NHẬN KHI NGƯỜI TẶNG BẤM "TẶNG" */}
+                    {pendingFulfillRequest && (
+                      <div
+                        data-testid="gift-confirm-modal"
+                        className="rounded-2xl border-2 border-rose-500 bg-rose-50 p-3.5 space-y-2.5 shadow-lg"
+                      >
+                        <div className="text-xs font-black text-rose-950">
+                          💝 Xác nhận chuyển món quà từ Túi đồ của bạn
+                        </div>
+                        <p className="text-xs text-[#4a3326]">
+                          Bạn xác nhận tặng{' '}
+                          <strong>
+                            1x{' '}
+                            {
+                              CAT_SHOP_ITEMS.find(
+                                (i) => i.id === pendingFulfillRequest.itemId
+                              )?.name
+                            }
+                          </strong>{' '}
+                          cho bé mèo <strong>"{pendingFulfillRequest.catName}"</strong> của{' '}
+                          <strong>{pendingFulfillRequest.requesterNickname}</strong>? Sau khi xác nhận, yêu cầu sẽ tự đóng.
+                        </p>
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setPendingFulfillRequest(null)}
+                            className="rounded-xl border border-[#d8cbb8] bg-white px-3 py-1.5 text-xs font-bold text-[#5c4938] cursor-pointer"
+                          >
+                            Hủy
+                          </button>
+                          <button
+                            type="button"
+                            data-testid="gift-confirm-send-btn"
+                            onClick={() => {
+                              onFulfillGiftRequest(pendingFulfillRequest.id);
+                              setPendingFulfillRequest(null);
+                              setCatNotice(
+                                `💝 Bạn đã tặng quà thành công cho bé mèo "${pendingFulfillRequest.catName}" của ${pendingFulfillRequest.requesterNickname}! Yêu cầu đã tự đóng.`
+                              );
+                            }}
+                            className="inline-flex items-center gap-1 rounded-xl bg-rose-500 hover:bg-rose-400 px-3.5 py-1.5 text-xs font-black text-white shadow cursor-pointer"
+                          >
+                            <Check className="h-3.5 w-3.5" />
+                            <span>Xác nhận tặng</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {giftRequests.length === 0 ? (
+                      <div className="rounded-2xl border-2 border-dashed border-[#e2d6c3] bg-white/70 p-6 text-center text-xs text-[#8c7865]">
+                        Chưa có yêu cầu xin quà nào trong phòng. Bạn có thể bấm{' '}
+                        <strong>Xin quà</strong> ở trang Mèo của tôi để nhờ đồng nghiệp tặng thức ăn, đệm ngủ hoặc đồ chơi nhé!
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {giftRequests.map((req) => {
+                          const item =
+                            CAT_SHOP_ITEMS.find((i) => i.id === req.itemId) ||
+                            CAT_SHOP_ITEMS[0];
+                          const myQty = myCatInventory[req.itemId] || 0;
+                          const isOpenReq = req.status === 'open';
+                          return (
+                            <div
+                              key={req.id}
+                              data-testid={`gift-request-card-${req.id}`}
+                              className={`flex items-center justify-between gap-2 rounded-2xl border-2 p-3 ${
+                                isOpenReq
+                                  ? 'border-[#e5dccb] bg-white'
+                                  : 'border-emerald-200 bg-emerald-50/60 opacity-85'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2.5">
+                                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-2xl">
+                                  {item.icon}
+                                </span>
+                                <div>
+                                  <div className="text-xs font-black text-[#3d2b1f]">
+                                    {req.requesterNickname}{' '}
+                                    <span className="font-semibold text-[#7c6855]">
+                                      (mèo {req.catName})
+                                    </span>{' '}
+                                    xin <strong>{item.name}</strong>
+                                  </div>
+                                  <div className="text-[11px] text-[#7c6855]">
+                                    {req.targetNickname
+                                      ? `Gửi tới: @${req.targetNickname}`
+                                      : 'Đăng chung cả phòng'}{' '}
+                                    • Trong túi bạn có: <strong>{myQty}</strong>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {isOpenReq ? (
+                                <button
+                                  type="button"
+                                  data-testid={`gift-give-btn-${req.id}`}
+                                  disabled={myQty <= 0}
+                                  onClick={() => setPendingFulfillRequest(req)}
+                                  className={`rounded-xl px-3 py-1.5 text-xs font-black shrink-0 cursor-pointer ${
+                                    myQty > 0
+                                      ? 'bg-rose-500 hover:bg-rose-400 text-white shadow'
+                                      : 'bg-[#ebe2d3] text-[#9c8976] cursor-not-allowed'
+                                  }`}
+                                >
+                                  {myQty > 0 ? '💝 Tặng' : 'Chưa có đồ'}
+                                </button>
+                              ) : (
+                                <span
+                                  data-testid={`gift-closed-badge-${req.id}`}
+                                  className="rounded-full bg-emerald-600 px-2.5 py-1 text-[10px] font-black text-white shrink-0"
+                                >
+                                  ✓ Đã tặng ({req.fulfilledByNickname})
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* ==================== MỤC 4: TÚI ĐỒ & ĐẶT ĐỒ CHƠI / ĐỆM NGỦ RA NGOÀI VĂN PHÒNG ==================== */}
+                {catSubTab === 'bag' && (
+                  <div data-testid="cat-bag-panel" className="space-y-3">
+                    <div className="rounded-2xl bg-sky-100/70 border border-sky-200 px-3.5 py-2 text-xs text-sky-950">
+                      🎒 <strong>Túi đồ của bạn:</strong> Dùng thức ăn cho mèo hoặc đặt{' '}
+                      <strong>đồ chơi, đệm ngủ</strong> ở khu vực bên ngoài văn phòng cho các bé mèo sử dụng!
+                    </div>
+
+                    {myBagItems.length === 0 ? (
+                      <div className="rounded-2xl border-2 border-dashed border-[#e2d6c3] bg-white/70 p-6 text-center text-xs text-[#8c7865]">
+                        Túi đồ đang trống. Hãy ghé <strong>Cửa hàng mèo</strong> hoặc mục{' '}
+                        <strong>Quà tặng</strong> nhé!
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        {myBagItems.map((item) => {
+                          const qty = myCatInventory[item.id] || 0;
+                          const isPlaced = myCat.placedYardItems.includes(item.id);
+                          return (
+                            <div
+                              key={item.id}
+                              className="flex items-center justify-between gap-2 rounded-2xl border-2 border-[#e5dccb] bg-white p-3 shadow-sm"
+                            >
+                              <div className="flex items-center gap-2.5">
+                                <span className="text-2xl">{item.icon}</span>
+                                <div>
+                                  <div className="text-xs font-black text-[#3d2b1f]">
+                                    {item.name}
+                                  </div>
+                                  <div className="text-[11px] font-semibold text-[#7c6855]">
+                                    Trong túi: <strong>x{qty}</strong>
+                                    {isPlaced && (
+                                      <span className="ml-1.5 text-emerald-700 font-extrabold">
+                                        • Đang đặt ngoài sân
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {item.category === 'food' ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleFeedMyCat(item)}
+                                  className="rounded-xl bg-amber-400 hover:bg-amber-300 px-3 py-1.5 text-xs font-black text-slate-950 cursor-pointer shrink-0"
+                                >
+                                  🐟 Cho ăn
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  data-testid={`bag-place-yard-${item.id}`}
+                                  onClick={() => handleTogglePlaceYardItem(item)}
+                                  className={`rounded-xl px-2.5 py-1.5 text-[11px] font-black cursor-pointer shrink-0 ${
+                                    isPlaced
+                                      ? 'bg-slate-200 text-slate-800 hover:bg-slate-300'
+                                      : 'bg-emerald-500 text-white hover:bg-emerald-400 shadow'
+                                  }`}
+                                >
+                                  {isPlaced ? 'Thu về túi' : '🏡 Đặt ra ngoài sân'}
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ============================================================================
+  // LUỒNG 2B: MÀN HÌNH CHƠI PHÓNG PHI TIÊU (KNIFE HIT) HOẶC VÒNG QUAY
   // ============================================================================
   return (
     <div
@@ -1715,7 +2619,7 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
           </div>
         </div>
 
-        {/* ==================== GAME 1: KNIFE HIT (PHÓNG PHI TIÊU CẮM GỖ XOAY) ==================== */}
+        {/* ==================== GAME 2: KNIFE HIT (PHÓNG PHI TIÊU CẮM GỖ XOAY) ==================== */}
         {activeView === 'knife_hit' && (
           <>
             <div className="flex items-center justify-between gap-1 bg-[#05252e] px-2.5 py-1.5 border-b border-teal-500/20">
@@ -2011,165 +2915,7 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
           </>
         )}
 
-        {/* ==================== GAME 2: ĐẬP CHUỘT DEADLINE (WHACK-A-BUG) ==================== */}
-        {activeView === 'whack_bug' && (
-          <div className="flex flex-col items-center p-4 space-y-3 bg-[#fdf8f0] text-[#3d2b1f]">
-            <div className="flex w-full items-center justify-between rounded-2xl bg-[#f3ece0] px-3.5 py-2">
-              <span className="text-xs font-black text-emerald-700">
-                🔨 Điểm: {whackScore}
-              </span>
-              <span className="text-xs font-black text-rose-600">
-                ⏱️ Thời gian: {whackTimeLeft}s
-              </span>
-            </div>
-
-            <div className="grid grid-cols-3 gap-2.5 w-full max-w-[300px] aspect-square p-2 rounded-2xl bg-lime-200/80 border-2 border-lime-400/50">
-              {Array.from({ length: 9 }).map((_, idx) => {
-                const isUp = whackRunning && activeMoleHole === idx;
-                return (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() => {
-                      if (!isUp) return;
-                      if (soundEnabled) playDartHitSound(true);
-                      setWhackScore((s) => s + 10);
-                      setActiveMoleHole(-1);
-                    }}
-                    className="relative flex items-center justify-center rounded-2xl bg-amber-900/80 shadow-inner overflow-hidden cursor-pointer active:scale-90 transition-transform"
-                  >
-                    {isUp && (
-                      <div className="flex flex-col items-center animate-bounce">
-                        <CuteBlob
-                          color="#a855f7"
-                          size="h-11 w-11"
-                          expression="surprised"
-                        />
-                        <span className="text-[9px] font-black text-white bg-rose-500 px-1.5 rounded-full -mt-1">
-                          BUG!
-                        </span>
-                      </div>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setWhackScore(0);
-                  setWhackTimeLeft(20);
-                  setWhackRunning(true);
-                }}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 px-4 py-2 text-xs font-extrabold text-white shadow cursor-pointer"
-              >
-                <Hammer className="h-3.5 w-3.5" />
-                <span>{whackRunning ? 'Chơi lại từ đầu' : 'Bắt đầu đập Bug (20s)'}</span>
-              </button>
-
-              {whackScore > 0 && !whackRunning && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    onBroadcastChallengeMessage(
-                      `🔨 [ĐẬP CHUỘT DEADLINE] ${currentNickname} vừa đập trúng ${whackScore} điểm Bug trong 20 giây!`
-                    )
-                  }
-                  className="inline-flex items-center gap-1 rounded-xl bg-amber-400 px-3 py-2 text-xs font-extrabold text-slate-950 cursor-pointer"
-                >
-                  <Send className="h-3.5 w-3.5" />
-                  <span>Khoe điểm</span>
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* ==================== GAME 3: TRUYỀN BOM HẸN GIỜ (PASS THE BOMB) ==================== */}
-        {activeView === 'pass_bomb' && (
-          <div className="flex flex-col items-center p-5 space-y-4 bg-[#fdf8f0] text-[#3d2b1f] text-center">
-            <div className="relative flex h-28 w-28 items-center justify-center rounded-full bg-amber-100 border-4 border-amber-300 shadow-inner">
-              {bombExploded ? (
-                <span className="text-5xl animate-bounce">💥</span>
-              ) : (
-                <span className={`text-5xl ${bombTicking ? 'animate-ping' : ''}`}>
-                  💣
-                </span>
-              )}
-            </div>
-
-            <div>
-              <h3 className="text-base font-black text-[#3d2b1f]">
-                {bombExploded
-                  ? `💥 BÙM! Bom nổ trên tay ${bombHolderName}!`
-                  : bombTicking
-                    ? `🔥 ${bombHolderName} đang cầm bom! Chuyền mau!`
-                    : '💣 Truyền Bom Hẹn Giờ'}
-              </h3>
-              <p className="text-xs text-[#7c6855] mt-1">
-                Bấm vào tên người khác để chuyền bom trước khi phát nổ!
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center justify-center gap-2">
-              {(members.length > 0
-                ? members.map((m) => m.nickname)
-                : [currentNickname, 'Đồng nghiệp A', 'Đồng nghiệp B']
-              ).map((name, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  disabled={!bombTicking}
-                  onClick={() => {
-                    if (soundEnabled) playDartHitSound(false);
-                    setBombHolderName(name);
-                  }}
-                  className={`rounded-xl px-3 py-1.5 text-xs font-extrabold border-2 transition-all cursor-pointer ${
-                    bombHolderName === name
-                      ? 'border-rose-500 bg-rose-500 text-white shadow'
-                      : 'border-[#e2d6c3] bg-white text-[#3d2b1f] hover:border-sky-400'
-                  }`}
-                >
-                  💣 Chuyền cho {name}
-                </button>
-              ))}
-            </div>
-
-            <div className="flex items-center gap-2 pt-1">
-              <button
-                type="button"
-                onClick={() => {
-                  setBombExploded(false);
-                  setBombHolderName(currentNickname);
-                  setBombTicking(true);
-                }}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-rose-500 hover:bg-rose-400 px-4 py-2 text-xs font-extrabold text-white shadow cursor-pointer"
-              >
-                <Bomb className="h-3.5 w-3.5" />
-                <span>{bombTicking ? 'Đang đếm ngược...' : 'Châm ngòi Bom mới!'}</span>
-              </button>
-
-              {bombExploded && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    onBroadcastChallengeMessage(
-                      `💣 [TRUYỀN BOM] Quả bom hẹn giờ vừa phát nổ BÙM trên tay "${bombHolderName}"!`
-                    )
-                  }
-                  className="inline-flex items-center gap-1 rounded-xl bg-amber-400 px-3 py-2 text-xs font-extrabold text-slate-950 cursor-pointer"
-                >
-                  <Send className="h-3.5 w-3.5" />
-                  <span>Báo phòng</span>
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* ==================== GAME 4: VÒNG QUAY TRÀ SỮA / NHÂN PHẨM ==================== */}
+        {/* ==================== GAME 3: VÒNG QUAY ==================== */}
         {activeView === 'wheel' && (
           <div className="flex flex-col items-center p-4 space-y-3 bg-[#fdf8f0] text-[#3d2b1f]">
             <div

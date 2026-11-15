@@ -31,6 +31,18 @@ import {
 } from './components/ZenSanctuaryOverlay';
 import { EntertainmentRoomModal } from './components/EntertainmentRoomModal';
 import {
+  CAT_SHOP_ITEMS,
+  loadMyCatInventory,
+  loadRoomCats,
+  loadRoomGiftRequests,
+  saveMyCatInventory,
+  saveRoomCats,
+  saveRoomGiftRequests,
+  type CatActivity,
+  type CatGiftRequest,
+  type OfficeCatProfile,
+} from './utils/officeCatsData';
+import {
   playWoodenFishSound,
   playTempleBellSound,
   startZenBackgroundMusic,
@@ -105,15 +117,19 @@ export function App() {
   const [meritCount, setMeritCount] = useState<number>(() => {
     try {
       const saved = window.localStorage.getItem(`van_phong_ao_merit:${getSessionNamespace()}`);
-      return saved ? Number(saved) || 0 : 0;
+      if (saved !== null) return Number(saved) || 0;
+      // Khởi tạo sẵn 30 điểm công đức cho người mới để có thể trải nghiệm Cửa hàng mèo ngay
+      window.localStorage.setItem(`van_phong_ao_merit:${getSessionNamespace()}`, '30');
+      return 30;
     } catch {
-      return 0;
+      return 30;
     }
   });
   const [incenseLit, setIncenseLit] = useState<boolean>(true);
   const [isBowing, setIsBowing] = useState<boolean>(false);
   const [autoMo, setAutoMo] = useState<boolean>(false);
-  const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
+  // Game mặc định tắt âm thanh theo yêu cầu
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(false);
   const [zenTrackId, setZenTrackId] = useState<ZenTrackId>('zen_flute_528');
   const [customZenAudioUrl, setCustomZenAudioUrl] = useState<string | null>(null);
   const [customZenTrackName, setCustomZenTrackName] = useState<string | null>(null);
@@ -122,6 +138,11 @@ export function App() {
   const [activeBlessing, setActiveBlessing] = useState<string | null>(null);
   const [activeChallengeBanner, setActiveChallengeBanner] = useState<string | null>(null);
   const meritTimerRef = useRef<number | null>(null);
+
+  // State cho Game "Nuôi Mèo Văn Phòng" (Mèo của tôi • Cửa hàng mèo • Quà tặng • Sân ngoài văn phòng)
+  const [roomCats, setRoomCats] = useState<Record<string, OfficeCatProfile>>({});
+  const [myCatInventory, setMyCatInventory] = useState<Record<string, number>>({});
+  const [giftRequests, setGiftRequests] = useState<CatGiftRequest[]>([]);
 
   // Bong bóng chat 5 giây trên đầu nhân vật
   const [activeBubbles, setActiveBubbles] = useState<Record<string, ActiveSpeechBubble>>({});
@@ -257,6 +278,198 @@ export function App() {
       showToast(`Đang phát nhạc thiền từ máy: ${file.name}`);
     },
     [customZenAudioUrl, showToast]
+  );
+
+  // ==================== KẾT NỐI TIỀN CÔNG ĐỨC & GAME NUÔI MÈO VĂN PHÒNG ====================
+  const handleSpendMerit = useCallback(
+    (amount: number): boolean => {
+      if (meritCount < amount) return false;
+      const next = Math.max(0, meritCount - amount);
+      setMeritCount(next);
+      try {
+        window.localStorage.setItem(`van_phong_ao_merit:${getSessionNamespace()}`, String(next));
+      } catch {
+        // ignore
+      }
+      return true;
+    },
+    [meritCount]
+  );
+
+  // Tải dữ liệu Mèo trong phòng, Túi đồ cá nhân & Yêu cầu Quà tặng khi vào phòng
+  useEffect(() => {
+    if (!session || !room) return;
+    setRoomCats(loadRoomCats(room.code));
+    setMyCatInventory(loadMyCatInventory(session.userId));
+    setGiftRequests(loadRoomGiftRequests(room.code));
+
+    const onStorageChange = () => {
+      setRoomCats(loadRoomCats(room.code));
+      setMyCatInventory(loadMyCatInventory(session.userId));
+      setGiftRequests(loadRoomGiftRequests(room.code));
+    };
+    window.addEventListener('storage', onStorageChange);
+    return () => window.removeEventListener('storage', onStorageChange);
+  }, [session, room]);
+
+  // Nếu bạn bận, mèo vẫn tự đi dạo hoặc nghỉ ngơi theo nhịp tự nhiên
+  useEffect(() => {
+    if (!session || !room) return;
+    const myCat = roomCats[session.userId];
+    if (!myCat) return;
+    const timer = window.setInterval(() => {
+      const cycle: CatActivity[] = ['walking', 'playing', 'sleeping'];
+      setRoomCats((prev) => {
+        const current = prev[session.userId];
+        if (!current) return prev;
+        const nextAct =
+          cycle[(cycle.indexOf(current.activity) + 1) % cycle.length];
+        const nextMap = {
+          ...prev,
+          [session.userId]: {
+            ...current,
+            activity: nextAct,
+            updatedAt: Date.now(),
+          },
+        };
+        saveRoomCats(room.code, nextMap);
+        return nextMap;
+      });
+    }, 24000);
+    return () => window.clearInterval(timer);
+  }, [session, room, Boolean(session && roomCats[session.userId])]);
+
+  const handleAdoptOrUpdateMyCat = useCallback(
+    (catProfile: OfficeCatProfile, broadcastMsg?: string) => {
+      if (!room) return;
+      setRoomCats((prev) => {
+        const nextMap = {
+          ...prev,
+          [catProfile.ownerUserId]: catProfile,
+        };
+        saveRoomCats(room.code, nextMap);
+        return nextMap;
+      });
+      if (broadcastMsg && session) {
+        sendChatMessage(
+          room.code,
+          broadcastMsg,
+          `cat-${Date.now()}`,
+          session.sessionToken
+        ).catch(() => {});
+      }
+    },
+    [room, session]
+  );
+
+  const handleUpdateMyCatInventory = useCallback(
+    (nextInv: Record<string, number>) => {
+      if (!session) return;
+      setMyCatInventory(nextInv);
+      saveMyCatInventory(session.userId, nextInv);
+    },
+    [session]
+  );
+
+  const handleCreateGiftRequest = useCallback(
+    (req: CatGiftRequest) => {
+      if (!room || !session) return;
+      setGiftRequests((prev) => {
+        const nextList = [req, ...prev];
+        saveRoomGiftRequests(room.code, nextList);
+        return nextList;
+      });
+      const item = CAT_SHOP_ITEMS.find((i) => i.id === req.itemId);
+      const targetText = req.targetNickname
+        ? `gửi tới @${req.targetNickname}`
+        : 'đăng vào mục Quà tặng của phòng';
+      sendChatMessage(
+        room.code,
+        `🎁 [QUÀ TẶNG MÈO] ${session.nickname} (mèo "${req.catName}") xin 1x ${
+          item ? `${item.icon} ${item.name}` : req.itemId
+        } (${targetText}). Mở Phòng Giải Trí → Nuôi Mèo → Quà tặng để tặng nhé!`,
+        `giftreq-${Date.now()}`,
+        session.sessionToken
+      ).catch(() => {});
+    },
+    [room, session]
+  );
+
+  const handleFulfillGiftRequest = useCallback(
+    (reqId: string) => {
+      if (!room || !session) return;
+      const targetReq = giftRequests.find((r) => r.id === reqId && r.status === 'open');
+      if (!targetReq) return;
+      const myQty = myCatInventory[targetReq.itemId] || 0;
+      if (myQty <= 0) return;
+
+      // 1. Trừ 1 món trong túi đồ của người tặng
+      const nextMyInv = { ...myCatInventory, [targetReq.itemId]: Math.max(0, myQty - 1) };
+      if (nextMyInv[targetReq.itemId] === 0) delete nextMyInv[targetReq.itemId];
+      setMyCatInventory(nextMyInv);
+      saveMyCatInventory(session.userId, nextMyInv);
+
+      // 2. Chuyển món quà vào túi đồ của người nhận
+      if (targetReq.requesterUserId === session.userId) {
+        const selfInv = {
+          ...nextMyInv,
+          [targetReq.itemId]: (nextMyInv[targetReq.itemId] || 0) + 1,
+        };
+        setMyCatInventory(selfInv);
+        saveMyCatInventory(session.userId, selfInv);
+      } else {
+        const receiverInv = loadMyCatInventory(targetReq.requesterUserId);
+        receiverInv[targetReq.itemId] = (receiverInv[targetReq.itemId] || 0) + 1;
+        saveMyCatInventory(targetReq.requesterUserId, receiverInv);
+      }
+
+      // 3. Tự động đóng yêu cầu (status = 'fulfilled')
+      setGiftRequests((prev) => {
+        const nextList = prev.map((r) =>
+          r.id === reqId
+            ? {
+                ...r,
+                status: 'fulfilled' as const,
+                fulfilledByNickname: session.nickname,
+              }
+            : r
+        );
+        saveRoomGiftRequests(room.code, nextList);
+        return nextList;
+      });
+
+      const item = CAT_SHOP_ITEMS.find((i) => i.id === targetReq.itemId);
+      sendChatMessage(
+        room.code,
+        `💝 [ĐÃ TẶNG QUÀ] ${session.nickname} vừa tặng 1x ${
+          item ? `${item.icon} ${item.name}` : targetReq.itemId
+        } cho bé mèo "${targetReq.catName}" của ${targetReq.requesterNickname}!`,
+        `giftdone-${Date.now()}`,
+        session.sessionToken
+      ).catch(() => {});
+    },
+    [room, session, giftRequests, myCatInventory]
+  );
+
+  const handlePetCatIn3D = useCallback(
+    (cat: OfficeCatProfile) => {
+      if (!room) return;
+      const updated: OfficeCatProfile = {
+        ...cat,
+        petCount: (cat.petCount || 0) + 1,
+        happiness: Math.min(100, (cat.happiness || 80) + 10),
+        updatedAt: Date.now(),
+      };
+      setRoomCats((prev) => {
+        const nextMap = { ...prev, [cat.ownerUserId]: updated };
+        saveRoomCats(room.code, nextMap);
+        return nextMap;
+      });
+      showToast(
+        `🤚 Bạn vừa vuốt ve bé mèo "${cat.catName}" của ${cat.ownerNickname}! 💕`
+      );
+    },
+    [room, showToast]
   );
 
   const hydrateRoomData = useCallback(
@@ -780,6 +993,8 @@ export function App() {
         floatingMeritText={floatingMeritText}
         onStrikeMo={handleStrikeMo}
         onRingBell={handleRingBell}
+        roomCats={roomCats}
+        onPetCatIn3D={handlePetCatIn3D}
       />
 
       {/* THANH THÔNG TIN PHÒNG, CHỖ NGỒI & NÚT CHUYỂN GÓC NHÌN THỨ NHẤT Ở TRÊN CÙNG */}
@@ -1047,6 +1262,15 @@ export function App() {
           handleSendMessage(text).catch(() => {});
         }}
         activeChallengeBanner={activeChallengeBanner}
+        meritCount={meritCount}
+        onSpendMerit={handleSpendMerit}
+        roomCats={roomCats}
+        myCatInventory={myCatInventory}
+        giftRequests={giftRequests}
+        onAdoptOrUpdateMyCat={handleAdoptOrUpdateMyCat}
+        onUpdateMyCatInventory={handleUpdateMyCatInventory}
+        onCreateGiftRequest={handleCreateGiftRequest}
+        onFulfillGiftRequest={handleFulfillGiftRequest}
       />
 
       {/* THANH NÚT KÍNH MỜ GỌN Ở PHÍA DƯỚI MÀN HÌNH (Tối ưu cho cả Điện thoại & Máy tính) */}

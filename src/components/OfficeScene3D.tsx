@@ -12,6 +12,11 @@ import {
 } from '../constants/officeLayout';
 import type { AvatarGender, RoomMember, WorkSeat } from '../types/office';
 import type { DeityType } from './ZenSanctuaryOverlay';
+import {
+  CAT_BREEDS,
+  getActivityLabel,
+  type OfficeCatProfile,
+} from '../utils/officeCatsData';
 
 export interface ActiveSpeechBubble {
   userId: string;
@@ -40,6 +45,9 @@ interface OfficeScene3DProps {
   floatingMeritText: string | null;
   onStrikeMo: () => void;
   onRingBell: () => void;
+  // Hệ thống Mèo Văn Phòng ở khu vực bên ngoài văn phòng
+  roomCats?: Record<string, OfficeCatProfile>;
+  onPetCatIn3D?: (cat: OfficeCatProfile) => void;
 }
 
 /**
@@ -1319,6 +1327,357 @@ const DrawerCabinetUnit: React.FC<{
   );
 };
 
+/**
+ * Mô hình Bé Mèo 3D dễ thương di chuyển, chơi đùa hoặc nằm ngủ ở khu vực bên ngoài văn phòng.
+ * Khi chạm vào một bé mèo -> hiển thị Tên mèo & Tên người nuôi + nút Vuốt ve mèo ngay tại đó.
+ */
+const LowPolyCat3D: React.FC<{
+  cat: OfficeCatProfile;
+  index: number;
+  isSelected: boolean;
+  onSelectCat: () => void;
+  onPetCat: () => void;
+}> = ({ cat, index, isSelected, onSelectCat, onPetCat }) => {
+  const groupRef = useRef<THREE.Group>(null);
+  const tailRef = useRef<THREE.Mesh>(null);
+  const [petHeartBurst, setPetHeartBurst] = useState(false);
+
+  const breed = CAT_BREEDS.find((b) => b.id === cat.breedId) || CAT_BREEDS[0];
+
+  // Quỹ đạo di chuyển / vị trí nghỉ ngơi riêng cho từng bé mèo ngoài sân
+  const baseAnchorX = useMemo(() => {
+    const slots = [-3.6, -1.2, 1.4, 3.8, -2.4, 2.6];
+    return slots[index % slots.length];
+  }, [index]);
+
+  const baseAnchorZ = useMemo(() => {
+    const zSlots = [-0.25, 0.35, -0.15, 0.4, 0.1, -0.35];
+    return zSlots[index % zSlots.length];
+  }, [index]);
+
+  useFrame(({ clock }) => {
+    if (!groupRef.current) return;
+    const t = clock.getElapsedTime() + index * 2.1;
+
+    if (cat.activity === 'sleeping') {
+      // Mèo nằm cuộn tròn thở nhịp nhàng trên đệm ngủ
+      groupRef.current.position.set(baseAnchorX, 0.06, baseAnchorZ);
+      groupRef.current.rotation.y = 0.35;
+      const breath = 1 + Math.sin(t * 2.2) * 0.04;
+      groupRef.current.scale.set(breath, 0.82, breath);
+    } else if (cat.activity === 'playing') {
+      // Mèo nhảy nhót vờn quanh đồ chơi
+      const px = baseAnchorX + Math.cos(t * 1.6) * 0.55;
+      const pz = baseAnchorZ + Math.sin(t * 1.6) * 0.38;
+      const hop = Math.abs(Math.sin(t * 4.5)) * 0.16;
+      groupRef.current.position.set(px, hop, pz);
+      groupRef.current.rotation.y = -t * 1.6 + Math.PI / 2;
+      groupRef.current.scale.set(1, 1, 1);
+    } else {
+      // Mèo đi dạo thong thả ngoài sân văn phòng
+      const wx = baseAnchorX + Math.sin(t * 0.75) * 1.15;
+      const wz = baseAnchorZ + Math.cos(t * 0.5) * 0.42;
+      const stepBob = Math.abs(Math.sin(t * 3.5)) * 0.05;
+      const dx = Math.cos(t * 0.75) * 0.75 * 1.15;
+      const dz = -Math.sin(t * 0.5) * 0.5 * 0.42;
+      groupRef.current.position.set(wx, stepBob, wz);
+      groupRef.current.rotation.y = Math.atan2(dx, dz);
+      groupRef.current.scale.set(1, 1, 1);
+    }
+
+    if (tailRef.current) {
+      tailRef.current.rotation.z = Math.sin(t * 4.2) * 0.35;
+    }
+  });
+
+  const handlePetClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setPetHeartBurst(true);
+    onPetCat();
+    window.setTimeout(() => {
+      setPetHeartBurst(false);
+    }, 1400);
+  };
+
+  return (
+    <group
+      ref={groupRef}
+      position={[baseAnchorX, 0, baseAnchorZ]}
+      onClick={(e) => {
+        e.stopPropagation();
+        onSelectCat();
+      }}
+      onPointerOver={() => {
+        document.body.style.cursor = 'pointer';
+      }}
+      onPointerOut={() => {
+        document.body.style.cursor = 'auto';
+      }}
+    >
+      {/* Thân mèo */}
+      <mesh position={[0, 0.22, 0]} castShadow>
+        <boxGeometry args={[0.34, 0.24, 0.52]} />
+        <meshStandardMaterial color={breed.bodyColor} roughness={0.65} />
+      </mesh>
+
+      {/* Bụng mèo */}
+      <mesh position={[0, 0.19, 0.02]}>
+        <boxGeometry args={[0.35, 0.14, 0.42]} />
+        <meshStandardMaterial color={breed.bellyColor} roughness={0.75} />
+      </mesh>
+
+      {/* Đầu mèo */}
+      <mesh position={[0, 0.38, 0.24]} castShadow>
+        <boxGeometry args={[0.32, 0.28, 0.28]} />
+        <meshStandardMaterial color={breed.bodyColor} roughness={0.6} />
+      </mesh>
+
+      {/* Hai tai nhọn */}
+      <mesh position={[-0.1, 0.56, 0.24]} rotation={[0, 0, 0.18]} castShadow>
+        <coneGeometry args={[0.065, 0.13, 4]} />
+        <meshStandardMaterial color={breed.earColor} roughness={0.65} />
+      </mesh>
+      <mesh position={[0.1, 0.56, 0.24]} rotation={[0, 0, -0.18]} castShadow>
+        <coneGeometry args={[0.065, 0.13, 4]} />
+        <meshStandardMaterial color={breed.earColor} roughness={0.65} />
+      </mesh>
+
+      {/* Mắt & Mũi hồng */}
+      <mesh position={[-0.07, 0.4, 0.385]}>
+        <sphereGeometry args={[0.026, 8, 8]} />
+        <meshBasicMaterial color="#0f172a" />
+      </mesh>
+      <mesh position={[0.07, 0.4, 0.385]}>
+        <sphereGeometry args={[0.026, 8, 8]} />
+        <meshBasicMaterial color="#0f172a" />
+      </mesh>
+      <mesh position={[0, 0.35, 0.39]}>
+        <sphereGeometry args={[0.022, 8, 8]} />
+        <meshBasicMaterial color="#f472b6" />
+      </mesh>
+
+      {/* 4 chân nhỏ */}
+      {[
+        [-0.11, 0.08, 0.17],
+        [0.11, 0.08, 0.17],
+        [-0.11, 0.08, -0.17],
+        [0.11, 0.08, -0.17],
+      ].map(([lx, ly, lz], i) => (
+        <mesh key={i} position={[lx, ly, lz]} castShadow>
+          <boxGeometry args={[0.08, 0.16, 0.08]} />
+          <meshStandardMaterial color={breed.bellyColor} roughness={0.7} />
+        </mesh>
+      ))}
+
+      {/* Đuôi mèo ngoe nguẩy */}
+      <mesh
+        ref={tailRef}
+        position={[0, 0.32, -0.28]}
+        rotation={[-0.65, 0, 0]}
+        castShadow
+      >
+        <cylinderGeometry args={[0.03, 0.035, 0.32, 8]} />
+        <meshStandardMaterial color={breed.earColor} roughness={0.65} />
+      </mesh>
+
+      {/* Nhãn nổi trên đầu bé mèo: Khi chạm vào hiển thị rõ Tên mèo + Tên người nuôi + nút Vuốt ve */}
+      <Html position={[0, 0.85, 0]} center zIndexRange={[15, 0]}>
+        {isSelected ? (
+          <div
+            data-testid={`cat-3d-popup-${cat.ownerUserId}`}
+            onClick={(e) => e.stopPropagation()}
+            className="flex flex-col items-center gap-1 rounded-2xl border-2 border-amber-400 bg-slate-950/95 px-3 py-2 text-center shadow-2xl backdrop-blur-md min-w-[165px]"
+          >
+            <div className="text-xs font-black text-amber-300">
+              🐱 {cat.catName}
+            </div>
+            <div className="text-[10px] font-semibold text-slate-200 whitespace-nowrap">
+              Người nuôi: <strong className="text-emerald-300">{cat.ownerNickname}</strong>
+            </div>
+            <div className="text-[10px] font-bold text-amber-200/90">
+              {getActivityLabel(cat.activity)}
+            </div>
+            {petHeartBurst && (
+              <div className="text-[11px] font-black text-rose-400 animate-bounce">
+                💕 Meow~ (+1 Vuốt ve!)
+              </div>
+            )}
+            <button
+              type="button"
+              data-testid={`pet-3d-cat-btn-${cat.ownerUserId}`}
+              onClick={handlePetClick}
+              className="mt-0.5 inline-flex items-center gap-1 rounded-xl bg-rose-500 hover:bg-rose-400 px-2.5 py-1 text-[10px] font-black text-white shadow cursor-pointer"
+            >
+              🤚 Vuốt ve mèo ({cat.petCount})
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            data-testid={`inspect-3d-cat-btn-${cat.ownerUserId}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelectCat();
+            }}
+            className="whitespace-nowrap rounded-full border border-amber-300/80 bg-slate-950/85 hover:bg-slate-900 px-2 py-0.5 text-[10px] font-bold text-amber-200 shadow cursor-pointer"
+          >
+            🐾 {cat.catName} <span className="text-slate-400">({cat.ownerNickname})</span>
+          </button>
+        )}
+      </Html>
+    </group>
+  );
+};
+
+/**
+ * Khu vực bên ngoài văn phòng (Sân Vườn Mèo 3D) nằm ngay phía trước cửa văn phòng:
+ * Nơi mèo của bạn và mèo của đồng nghiệp đi dạo, chơi đùa với đồ chơi hoặc nằm ngủ trên đệm.
+ */
+const OutdoorCatCourtyard3D: React.FC<{
+  roomCats?: Record<string, OfficeCatProfile>;
+  currentUserId: string;
+  onPetCatIn3D?: (cat: OfficeCatProfile) => void;
+  onOpenCatGame?: () => void;
+}> = ({ roomCats = {}, currentUserId, onPetCatIn3D, onOpenCatGame }) => {
+  const [selectedCatOwnerId, setSelectedCatOwnerId] = useState<string | null>(null);
+
+  // Tập hợp danh sách mèo trong phòng + 1 bé mèo của đồng nghiệp mẫu để khu vườn ngoài văn phòng luôn sinh động
+  const displayCats = useMemo(() => {
+    const list = Object.values(roomCats);
+    const hasColleagueCat = list.some((c) => c.ownerUserId !== currentUserId);
+    if (!hasColleagueCat) {
+      list.push({
+        ownerUserId: 'colleague_demo_linh',
+        ownerNickname: 'Linh Đan (Đồng nghiệp)',
+        catName: 'Bông Gòn',
+        breedId: 'white',
+        activity: 'playing',
+        fullness: 90,
+        happiness: 95,
+        petCount: 5,
+        placedYardItems: ['yarn_ball', 'daisy_bed'],
+        updatedAt: Date.now(),
+      });
+    }
+    return list;
+  }, [roomCats, currentUserId]);
+
+  // Tập hợp tất cả đồ chơi & đệm ngủ đã được đặt ở khu vực bên ngoài văn phòng
+  const placedItems = useMemo(() => {
+    const set = new Set<string>(['yarn_ball', 'daisy_bed']);
+    for (const c of Object.values(roomCats)) {
+      for (const itemId of c.placedYardItems || []) {
+        set.add(itemId);
+      }
+    }
+    return Array.from(set);
+  }, [roomCats]);
+
+  return (
+    <group position={[0, 0, 7.1]}>
+      {/* Thảm cỏ xanh mát bên ngoài văn phòng */}
+      <mesh
+        position={[0, -0.07, 0]}
+        receiveShadow
+        onClick={() => setSelectedCatOwnerId(null)}
+      >
+        <boxGeometry args={[12.4, 0.12, 2.8]} />
+        <meshStandardMaterial color="#15803d" roughness={0.9} />
+      </mesh>
+      <mesh position={[0, -0.01, 0]} receiveShadow>
+        <boxGeometry args={[12.0, 0.03, 2.45]} />
+        <meshStandardMaterial color="#22c55e" roughness={0.85} />
+      </mesh>
+
+      {/* Hàng rào gỗ trắng thấp bao quanh sân mèo */}
+      <mesh position={[0, 0.22, 1.36]} castShadow>
+        <boxGeometry args={[12.2, 0.08, 0.08]} />
+        <meshStandardMaterial color="#fef3c7" roughness={0.6} />
+      </mesh>
+
+      {/* Bảng tên khu vực bên ngoài văn phòng */}
+      <Html position={[-4.8, 0.65, -0.95]} center zIndexRange={[10, 0]}>
+        <button
+          type="button"
+          data-testid="outdoor-cat-yard-banner-btn"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (onOpenCatGame) onOpenCatGame();
+          }}
+          className="whitespace-nowrap rounded-full border border-emerald-300/60 bg-emerald-950/90 hover:bg-emerald-900 px-2.5 py-0.5 text-[9px] sm:text-[10px] font-bold text-emerald-200 shadow-lg cursor-pointer"
+        >
+          🐾 Khu vực ngoài văn phòng ({displayCats.length} bé mèo • Chạm vào mèo để xem & vuốt ve)
+        </button>
+      </Html>
+
+      {/* Đệm ngủ & Đồ chơi đặt ở khu vực bên ngoài cho mèo sử dụng */}
+      {placedItems.includes('daisy_bed') && (
+        <group position={[-3.5, 0.04, 0.2]}>
+          <mesh receiveShadow castShadow>
+            <cylinderGeometry args={[0.48, 0.52, 0.1, 20]} />
+            <meshStandardMaterial color="#fde047" roughness={0.7} />
+          </mesh>
+          <mesh position={[0, 0.06, 0]}>
+            <cylinderGeometry args={[0.32, 0.32, 0.05, 16]} />
+            <meshStandardMaterial color="#fffbeb" roughness={0.8} />
+          </mesh>
+        </group>
+      )}
+
+      {placedItems.includes('royal_cushion') && (
+        <group position={[3.5, 0.05, 0.25]}>
+          <mesh receiveShadow castShadow>
+            <cylinderGeometry args={[0.52, 0.55, 0.12, 20]} />
+            <meshStandardMaterial color="#ec4899" roughness={0.6} />
+          </mesh>
+          <mesh position={[0, 0.07, 0]}>
+            <cylinderGeometry args={[0.36, 0.36, 0.05, 16]} />
+            <meshStandardMaterial color="#fce7f3" roughness={0.7} />
+          </mesh>
+        </group>
+      )}
+
+      {placedItems.includes('yarn_ball') && (
+        <mesh position={[-0.9, 0.14, 0.25]} castShadow>
+          <sphereGeometry args={[0.15, 14, 14]} />
+          <meshStandardMaterial color="#f43f5e" roughness={0.5} />
+        </mesh>
+      )}
+
+      {placedItems.includes('feather_wand') && (
+        <group position={[1.6, 0, -0.2]}>
+          <mesh position={[0, 0.28, 0]} rotation={[0, 0, 0.3]} castShadow>
+            <cylinderGeometry args={[0.02, 0.025, 0.55, 8]} />
+            <meshStandardMaterial color="#d97706" />
+          </mesh>
+          <mesh position={[0.12, 0.52, 0]} castShadow>
+            <sphereGeometry args={[0.09, 10, 10]} />
+            <meshStandardMaterial color="#38bdf8" />
+          </mesh>
+        </group>
+      )}
+
+      {/* Các bé mèo của mình và của đồng nghiệp đang đi dạo, chơi đùa hoặc nằm ngủ */}
+      {displayCats.map((cat, idx) => (
+        <LowPolyCat3D
+          key={cat.ownerUserId}
+          cat={cat}
+          index={idx}
+          isSelected={selectedCatOwnerId === cat.ownerUserId}
+          onSelectCat={() =>
+            setSelectedCatOwnerId((prev) =>
+              prev === cat.ownerUserId ? null : cat.ownerUserId
+            )
+          }
+          onPetCat={() => {
+            if (onPetCatIn3D) onPetCatIn3D(cat);
+          }}
+        />
+      ))}
+    </group>
+  );
+};
+
 export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
   currentUserId,
   members,
@@ -1339,6 +1698,8 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
   floatingMeritText,
   onStrikeMo,
   onRingBell,
+  roomCats,
+  onPetCatIn3D,
 }) => {
   const nicknameCounts = useMemo(() => {
     const map = new Map<string, number>();
@@ -1542,6 +1903,14 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
 
           {/* GIAN PHÒNG GIẢI TRÍ 3D (Bia Phóng Phi Tiêu 3D • Máy Arcade • Đấu Solo) */}
           <EntertainmentRoom3D onOpenGameHub={onEnterGameRoom} />
+
+          {/* KHU VỰC BÊN NGOÀI VĂN PHÒNG (Sân Vườn Mèo 3D: Gặp mèo của mình & mèo của đồng nghiệp) */}
+          <OutdoorCatCourtyard3D
+            roomCats={roomCats}
+            currentUserId={currentUserId}
+            onPetCatIn3D={onPetCatIn3D}
+            onOpenCatGame={onEnterGameRoom}
+          />
 
           {/* SÀN PHÒNG VĂN PHÒNG CHÍNH (16.0m x 10.8m) */}
           <mesh position={[0, -0.08, 0]} receiveShadow>
