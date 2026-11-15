@@ -1,5 +1,6 @@
-import React from 'react';
-import { Sparkles, Flame, Volume2, VolumeX, HeartHandshake, ArrowLeft, Eye } from 'lucide-react';
+import React, { useRef } from 'react';
+import { Sparkles, Flame, Volume2, VolumeX, HeartHandshake, ArrowLeft, Eye, Music, Upload } from 'lucide-react';
+import { ZEN_MUSIC_TRACKS, type ZenTrackId } from '../utils/zenSound';
 
 export type DeityType = 'buddha' | 'ong_dia' | 'than_tai';
 
@@ -80,6 +81,10 @@ interface ZenSanctuaryOverlayProps {
   isBowing: boolean;
   autoMo: boolean;
   soundEnabled: boolean;
+  selectedTrackId: ZenTrackId;
+  customTrackName: string | null;
+  onSelectTrack: (trackId: ZenTrackId) => void;
+  onUploadCustomMp3: (file: File) => void;
   activeBlessing: string | null;
   cameraMode: 'overview' | 'first_person';
   onToggleCameraMode: () => void;
@@ -101,6 +106,10 @@ export const ZenSanctuaryOverlay: React.FC<ZenSanctuaryOverlayProps> = ({
   isBowing,
   autoMo,
   soundEnabled,
+  selectedTrackId,
+  customTrackName,
+  onSelectTrack,
+  onUploadCustomMp3,
   activeBlessing,
   cameraMode,
   onToggleCameraMode,
@@ -111,6 +120,7 @@ export const ZenSanctuaryOverlay: React.FC<ZenSanctuaryOverlayProps> = ({
   onToggleAutoMo,
   onToggleSound,
 }) => {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   if (!isOpen) return null;
 
   const currentMeta = DEITY_OPTIONS[selectedDeity];
@@ -281,6 +291,66 @@ export const ZenSanctuaryOverlay: React.FC<ZenSanctuaryOverlayProps> = ({
           >
             <span>{autoMo ? '⏸ Dừng tự gõ' : '🔄 Tự gõ mõ'}</span>
           </button>
+        </div>
+
+        {/* Hàng Đổi nhạc nền Phòng Thiền + Nút tải file MP3 từ máy */}
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2">
+          <div className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-300">
+            <Music className="h-3.5 w-3.5 shrink-0" />
+            <span>Nhạc thiền:</span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            {ZEN_MUSIC_TRACKS.filter((t) => t.id !== 'custom_mp3').map((track) => {
+              const isSelected = selectedTrackId === track.id;
+              return (
+                <button
+                  key={track.id}
+                  type="button"
+                  data-testid={`zen-music-${track.id}`}
+                  onClick={() => onSelectTrack(track.id)}
+                  className={`rounded-xl px-2.5 py-1 text-[11px] font-medium transition-all cursor-pointer ${
+                    isSelected
+                      ? 'bg-amber-400 text-slate-950 font-bold shadow-sm'
+                      : 'bg-slate-800/90 text-slate-300 hover:bg-slate-700 border border-white/10'
+                  }`}
+                  title={track.description}
+                >
+                  {track.name}
+                </button>
+              );
+            })}
+
+            {/* Nút chọn file nhạc .mp3 / .wav từ điện thoại hoặc máy tính */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="audio/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  onUploadCustomMp3(file);
+                }
+              }}
+            />
+            <button
+              type="button"
+              data-testid="zen-upload-mp3-btn"
+              onClick={() => fileInputRef.current?.click()}
+              className={`inline-flex items-center gap-1 rounded-xl px-2.5 py-1 text-[11px] font-semibold transition-all cursor-pointer ${
+                selectedTrackId === 'custom_mp3'
+                  ? 'bg-emerald-400 text-slate-950 font-bold shadow-sm'
+                  : 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 border border-emerald-400/30'
+              }`}
+              title="Chọn file nhạc MP3/WAV từ điện thoại hoặc máy tính của bạn"
+            >
+              <Upload className="h-3 w-3" />
+              <span className="max-w-[130px] truncate">
+                {customTrackName ? `🎵 ${customTrackName}` : 'Chọn nhạc MP3 từ máy'}
+              </span>
+            </button>
+          </div>
         </div>
       </div>
     </div>

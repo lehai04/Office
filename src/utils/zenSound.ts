@@ -1,10 +1,61 @@
-// Bộ tổng hợp âm thanh Tịnh Tâm (Web Audio API) — Tiếng Mõ Gỗ & Chuông Đồng
+// Bộ âm thanh & Nhạc nền Phòng Tịnh Tâm (src/utils/zenSound.ts)
+// Bạn có thể đổi link nhạc MP3 mặc định tại mảng ZEN_MUSIC_TRACKS bên dưới,
+// hoặc bấm nút "🎵 Đổi nhạc" ngay trong giao diện Phòng Tịnh Tâm để tải file .mp3 từ máy lên!
+
+export type ZenTrackId = 'off' | 'singing_bowl_432' | 'zen_flute_528' | 'temple_breeze' | 'custom_mp3';
+
+export interface ZenMusicTrack {
+  id: ZenTrackId;
+  name: string;
+  description: string;
+  // Nếu bạn muốn dùng file .mp3 cố định trong code, hãy bỏ file vào thư mục public/ (ví dụ public/nhac-thien.mp3)
+  // rồi điền đường dẫn vào audioUrl (ví dụ: './nhac-thien.mp3' hoặc link https://...mp3)
+  audioUrl?: string;
+}
+
+export const ZEN_MUSIC_TRACKS: ZenMusicTrack[] = [
+  {
+    id: 'singing_bowl_432',
+    name: '🥣 Chuông Xoay 432Hz',
+    description: 'Âm thanh chuông xoay Tây Tạng trầm ấm giúp thư giãn sâu',
+    audioUrl: '',
+  },
+  {
+    id: 'zen_flute_528',
+    name: '🪷 Hòa Âm Tịnh Tâm 528Hz',
+    description: 'Giai điệu tần số 528Hz nhẹ nhàng giải tỏa căng thẳng',
+    audioUrl: '',
+  },
+  {
+    id: 'temple_breeze',
+    name: '🎐 Chuông Gió Chùa Cổ',
+    description: 'Tiếng chuông gió ngân vang thanh tịnh nơi hiên chùa',
+    audioUrl: '',
+  },
+  {
+    id: 'custom_mp3',
+    name: '📂 Nhạc MP3 tự chọn',
+    description: 'Phát bài nhạc thiền .mp3 từ máy của bạn',
+    audioUrl: '',
+  },
+  {
+    id: 'off',
+    name: '🔇 Tắt nhạc nền',
+    description: 'Chỉ giữ tiếng gõ mõ và tiếng chuông khi bấm',
+  },
+];
 
 let sharedAudioCtx: AudioContext | null = null;
+let bgMusicTimer: number | null = null;
+let bgDroneNodes: { oscs: OscillatorNode[]; masterGain: GainNode } | null = null;
+let htmlAudioElement: HTMLAudioElement | null = null;
+let currentCustomUrl: string | null = null;
 
 function getAudioContext(): AudioContext | null {
   if (typeof window === 'undefined') return null;
-  const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+  const AudioCtx =
+    window.AudioContext ||
+    (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
   if (!AudioCtx) return null;
   if (!sharedAudioCtx) {
     sharedAudioCtx = new AudioCtx();
@@ -13,6 +64,149 @@ function getAudioContext(): AudioContext | null {
     sharedAudioCtx.resume().catch(() => {});
   }
   return sharedAudioCtx;
+}
+
+/**
+ * Dừng toàn bộ nhạc nền Phòng Tịnh Tâm đang phát
+ */
+export function stopZenBackgroundMusic(): void {
+  if (bgMusicTimer !== null && typeof window !== 'undefined') {
+    window.clearInterval(bgMusicTimer);
+    bgMusicTimer = null;
+  }
+  if (bgDroneNodes) {
+    try {
+      const ctx = sharedAudioCtx;
+      if (ctx) {
+        bgDroneNodes.masterGain.gain.linearRampToValueAtTime(0.0001, ctx.currentTime + 0.3);
+      }
+      setTimeout(() => {
+        bgDroneNodes?.oscs.forEach((o) => {
+          try {
+            o.stop();
+            o.disconnect();
+          } catch {
+            // ignore
+          }
+        });
+        bgDroneNodes = null;
+      }, 320);
+    } catch {
+      bgDroneNodes = null;
+    }
+  }
+  if (htmlAudioElement) {
+    try {
+      htmlAudioElement.pause();
+      htmlAudioElement.currentTime = 0;
+    } catch {
+      // ignore
+    }
+  }
+}
+
+/**
+ * Bắt đầu phát nhạc nền Phòng Tịnh Tâm theo bài được chọn
+ */
+export function startZenBackgroundMusic(
+  trackId: ZenTrackId,
+  customAudioUrl?: string | null
+): void {
+  stopZenBackgroundMusic();
+  if (trackId === 'off' || typeof window === 'undefined') return;
+
+  const trackConfig = ZEN_MUSIC_TRACKS.find((t) => t.id === trackId);
+  const targetUrl =
+    trackId === 'custom_mp3'
+      ? customAudioUrl || currentCustomUrl || trackConfig?.audioUrl
+      : trackConfig?.audioUrl;
+
+  if (customAudioUrl) {
+    currentCustomUrl = customAudioUrl;
+  }
+
+  // Nếu có file .mp3 hoặc URL âm thanh riêng -> phát bằng HTMLAudioElement lặp vô tận
+  if (targetUrl) {
+    try {
+      if (!htmlAudioElement) {
+        htmlAudioElement = new Audio();
+        htmlAudioElement.loop = true;
+      }
+      htmlAudioElement.src = targetUrl;
+      htmlAudioElement.volume = 0.45;
+      htmlAudioElement.play().catch(() => {});
+      return;
+    } catch {
+      // fallback sang bộ tổng hợp nhạc thiền Web Audio bên dưới
+    }
+  }
+
+  const ctx = getAudioContext();
+  if (!ctx) return;
+
+  // Tạo nền hòa âm Ambient Pad êm dịu
+  const masterGain = ctx.createGain();
+  masterGain.gain.setValueAtTime(0.001, ctx.currentTime);
+  masterGain.gain.linearRampToValueAtTime(0.08, ctx.currentTime + 1.5);
+  masterGain.connect(ctx.destination);
+
+  const baseFreqs =
+    trackId === 'singing_bowl_432'
+      ? [216, 432, 648]
+      : trackId === 'zen_flute_528'
+        ? [264, 396, 528]
+        : [288, 432, 576];
+
+  const oscs: OscillatorNode[] = baseFreqs.map((freq, idx) => {
+    const osc = ctx.createOscillator();
+    const oscGain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, ctx.currentTime);
+    oscGain.gain.setValueAtTime(idx === 0 ? 0.5 : idx === 1 ? 0.3 : 0.15, ctx.currentTime);
+    osc.connect(oscGain);
+    oscGain.connect(masterGain);
+    osc.start();
+    return osc;
+  });
+
+  bgDroneNodes = { oscs, masterGain };
+
+  // Điểm xuyết nốt chuông thiền / chuông gió định kỳ
+  const scaleNotes =
+    trackId === 'singing_bowl_432'
+      ? [432, 576, 648, 864]
+      : trackId === 'zen_flute_528'
+        ? [528, 594, 660, 792, 880]
+        : [768, 864, 1024, 1152, 1296];
+
+  const playNote = () => {
+    const c = getAudioContext();
+    if (!c) return;
+    const now = c.currentTime;
+    const noteFreq = scaleNotes[Math.floor(Math.random() * scaleNotes.length)];
+    const osc = c.createOscillator();
+    const gain = c.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(noteFreq, now);
+
+    const duration = trackId === 'temple_breeze' ? 2.4 : 4.2;
+    const peak = trackId === 'temple_breeze' ? 0.06 : 0.09;
+
+    gain.gain.setValueAtTime(0.0005, now);
+    gain.gain.linearRampToValueAtTime(peak, now + 0.08);
+    gain.gain.exponentialRampToValueAtTime(0.0005, now + duration);
+
+    osc.connect(gain);
+    gain.connect(c.destination);
+    osc.start(now);
+    osc.stop(now + duration + 0.05);
+  };
+
+  playNote();
+  bgMusicTimer = window.setInterval(
+    playNote,
+    trackId === 'temple_breeze' ? 2200 : 3800
+  );
 }
 
 /**
@@ -96,4 +290,3 @@ export function playTempleBellSound(): void {
     osc.stop(now + h.decay + 0.05);
   }
 }
-

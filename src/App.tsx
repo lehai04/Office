@@ -28,7 +28,13 @@ import {
   DEITY_OPTIONS,
   type DeityType,
 } from './components/ZenSanctuaryOverlay';
-import { playWoodenFishSound, playTempleBellSound } from './utils/zenSound';
+import {
+  playWoodenFishSound,
+  playTempleBellSound,
+  startZenBackgroundMusic,
+  stopZenBackgroundMusic,
+  type ZenTrackId,
+} from './utils/zenSound';
 import {
   changeRoomCodeApi,
   clearSavedSession,
@@ -106,6 +112,9 @@ export function App() {
   const [isBowing, setIsBowing] = useState<boolean>(false);
   const [autoMo, setAutoMo] = useState<boolean>(false);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
+  const [zenTrackId, setZenTrackId] = useState<ZenTrackId>('singing_bowl_432');
+  const [customZenAudioUrl, setCustomZenAudioUrl] = useState<string | null>(null);
+  const [customZenTrackName, setCustomZenTrackName] = useState<string | null>(null);
   const [moPulseKey, setMoPulseKey] = useState<number>(0);
   const [floatingMeritText, setFloatingMeritText] = useState<string | null>(null);
   const [activeBlessing, setActiveBlessing] = useState<string | null>(null);
@@ -219,6 +228,33 @@ export function App() {
     }, 1150);
     return () => window.clearInterval(timer);
   }, [autoMo, activePanel, handleStrikeMo]);
+
+  // Phát / dừng nhạc nền thiền khi ở trong Phòng Tịnh Tâm
+  useEffect(() => {
+    if (activePanel === 'zen' && soundEnabled && zenTrackId !== 'off') {
+      startZenBackgroundMusic(zenTrackId, customZenAudioUrl);
+    } else {
+      stopZenBackgroundMusic();
+    }
+    return () => {
+      stopZenBackgroundMusic();
+    };
+  }, [activePanel, soundEnabled, zenTrackId, customZenAudioUrl]);
+
+  const handleUploadCustomZenMp3 = useCallback(
+    (file: File) => {
+      if (customZenAudioUrl) {
+        URL.revokeObjectURL(customZenAudioUrl);
+      }
+      const objectUrl = URL.createObjectURL(file);
+      setCustomZenAudioUrl(objectUrl);
+      setCustomZenTrackName(file.name);
+      setZenTrackId('custom_mp3');
+      setSoundEnabled(true);
+      showToast(`Đang phát nhạc thiền từ máy: ${file.name}`);
+    },
+    [customZenAudioUrl, showToast]
+  );
 
   const hydrateRoomData = useCallback(
     async (roomCode: string, sessionToken: string, isFirstJoin = false) => {
@@ -965,6 +1001,15 @@ export function App() {
         isBowing={isBowing}
         autoMo={autoMo}
         soundEnabled={soundEnabled}
+        selectedTrackId={zenTrackId}
+        customTrackName={customZenTrackName}
+        onSelectTrack={(trackId) => {
+          setZenTrackId(trackId);
+          if (trackId !== 'off' && !soundEnabled) {
+            setSoundEnabled(true);
+          }
+        }}
+        onUploadCustomMp3={handleUploadCustomZenMp3}
         activeBlessing={activeBlessing}
         cameraMode={cameraMode}
         onToggleCameraMode={() =>
