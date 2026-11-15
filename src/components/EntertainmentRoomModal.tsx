@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Gamepad2,
-  Target,
   Trophy,
   Users,
   Upload,
@@ -15,90 +14,122 @@ import {
   Trash2,
   Swords,
   Crown,
-  Wind,
   Disc,
+  Flame,
 } from 'lucide-react';
 import type { RoomMember } from '../types/office';
-import { playDartHitSound } from '../utils/zenSound';
+import {
+  playDartHitSound,
+  playKnifeClangSound,
+  playWoodShatterSound,
+} from '../utils/zenSound';
 
-export interface DartLevelConfig {
-  level: number;
+export interface KnifeStageConfig {
+  stage: number;
   title: string;
   subtitle: string;
-  dartsCount: number;
-  targetScore: number;
-  speedX: number;
-  speedY: number;
-  maxWind: number;
-  boardScale: number;
+  knivesToThrow: number;
+  presetKnives: number;
+  applesCount: number;
+  baseSpeed: number;
+  pattern: 'steady' | 'sine_wave' | 'reverse_pause' | 'erratic' | 'boss_chaos';
+  isBoss?: boolean;
 }
 
-export const DART_LEVELS: DartLevelConfig[] = [
+export const KNIFE_STAGES: KnifeStageConfig[] = [
   {
-    level: 1,
-    title: 'Level 1 • Tập Sự Văn Phòng',
-    subtitle: 'Bia đứng yên, không gió. Hãy ngắm chuẩn hồng tâm!',
-    dartsCount: 5,
-    targetScore: 100,
-    speedX: 0,
-    speedY: 0,
-    maxWind: 0,
-    boardScale: 1.0,
+    stage: 1,
+    title: 'STAGE 1 • Khởi Động',
+    subtitle: 'Khúc gỗ xoay đều 1 chiều, chưa có dao cản.',
+    knivesToThrow: 7,
+    presetKnives: 0,
+    applesCount: 1,
+    baseSpeed: 1.8,
+    pattern: 'steady',
   },
   {
-    level: 2,
-    title: 'Level 2 • Deadline Dí Sát',
-    subtitle: 'Bia bắt đầu lắc ngang nhẹ, có gió thoảng qua.',
-    dartsCount: 5,
-    targetScore: 140,
-    speedX: 1.1,
-    speedY: 0,
-    maxWind: 1.5,
-    boardScale: 0.96,
+    stage: 2,
+    title: 'STAGE 2 • Tăng Tốc',
+    subtitle: 'Khúc gỗ nhanh chậm theo nhịp, có 1 dao cắm sẵn.',
+    knivesToThrow: 8,
+    presetKnives: 1,
+    applesCount: 2,
+    baseSpeed: 2.2,
+    pattern: 'sine_wave',
   },
   {
-    level: 3,
-    title: 'Level 3 • Họp Khẩn Cấp',
-    subtitle: 'Bia di chuyển nhanh hơn và gió đổi hướng mỗi lượt phóng.',
-    dartsCount: 6,
-    targetScore: 180,
-    speedX: 1.85,
-    speedY: 0.65,
-    maxWind: 3.0,
-    boardScale: 0.92,
+    stage: 3,
+    title: 'STAGE 3 • Đảo Chiều',
+    subtitle: 'Khúc gỗ dừng nhịp rồi quay ngược chiều bất ngờ!',
+    knivesToThrow: 9,
+    presetKnives: 2,
+    applesCount: 2,
+    baseSpeed: 2.5,
+    pattern: 'reverse_pause',
   },
   {
-    level: 4,
-    title: 'Level 4 • Sếp Đang Nhìn',
-    subtitle: 'Bia lượn hình số 8 liên tục, cần căn nhịp cực chuẩn!',
-    dartsCount: 6,
-    targetScore: 220,
-    speedX: 2.4,
-    speedY: 1.5,
-    maxWind: 4.2,
-    boardScale: 0.88,
+    stage: 4,
+    title: 'STAGE 4 • Biến Tốc',
+    subtitle: 'Khúc gỗ giật cục nhanh chậm liên tục, có 2 dao cắm sẵn.',
+    knivesToThrow: 10,
+    presetKnives: 2,
+    applesCount: 3,
+    baseSpeed: 2.8,
+    pattern: 'erratic',
   },
   {
-    level: 5,
-    title: 'Level 5 • Thánh Phóng Phi Tiêu',
-    subtitle: 'Thử thách tối thượng: Bia biến tốc + Gió xoáy mạnh!',
-    dartsCount: 7,
-    targetScore: 260,
-    speedX: 3.1,
-    speedY: 2.1,
-    maxWind: 5.5,
-    boardScale: 0.84,
+    stage: 5,
+    title: '⚔️ BOSS STAGE 5 • Khiên Đại Chiến',
+    subtitle: 'Trùm cuối! Khúc gỗ đảo chiều cực gắt + 3 dao cắm sẵn!',
+    knivesToThrow: 11,
+    presetKnives: 3,
+    applesCount: 4,
+    baseSpeed: 3.1,
+    pattern: 'boss_chaos',
+    isBoss: true,
   },
 ];
 
-interface LandedDart {
+interface StuckKnife {
+  angle: number; // Góc tương đối trên khúc gỗ
+  playerIndex: 0 | 1 | -1; // -1 = dao cắm sẵn
+}
+
+interface StuckApple {
   id: string;
-  // Tọa độ tương đối so với tâm bia (đơn vị bán kính bia = 1)
-  relX: number;
-  relY: number;
-  score: number;
-  label: string;
-  playerIndex: 0 | 1;
+  angle: number;
+  sliced: boolean;
+}
+
+interface Particle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  radius: number;
+  color: string;
+  alpha: number;
+}
+
+interface ShatterWedge {
+  startAngle: number;
+  endAngle: number;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  rot: number;
+  vRot: number;
+}
+
+interface FlyingKnifeOut {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  rot: number;
+  vRot: number;
+  playerIndex: 0 | 1 | -1;
 }
 
 interface EntertainmentRoomModalProps {
@@ -115,8 +146,20 @@ interface EntertainmentRoomModalProps {
 
 const STORAGE_CUSTOM_PHOTO_KEY = 'van_phong_ao_dart_target_photo';
 const STORAGE_CUSTOM_NAME_KEY = 'van_phong_ao_dart_target_name';
-const STORAGE_UNLOCKED_LEVEL_KEY = 'van_phong_ao_dart_unlocked_level';
-const STORAGE_BEST_SCORE_KEY = 'van_phong_ao_dart_best_score';
+const STORAGE_UNLOCKED_STAGE_KEY = 'van_phong_ao_knife_unlocked_stage';
+const STORAGE_BEST_SCORE_KEY = 'van_phong_ao_knife_best_score';
+const STORAGE_APPLES_KEY = 'van_phong_ao_knife_apples';
+
+function normalizeAngle(a: number): number {
+  let res = a % (Math.PI * 2);
+  if (res < 0) res += Math.PI * 2;
+  return res;
+}
+
+function shortestAngleDiff(a: number, b: number): number {
+  const diff = Math.abs(normalizeAngle(a) - normalizeAngle(b));
+  return Math.min(diff, Math.PI * 2 - diff);
+}
 
 export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
   isOpen,
@@ -129,12 +172,12 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
   onBroadcastChallengeMessage,
   activeChallengeBanner,
 }) => {
-  const [selectedGameTab, setSelectedGameTab] = useState<'darts' | 'wheel'>('darts');
+  const [selectedGameTab, setSelectedGameTab] = useState<'knife_hit' | 'wheel'>('knife_hit');
   const [gameMode, setGameMode] = useState<'campaign' | 'pvp'>('campaign');
-  const [currentLevelNum, setCurrentLevelNum] = useState<number>(1);
-  const [unlockedLevel, setUnlockedLevel] = useState<number>(() => {
+  const [currentStageNum, setCurrentStageNum] = useState<number>(1);
+  const [unlockedStage, setUnlockedStage] = useState<number>(() => {
     try {
-      return Math.max(1, Number(window.localStorage.getItem(STORAGE_UNLOCKED_LEVEL_KEY)) || 1);
+      return Math.max(1, Number(window.localStorage.getItem(STORAGE_UNLOCKED_STAGE_KEY)) || 1);
     } catch {
       return 1;
     }
@@ -146,8 +189,15 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
       return 0;
     }
   });
+  const [appleCount, setAppleCount] = useState<number>(() => {
+    try {
+      return Number(window.localStorage.getItem(STORAGE_APPLES_KEY)) || 0;
+    } catch {
+      return 0;
+    }
+  });
 
-  // Tùy chỉnh ghép ảnh người nào đó vào tâm bia phóng
+  // Tùy chỉnh ghép ảnh người nào đó vào Khúc Gỗ Xoay (Bia phóng Knife Hit)
   const [targetPhotoUrl, setTargetPhotoUrl] = useState<string | null>(() => {
     try {
       return window.localStorage.getItem(STORAGE_CUSTOM_PHOTO_KEY) || null;
@@ -173,38 +223,44 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
   const [selectedOpponentId, setSelectedOpponentId] = useState<string>('');
   const [activeTurnPlayer, setActiveTurnPlayer] = useState<0 | 1>(0);
   const [pvpScores, setPvpScores] = useState<[number, number]>([0, 0]);
-  const [pvpDartsLeft, setPvpDartsLeft] = useState<[number, number]>([5, 5]);
+  const [pvpKnivesLeft, setPvpKnivesLeft] = useState<[number, number]>([7, 7]);
 
-  // Trạng thái ván đấu Phóng Phi Tiêu
-  const levelConfig =
-    DART_LEVELS.find((l) => l.level === currentLevelNum) || DART_LEVELS[0];
+  // Trạng thái ván đấu Knife Hit
+  const stageConfig =
+    KNIFE_STAGES.find((s) => s.stage === currentStageNum) || KNIFE_STAGES[0];
   const [score, setScore] = useState<number>(0);
-  const [dartsRemaining, setDartsRemaining] = useState<number>(levelConfig.dartsCount);
-  const [landedDarts, setLandedDarts] = useState<LandedDart[]>([]);
-  const [windX, setWindX] = useState<number>(0);
+  const [knivesRemaining, setKnivesRemaining] = useState<number>(stageConfig.knivesToThrow);
   const [lastHitBanner, setLastHitBanner] = useState<string | null>(null);
-  const [roundFinished, setRoundFinished] = useState<boolean>(false);
+  const [stageState, setStageState] = useState<'playing' | 'shattering' | 'failed' | 'pvp_over'>(
+    'playing'
+  );
 
   // Vòng quay nhân phẩm (Mini-game phụ trong Phòng Giải Trí)
   const [wheelItemsText, setWheelItemsText] = useState<string>(
-    'Bao trà sữa cả phòng 🧋\nĐược về sớm 15 phút 🏃\nHát 1 bài tặng cả phòng 🎤\nTrực nhật dọn bàn họp 🧹\nNhận tràng pháo tay 👏\nmiễn phạt 1 lần ✨'
+    'Bao trà sữa cả phòng 🧋\nĐược về sớm 15 phút 🏃\nHát 1 bài tặng cả phòng 🎤\nTrực nhật dọn bàn họp 🧹\nNhận tràng pháo tay 👏\nMiễn phạt 1 lần ✨'
   );
   const [spinningWheel, setSpinningWheel] = useState<boolean>(false);
   const [wheelResult, setWheelResult] = useState<string | null>(null);
 
-  // Canvas & Animation refs cho Bia Phóng Phi Tiêu
+  // Refs cho hệ thống vật lý 60FPS của Knife Hit
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const boardPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
-  const aimPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
-  const boardShakeRef = useRef<number>(0);
-  const flyingDartRef = useRef<{
-    active: boolean;
-    startX: number;
-    startY: number;
-    targetX: number;
-    targetY: number;
-    progress: number;
+  const logAngleRef = useRef<number>(0);
+  const logBumpYRef = useRef<number>(0);
+  const logFlashRef = useRef<number>(0);
+  const stuckKnivesRef = useRef<StuckKnife[]>([]);
+  const stuckApplesRef = useRef<StuckApple[]>([]);
+  const particlesRef = useRef<Particle[]>([]);
+  const shatterWedgesRef = useRef<ShatterWedge[]>([]);
+  const flyingKnivesOutRef = useRef<FlyingKnifeOut[]>([]);
+  const activeThrowRef = useRef<{
+    x?: number;
+    y: number;
     playerIndex: 0 | 1;
+    bouncing: boolean;
+    vx: number;
+    vy: number;
+    rot: number;
+    vRot: number;
   } | null>(null);
 
   // Tải ảnh HTMLImageElement mỗi khi targetPhotoUrl thay đổi
@@ -233,38 +289,780 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
     }
   }, [members, currentUserId, selectedOpponentId]);
 
-  const rollWind = useCallback((maxW: number) => {
-    if (maxW <= 0) {
-      setWindX(0);
-      return;
+  // Khởi tạo màn chơi Knife Hit (Tạo dao cắm sẵn & táo trên vành gỗ)
+  const initStageEntities = useCallback((cfg: KnifeStageConfig) => {
+    logAngleRef.current = 0;
+    logBumpYRef.current = 0;
+    logFlashRef.current = 0;
+    activeThrowRef.current = null;
+    particlesRef.current = [];
+    shatterWedgesRef.current = [];
+    flyingKnivesOutRef.current = [];
+
+    const presets: StuckKnife[] = [];
+    for (let i = 0; i < cfg.presetKnives; i++) {
+      const ang = ((Math.PI * 2) / cfg.presetKnives) * i + 0.4;
+      presets.push({ angle: normalizeAngle(ang), playerIndex: -1 });
     }
-    const w = Number(((Math.random() * 2 - 1) * maxW).toFixed(1));
-    setWindX(w);
+    stuckKnivesRef.current = presets;
+
+    const apples: StuckApple[] = [];
+    for (let i = 0; i < cfg.applesCount; i++) {
+      const ang = ((Math.PI * 2) / cfg.applesCount) * i + 1.15;
+      apples.push({ id: `apple-${i}`, angle: normalizeAngle(ang), sliced: false });
+    }
+    stuckApplesRef.current = apples;
   }, []);
 
-  const resetDartMatch = useCallback(
-    (targetLvl = currentLevelNum, targetMode = gameMode) => {
-      const cfg = DART_LEVELS.find((l) => l.level === targetLvl) || DART_LEVELS[0];
-      setScore(0);
-      setDartsRemaining(cfg.dartsCount);
-      setLandedDarts([]);
-      setLastHitBanner(null);
-      setRoundFinished(false);
-      setActiveTurnPlayer(0);
-      setPvpScores([0, 0]);
-      setPvpDartsLeft([5, 5]);
-      rollWind(targetMode === 'pvp' ? 2.2 : cfg.maxWind);
+  const setupStage = useCallback(
+    (targetStageNum: number, targetMode: 'campaign' | 'pvp', resetTotalScore = false) => {
+      const cfg =
+        KNIFE_STAGES.find((s) => s.stage === targetStageNum) || KNIFE_STAGES[0];
+      initStageEntities(cfg);
+      setStageState('playing');
+      if (resetTotalScore) {
+        setScore(0);
+      }
+      if (targetMode === 'campaign') {
+        setKnivesRemaining(cfg.knivesToThrow);
+      } else {
+        setActiveTurnPlayer(0);
+        setPvpScores([0, 0]);
+        setPvpKnivesLeft([6, 6]);
+        setKnivesRemaining(12);
+      }
     },
-    [currentLevelNum, gameMode, rollWind]
+    [initStageEntities]
   );
 
   useEffect(() => {
     if (isOpen) {
-      resetDartMatch(currentLevelNum, gameMode);
+      setupStage(currentStageNum, gameMode, true);
     }
-  }, [isOpen, currentLevelNum, gameMode, resetDartMatch]);
+  }, [isOpen, gameMode, setupStage]);
 
-  // Xử lý tải ảnh từ máy tính / điện thoại để gắn vào Bia Phóng
+  // Tạo hiệu ứng mảnh gỗ văng tung tóe khi cắm dao hoặc vỡ khúc gỗ
+  const spawnSplinters = useCallback(
+    (x: number, y: number, count: number, color = '#f4a261') => {
+      for (let i = 0; i < count; i++) {
+        const ang = Math.random() * Math.PI * 2;
+        const spd = 2 + Math.random() * 6.5;
+        particlesRef.current.push({
+          x,
+          y,
+          vx: Math.cos(ang) * spd,
+          vy: Math.sin(ang) * spd,
+          radius: 3 + Math.random() * 4.5,
+          color,
+          alpha: 1,
+        });
+      }
+    },
+    []
+  );
+
+  // Kích hoạt hiệu ứng VỠ TUNG KHÚC GỖ thành 3 mảnh bay ra giống hệt ảnh Knife Hit!
+  const triggerLogShatter = useCallback(
+    (logCenterX: number, logCenterY: number) => {
+      setStageState('shattering');
+      if (soundEnabled) {
+        playWoodShatterSound();
+      }
+      spawnSplinters(logCenterX, logCenterY, 28, '#f4a261');
+      spawnSplinters(logCenterX, logCenterY, 14, '#e76f51');
+
+      // Chẻ khúc gỗ thành 3 miếng hình quạt văng ra 3 hướng (Trái, Phải, Dưới) đúng như ảnh mẫu
+      const cuts = [
+        { start: -Math.PI * 0.85, end: -Math.PI * 0.15, vx: -4.2, vy: -2.4, vRot: -0.05 },
+        { start: -Math.PI * 0.15, end: Math.PI * 0.55, vx: 4.5, vy: -1.8, vRot: 0.06 },
+        { start: Math.PI * 0.55, end: Math.PI * 1.15, vx: -1.2, vy: 4.8, vRot: -0.04 },
+      ];
+      shatterWedgesRef.current = cuts.map((c) => ({
+        startAngle: c.start,
+        endAngle: c.end,
+        x: logCenterX,
+        y: logCenterY,
+        vx: c.vx,
+        vy: c.vy,
+        rot: logAngleRef.current,
+        vRot: c.vRot,
+      }));
+
+      // Toàn bộ các con dao đang cắm trên gỗ cũng văng tung ra xung quanh
+      flyingKnivesOutRef.current = stuckKnivesRef.current.map((sk) => {
+        const worldAngle = sk.angle + logAngleRef.current;
+        const kx = logCenterX + Math.cos(worldAngle) * 95;
+        const ky = logCenterY + Math.sin(worldAngle) * 95;
+        return {
+          x: kx,
+          y: ky,
+          vx: Math.cos(worldAngle) * (5 + Math.random() * 3),
+          vy: Math.sin(worldAngle) * (5 + Math.random() * 3),
+          rot: worldAngle - Math.PI / 2,
+          vRot: (Math.random() - 0.5) * 0.25,
+          playerIndex: sk.playerIndex,
+        };
+      });
+
+      const targetLabel = targetPersonName.trim();
+      setLastHitBanner(
+        targetLabel
+          ? `💥 PHÁ ĐẢO! Đã chẻ đôi khúc gỗ "${targetLabel}"!`
+          : `💥 STAGE CLEAR! Khúc gỗ đã vỡ tung!`
+      );
+
+      // Chuyển sang Stage kế tiếp sau 1.15 giây (hoặc kết thúc ván PvP)
+      window.setTimeout(() => {
+        if (gameMode === 'campaign') {
+          const nextStg = currentStageNum < KNIFE_STAGES.length ? currentStageNum + 1 : 1;
+          setCurrentStageNum(nextStg);
+          setUnlockedStage((prevUnlock) => {
+            const updated = Math.max(prevUnlock, nextStg);
+            try {
+              window.localStorage.setItem(STORAGE_UNLOCKED_STAGE_KEY, String(updated));
+            } catch {
+              // ignore
+            }
+            return updated;
+          });
+          const nextCfg =
+            KNIFE_STAGES.find((s) => s.stage === nextStg) || KNIFE_STAGES[0];
+          initStageEntities(nextCfg);
+          setKnivesRemaining(nextCfg.knivesToThrow);
+          setStageState('playing');
+        } else {
+          setStageState('pvp_over');
+        }
+      }, 1150);
+    },
+    [
+      soundEnabled,
+      spawnSplinters,
+      targetPersonName,
+      gameMode,
+      currentStageNum,
+      initStageEntities,
+    ]
+  );
+
+  // Phóng con dao từ phía dưới lên khúc gỗ xoay!
+  const handleThrowKnife = useCallback(() => {
+    if (stageState !== 'playing') return;
+    if (activeThrowRef.current) return;
+
+    activeThrowRef.current = {
+      y: 355,
+      playerIndex: gameMode === 'pvp' ? activeTurnPlayer : 0,
+      bouncing: false,
+      vx: 0,
+      vy: -26,
+      rot: 0,
+      vRot: 0,
+    };
+  }, [stageState, gameMode, activeTurnPlayer]);
+
+  // Hỗ trợ bấm phím Space để phóng dao nhanh trên máy tính
+  useEffect(() => {
+    if (!isOpen || selectedGameTab !== 'knife_hit') return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      if (e.code === 'Space') {
+        e.preventDefault();
+        handleThrowKnife();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isOpen, selectedGameTab, handleThrowKnife]);
+
+  // Vòng lặp vẽ Canvas Knife Hit 60FPS chuẩn phong cách ảnh mẫu
+  useEffect(() => {
+    if (!isOpen || selectedGameTab !== 'knife_hit') return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    let animId = 0;
+    let lastTime = performance.now();
+    const startTime = lastTime;
+
+    const drawKnifeSprite = (
+      c: CanvasRenderingContext2D,
+      x: number,
+      y: number,
+      rotationRad: number,
+      playerIdx: 0 | 1 | -1
+    ) => {
+      c.save();
+      c.translate(x, y);
+      c.rotate(rotationRad);
+
+      // Lưỡi dao sắc nhọn hướng lên trên (-Y)
+      c.beginPath();
+      c.moveTo(0, -34); // Mũi nhọn
+      c.lineTo(7.5, -4);
+      c.lineTo(-7.5, -4);
+      c.closePath();
+      c.fillStyle = '#e0f2fe';
+      c.fill();
+
+      // Nửa lưỡi dao ánh xanh thép giống ảnh mẫu
+      c.beginPath();
+      c.moveTo(0, -34);
+      c.lineTo(7.5, -4);
+      c.lineTo(0, -4);
+      c.closePath();
+      c.fillStyle = '#38bdf8';
+      c.fill();
+
+      // Chắn tay vàng kim (Crossguard)
+      c.fillStyle = '#f59e0b';
+      c.beginPath();
+      c.roundRect(-10, -4, 20, 6, 3);
+      c.fill();
+
+      // Chuôi dao (Đỏ cho P1, Xanh ngọc cho P2, Tím cho dao cắm sẵn)
+      const handleColor =
+        playerIdx === -1 ? '#a855f7' : playerIdx === 0 ? '#dc2626' : '#06b6d4';
+      c.fillStyle = handleColor;
+      c.beginPath();
+      c.roundRect(-5, 2, 10, 22, 2);
+      c.fill();
+
+      // Đế chuôi vàng
+      c.fillStyle = '#fbbf24';
+      c.fillRect(-5.5, 20, 11, 5);
+
+      c.restore();
+    };
+
+    const drawWoodLogSlice = (
+      c: CanvasRenderingContext2D,
+      cx: number,
+      cy: number,
+      radius: number,
+      rot: number,
+      startAng = 0,
+      endAng = Math.PI * 2,
+      isWedge = false
+    ) => {
+      c.save();
+      c.translate(cx, cy);
+      c.rotate(rot);
+
+      if (isWedge) {
+        c.beginPath();
+        c.moveTo(0, 0);
+        c.arc(0, 0, radius + 12, startAng, endAng);
+        c.closePath();
+        c.clip();
+      }
+
+      // 1. Vỏ cây nâu sẫm ngoài cùng
+      c.beginPath();
+      c.arc(0, 0, radius, 0, Math.PI * 2);
+      c.fillStyle = '#9a4d22';
+      c.fill();
+
+      // 2. Thân gỗ vàng cam ấm áp
+      c.beginPath();
+      c.arc(0, 0, radius - 8, 0, Math.PI * 2);
+      c.fillStyle = '#f4a261';
+      c.fill();
+
+      // 3. Các vòng vân gỗ đồng tâm giống hệt ảnh Knife Hit
+      const grainRadii = [radius * 0.76, radius * 0.54, radius * 0.32];
+      grainRadii.forEach((gr, idx) => {
+        c.beginPath();
+        c.arc(0, 0, gr, 0, Math.PI * 2);
+        c.strokeStyle = idx % 2 === 0 ? '#e07a3c' : '#eab676';
+        c.lineWidth = 6;
+        c.stroke();
+      });
+
+      // 4. NẾU NGƯỜI CHƠI GHÉP ẢNH VÀO KHÚC GỖ -> Vẽ ảnh xoay theo khúc gỗ (và bị chẻ vỡ theo mảnh gỗ khi nổ!)
+      if (loadedImageRef.current) {
+        const photoR =
+          photoCoverageMode === 'full' ? radius - 9 : radius * 0.56;
+        c.save();
+        c.beginPath();
+        c.arc(0, 0, photoR, 0, Math.PI * 2);
+        c.closePath();
+        c.clip();
+
+        c.drawImage(
+          loadedImageRef.current,
+          -photoR,
+          -photoR,
+          photoR * 2,
+          photoR * 2
+        );
+
+        // Viền vàng quanh ảnh trên khúc gỗ
+        c.strokeStyle = 'rgba(245, 158, 11, 0.85)';
+        c.lineWidth = 3;
+        c.stroke();
+        c.restore();
+      }
+
+      // Nhãn tên mục tiêu xoay cùng khúc gỗ
+      if (targetPersonName.trim() && !isWedge) {
+        c.save();
+        c.font = 'bold 12px Inter, sans-serif';
+        c.textAlign = 'center';
+        c.fillStyle = 'rgba(15, 23, 42, 0.85)';
+        const textW = Math.min(130, c.measureText(targetPersonName).width + 16);
+        c.beginPath();
+        c.roundRect(-textW / 2, -10, textW, 20, 8);
+        c.fill();
+        c.fillStyle = '#fde68a';
+        c.fillText(targetPersonName.slice(0, 14), 0, 4);
+        c.restore();
+      }
+
+      c.restore();
+    };
+
+    const renderLoop = (now: number) => {
+      const dt = Math.min(0.05, (now - lastTime) / 1000);
+      lastTime = now;
+      const elapsed = (now - startTime) / 1000;
+
+      const w = canvas.width;
+      const h = canvas.height;
+      const logX = w / 2;
+      const baseLogY = 148;
+      const logRadius = 76;
+
+      // Hồi phục độ nảy của khúc gỗ khi bị dao cắm vào
+      logBumpYRef.current *= 0.78;
+      logFlashRef.current = Math.max(0, logFlashRef.current - dt * 5);
+      const logY = baseLogY + logBumpYRef.current;
+
+      // 1. NỀN XANH Đậm RỪNG ĐÊM CHUẨN KNIFE HIT (#072b35 -> #03171d)
+      const bgGrad = ctx.createLinearGradient(0, 0, 0, h);
+      bgGrad.addColorStop(0, '#072e38');
+      bgGrad.addColorStop(1, '#03161c');
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, w, h);
+
+      // Các vệt vân gỗ dọc mờ ở hậu cảnh giống ảnh mẫu
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
+      ctx.lineWidth = 2;
+      for (let x = 28; x < w; x += 44) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, h);
+        ctx.stroke();
+      }
+
+      // 2. CẬP NHẬT GÓC XOAY CỦA KHÚC GỖ THEO PATTERN CỦA STAGE
+      if (stageState === 'playing') {
+        let angularVel = stageConfig.baseSpeed;
+        if (stageConfig.pattern === 'sine_wave') {
+          angularVel = stageConfig.baseSpeed * (0.4 + Math.abs(Math.sin(elapsed * 1.6)) * 1.1);
+        } else if (stageConfig.pattern === 'reverse_pause') {
+          angularVel = stageConfig.baseSpeed * Math.sin(elapsed * 1.35) * 1.35;
+        } else if (stageConfig.pattern === 'erratic') {
+          angularVel =
+            stageConfig.baseSpeed *
+            (Math.sin(elapsed * 2.4) + 0.6 * Math.cos(elapsed * 1.1));
+        } else if (stageConfig.pattern === 'boss_chaos') {
+          angularVel =
+            stageConfig.baseSpeed *
+            (1.25 * Math.sin(elapsed * 2.1) + 0.85 * Math.cos(elapsed * 3.4));
+        }
+        logAngleRef.current = normalizeAngle(logAngleRef.current + angularVel * dt);
+      }
+
+      // 3. XỬ LÝ CON DAO ĐANG BAY LÊN (HOẶC DỘI NGƯỢC RƠI XUỐNG KHI TRÚNG DAO KHÁC)
+      if (activeThrowRef.current) {
+        const tk = activeThrowRef.current;
+        if (!tk.bouncing) {
+          // Vệt gió xám trắng thẳng đứng phía sau con dao đang phóng lên (giống ảnh mẫu!)
+          ctx.save();
+          const trailGrad = ctx.createLinearGradient(logX, tk.y, logX, 410);
+          trailGrad.addColorStop(0, 'rgba(226, 232, 240, 0.45)');
+          trailGrad.addColorStop(1, 'rgba(226, 232, 240, 0.0)');
+          ctx.fillStyle = trailGrad;
+          ctx.beginPath();
+          ctx.moveTo(logX - 8, tk.y + 10);
+          ctx.lineTo(logX + 8, tk.y + 10);
+          ctx.lineTo(logX + 3, 410);
+          ctx.lineTo(logX - 3, 410);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+
+          tk.y += tk.vy;
+
+          // Kiểm tra khi mũi dao chạm tới mép dưới của Khúc Gỗ (góc Math.PI / 2 trong hệ tọa độ Canvas)
+          const hitThresholdY = logY + logRadius + 16;
+          if (tk.y <= hitThresholdY) {
+            const impactWorldAngle = Math.PI / 2; // Mép dưới cùng của khúc gỗ
+            const relativeImpactAngle = normalizeAngle(
+              impactWorldAngle - logAngleRef.current
+            );
+
+            // Kiểm tra xem có đụng phải con dao nào đang cắm trên gỗ không
+            const hitExistingKnife = stuckKnivesRef.current.some(
+              (sk) => shortestAngleDiff(sk.angle, relativeImpactAngle) < 0.175
+            );
+
+            if (hitExistingKnife) {
+              // KENG! Đụng trúng dao đã cắm -> Dội ngược xoay vòng rơi xuống!
+              tk.bouncing = true;
+              tk.vx = (Math.random() > 0.5 ? 1 : -1) * 4.5;
+              tk.vy = 6.5;
+              tk.vRot = 0.32;
+              if (soundEnabled) {
+                playKnifeClangSound();
+              }
+              spawnSplinters(logX, hitThresholdY, 12, '#fde047');
+
+              if (gameMode === 'campaign') {
+                setLastHitBanner('💥 KENG! Phóng trúng dao đã cắm trên gỗ!');
+                window.setTimeout(() => {
+                  setStageState('failed');
+                }, 420);
+              } else {
+                // Chế độ Solo PvP: Trúng dao bị mất lượt và trừ 1 dao
+                setLastHitBanner(
+                  `💥 KENG! ${
+                    tk.playerIndex === 0 ? currentNickname : opponentName
+                  } phóng trúng dao đã cắm! Đổi lượt!`
+                );
+                setPvpKnivesLeft((prev) => {
+                  const next: [number, number] = [...prev] as [number, number];
+                  next[tk.playerIndex] = Math.max(0, next[tk.playerIndex] - 1);
+                  if (next[0] === 0 && next[1] === 0) {
+                    window.setTimeout(() => setStageState('pvp_over'), 450);
+                  } else {
+                    const other: 0 | 1 = tk.playerIndex === 0 ? 1 : 0;
+                    if (next[other] > 0) setActiveTurnPlayer(other);
+                  }
+                  return next;
+                });
+              }
+            } else {
+              // CẮM THÀNH CÔNG VÀO KHÚC GỖ!
+              activeThrowRef.current = null;
+              stuckKnivesRef.current.push({
+                angle: relativeImpactAngle,
+                playerIndex: tk.playerIndex,
+              });
+              logBumpYRef.current = -11;
+              logFlashRef.current = 1;
+              spawnSplinters(logX, logY + logRadius, 9, '#f4a261');
+
+              // Kiểm tra xem có chém trúng quả Táo 🍎 nào trên vành gỗ không
+              let hitApple = false;
+              stuckApplesRef.current.forEach((ap) => {
+                if (!ap.sliced && shortestAngleDiff(ap.angle, relativeImpactAngle) < 0.26) {
+                  ap.sliced = true;
+                  hitApple = true;
+                  spawnSplinters(logX, logY + logRadius + 10, 10, '#ef4444');
+                }
+              });
+
+              if (hitApple) {
+                setAppleCount((prev) => {
+                  const next = prev + 2;
+                  try {
+                    window.localStorage.setItem(STORAGE_APPLES_KEY, String(next));
+                  } catch {
+                    // ignore
+                  }
+                  return next;
+                });
+              }
+
+              if (soundEnabled) {
+                playDartHitSound(hitApple);
+              }
+
+              const gainedPts = hitApple ? 25 : 10;
+
+              if (gameMode === 'campaign') {
+                setScore((prev) => {
+                  const next = prev + 1;
+                  if (next > bestScore) {
+                    setBestScore(next);
+                    try {
+                      window.localStorage.setItem(STORAGE_BEST_SCORE_KEY, String(next));
+                    } catch {
+                      // ignore
+                    }
+                  }
+                  return next;
+                });
+
+                setKnivesRemaining((prevLeft) => {
+                  const nextLeft = prevLeft - 1;
+                  if (nextLeft <= 0) {
+                    // CẮM CON DAO CUỐI CÙNG -> NỔ VỠ TUNG KHÚC GỖ NHƯ TRONG ẢNH!
+                    triggerLogShatter(logX, logY);
+                  } else if (hitApple) {
+                    setLastHitBanner('🍎 Chém trúng Táo Vàng! (+2 🍎)');
+                  }
+                  return nextLeft;
+                });
+              } else {
+                // Chế độ Solo 2 người (PvP)
+                setPvpScores((prev) => {
+                  const next: [number, number] = [...prev] as [number, number];
+                  next[tk.playerIndex] += gainedPts;
+                  return next;
+                });
+
+                setPvpKnivesLeft((prev) => {
+                  const next: [number, number] = [...prev] as [number, number];
+                  next[tk.playerIndex] = Math.max(0, next[tk.playerIndex] - 1);
+                  const totalLeft = next[0] + next[1];
+                  if (totalLeft <= 0) {
+                    triggerLogShatter(logX, logY);
+                  } else {
+                    const other: 0 | 1 = tk.playerIndex === 0 ? 1 : 0;
+                    if (next[other] > 0) setActiveTurnPlayer(other);
+                  }
+                  return next;
+                });
+              }
+            }
+          }
+        } else {
+          // Con dao đang bị dội ngược rơi xuống
+          tk.x = (tk.x ?? logX) + tk.vx;
+          tk.y += tk.vy;
+          tk.vy += 0.55;
+          tk.rot += tk.vRot;
+          if (tk.y > h + 60) {
+            activeThrowRef.current = null;
+          }
+        }
+      }
+
+      // 4. VẼ KHÚC GỖ & CÁC CON DAO ĐANG CẮM (HOẶC HIỆU ỨNG KHÚC GỖ VỠ TUNG NHƯ ẢNH MẪU)
+      if (stageState === 'shattering') {
+        // Vòng chấm gạch tròn tỏa ra khi khúc gỗ vỡ giống hệt bức ảnh bạn gửi!
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(logX, baseLogY, logRadius + 38, 0, Math.PI * 2);
+        ctx.setLineDash([4, 10]);
+        ctx.lineWidth = 8;
+        ctx.strokeStyle = 'rgba(132, 204, 22, 0.45)';
+        ctx.stroke();
+        ctx.restore();
+
+        // Vẽ các con dao văng tung ra
+        for (const fk of flyingKnivesOutRef.current) {
+          fk.x += fk.vx;
+          fk.y += fk.vy;
+          fk.rot += fk.vRot;
+          drawKnifeSprite(ctx, fk.x, fk.y, fk.rot, fk.playerIndex);
+        }
+
+        // Vẽ 3 mảnh khúc gỗ vỡ bay ra 3 phía (kèm cả mảnh ảnh người trên đó!)
+        for (const wedge of shatterWedgesRef.current) {
+          wedge.x += wedge.vx;
+          wedge.y += wedge.vy;
+          wedge.rot += wedge.vRot;
+          drawWoodLogSlice(
+            ctx,
+            wedge.x,
+            wedge.y,
+            logRadius,
+            wedge.rot,
+            wedge.startAngle,
+            wedge.endAngle,
+            true
+          );
+        }
+      } else {
+        // Vẽ các con dao đã cắm trên vành gỗ trước (để phần mũi dao nằm dưới lớp gỗ)
+        for (const sk of stuckKnivesRef.current) {
+          const worldAngle = sk.angle + logAngleRef.current;
+          const kx = logX + Math.cos(worldAngle) * (logRadius + 14);
+          const ky = logY + Math.sin(worldAngle) * (logRadius + 14);
+          // Mũi dao luôn hướng vào tâm khúc gỗ
+          drawKnifeSprite(ctx, kx, ky, worldAngle - Math.PI / 2, sk.playerIndex);
+        }
+
+        // Vẽ các quả Táo 🍎 bám trên vành khúc gỗ
+        for (const ap of stuckApplesRef.current) {
+          if (ap.sliced) continue;
+          const worldAngle = ap.angle + logAngleRef.current;
+          const ax = logX + Math.cos(worldAngle) * (logRadius + 14);
+          const ay = logY + Math.sin(worldAngle) * (logRadius + 14);
+          ctx.save();
+          ctx.translate(ax, ay);
+          ctx.rotate(worldAngle + Math.PI / 2);
+          ctx.beginPath();
+          ctx.arc(0, 0, 10, 0, Math.PI * 2);
+          ctx.fillStyle = '#ef4444';
+          ctx.fill();
+          ctx.strokeStyle = '#fef08a';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+          // Cuống lá xanh
+          ctx.fillStyle = '#22c55e';
+          ctx.beginPath();
+          ctx.ellipse(3, -10, 4, 2, -0.5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+
+        // Vẽ Khúc Gỗ Xoay chính giữa
+        drawWoodLogSlice(ctx, logX, logY, logRadius, logAngleRef.current);
+
+        // Hiệu ứng chớp sáng nhẹ trên mặt gỗ vừa bị dao cắm trúng
+        if (logFlashRef.current > 0.05) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(logX, logY, logRadius, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(255, 255, 255, ${logFlashRef.current * 0.32})`;
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+
+      // 5. VẼ CÁC MẢNH VỤN GỖ BAY TUNG TÓE
+      for (let i = particlesRef.current.length - 1; i >= 0; i--) {
+        const p = particlesRef.current[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.alpha -= 0.032;
+        if (p.alpha <= 0) {
+          particlesRef.current.splice(i, 1);
+          continue;
+        }
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, p.alpha);
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // 6. VẼ CON DAO CHỜ PHÓNG Ở DƯỚI CÙNG (HOẶC ĐANG BAY)
+      if (activeThrowRef.current) {
+        const tk = activeThrowRef.current;
+        drawKnifeSprite(ctx, tk.x ?? logX, tk.y, tk.rot, tk.playerIndex);
+      } else if (stageState === 'playing') {
+        drawKnifeSprite(
+          ctx,
+          logX,
+          362,
+          0,
+          gameMode === 'pvp' ? activeTurnPlayer : 0
+        );
+      }
+
+      // 7. VẼ DÃY ICON DAO CÒN LẠI Ở GÓC DƯỚI BÊN TRÁI (Chuẩn giao diện Knife Hit)
+      const totalIcons =
+        gameMode === 'campaign'
+          ? stageConfig.knivesToThrow
+          : pvpKnivesLeft[activeTurnPlayer];
+      const remainingIcons =
+        gameMode === 'campaign' ? knivesRemaining : pvpKnivesLeft[activeTurnPlayer];
+
+      for (let i = 0; i < totalIcons; i++) {
+        const iy = 385 - i * 18;
+        const isUsed = i >= remainingIcons;
+        ctx.save();
+        ctx.translate(24, iy);
+        ctx.rotate(-Math.PI / 4);
+        ctx.fillStyle = isUsed ? 'rgba(15, 23, 42, 0.7)' : '#38bdf8';
+        ctx.beginPath();
+        ctx.moveTo(0, -9);
+        ctx.lineTo(3.5, 2);
+        ctx.lineTo(-3.5, 2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = isUsed ? 'rgba(15, 23, 42, 0.7)' : '#f59e0b';
+        ctx.fillRect(-3, 2, 6, 5);
+        ctx.restore();
+      }
+
+      // 8. VẼ HUD TRÊN ĐỈNH CANVAS GIỐNG HỆT ẢNH KNIFE HIT (Điểm bên trái • Stage ở giữa • Táo bên phải)
+      ctx.save();
+      // Điểm số góc trên trái
+      ctx.font = 'bold 20px Inter, sans-serif';
+      ctx.fillStyle = '#f59e0b';
+      ctx.textAlign = 'left';
+      ctx.fillText(
+        gameMode === 'campaign' ? String(score) : `${pvpScores[0]} - ${pvpScores[1]}`,
+        16,
+        30
+      );
+
+      // Chấm tròn Stage + Chữ STAGE ở chính giữa trên cùng
+      const dotStartX = w / 2 - 36;
+      for (let s = 1; s <= 4; s++) {
+        ctx.beginPath();
+        ctx.arc(dotStartX + (s - 1) * 16, 20, 4.5, 0, Math.PI * 2);
+        ctx.fillStyle =
+          s < currentStageNum
+            ? '#f59e0b'
+            : s === currentStageNum
+              ? '#fbbf24'
+              : 'rgba(255,255,255,0.35)';
+        ctx.fill();
+      }
+      ctx.font = 'bold 14px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = currentStageNum === 5 ? '#f43f5e' : '#e2e8f0';
+      ctx.fillText('⚔️', dotStartX + 4 * 16 + 4, 25);
+
+      ctx.font = 'bold 13px Inter, sans-serif';
+      ctx.fillStyle = 'rgba(226, 232, 240, 0.65)';
+      ctx.fillText(
+        gameMode === 'campaign'
+          ? `STAGE ${currentStageNum}`
+          : `LƯỢT: ${activeTurnPlayer === 0 ? currentNickname : opponentName}`,
+        w / 2,
+        44
+      );
+
+      // Số lượng Táo góc trên phải
+      ctx.font = 'bold 18px Inter, sans-serif';
+      ctx.fillStyle = '#f59e0b';
+      ctx.textAlign = 'right';
+      ctx.fillText(`${appleCount} 🍎`, w - 16, 30);
+      ctx.restore();
+
+      animId = window.requestAnimationFrame(renderLoop);
+    };
+
+    animId = window.requestAnimationFrame(renderLoop);
+    return () => window.cancelAnimationFrame(animId);
+  }, [
+    isOpen,
+    selectedGameTab,
+    stageState,
+    stageConfig,
+    gameMode,
+    currentStageNum,
+    score,
+    bestScore,
+    appleCount,
+    knivesRemaining,
+    pvpScores,
+    pvpKnivesLeft,
+    activeTurnPlayer,
+    currentNickname,
+    opponentName,
+    photoCoverageMode,
+    targetPersonName,
+    soundEnabled,
+    spawnSplinters,
+    triggerLogShatter,
+  ]);
+
+  // Xử lý tải ảnh từ máy tính / điện thoại để gắn vào Khúc Gỗ Xoay
   const handleUploadTargetPhoto = (file: File) => {
     const reader = new FileReader();
     reader.onload = () => {
@@ -274,7 +1072,7 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
         try {
           window.localStorage.setItem(STORAGE_CUSTOM_PHOTO_KEY, dataUrl);
         } catch {
-          // ignore quota error if image is very large
+          // ignore
         }
         if (!targetPersonName) {
           const cleanName = file.name.replace(/\.[^/.]+$/, '');
@@ -285,13 +1083,13 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
             // ignore
           }
         }
-        setLastHitBanner('📸 Đã gắn ảnh lên tâm Bia Phóng Phi Tiêu!');
+        setLastHitBanner('📸 Đã ghép ảnh vào Khúc Gỗ Xoay! Phóng hết dao để chẻ vỡ nào!');
       }
     };
     reader.readAsDataURL(file);
   };
 
-  // Tạo ảnh avatar có tên thành viên trong phòng để gắn nhanh lên bia
+  // Chọn nhanh thành viên trong phòng để ghép lên khúc gỗ
   const handleSelectMemberAsTarget = (member: RoomMember) => {
     const svgCanvas = document.createElement('canvas');
     svgCanvas.width = 256;
@@ -304,30 +1102,27 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
       c.fillStyle = grad;
       c.fillRect(0, 0, 256, 256);
 
-      // Vẽ khuôn mặt vui nhộn
       c.fillStyle = '#fcd34d';
       c.beginPath();
-      c.arc(128, 115, 58, 0, Math.PI * 2);
+      c.arc(128, 112, 56, 0, Math.PI * 2);
       c.fill();
 
-      // Mắt & Biểu cảm
       c.fillStyle = '#0f172a';
       c.beginPath();
-      c.arc(106, 105, 7, 0, Math.PI * 2);
-      c.arc(150, 105, 7, 0, Math.PI * 2);
+      c.arc(106, 102, 7, 0, Math.PI * 2);
+      c.arc(150, 102, 7, 0, Math.PI * 2);
       c.fill();
 
       c.strokeStyle = '#0f172a';
       c.lineWidth = 5;
       c.beginPath();
-      c.arc(128, 128, 22, 0.15 * Math.PI, 0.85 * Math.PI);
+      c.arc(128, 124, 22, 0.15 * Math.PI, 0.85 * Math.PI);
       c.stroke();
 
-      // Tên thành viên
       c.fillStyle = '#ffffff';
       c.font = 'bold 24px Inter, sans-serif';
       c.textAlign = 'center';
-      c.fillText(member.nickname.slice(0, 14), 128, 215);
+      c.fillText(member.nickname.slice(0, 14), 128, 212);
 
       const dataUrl = svgCanvas.toDataURL('image/png');
       setTargetPhotoUrl(dataUrl);
@@ -338,7 +1133,7 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
       } catch {
         // ignore
       }
-      setLastHitBanner(`🎯 Đã gắn "${member.nickname}" lên Bia Phóng!`);
+      setLastHitBanner(`🎯 Đã gắn "${member.nickname}" lên Khúc Gỗ Xoay!`);
     }
   };
 
@@ -351,500 +1146,25 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
     } catch {
       // ignore
     }
-    setLastHitBanner('Đã khôi phục mặt Bia Phóng truyền thống.');
+    setLastHitBanner('Đã khôi phục Khúc Gỗ truyền thống.');
   };
 
-  // Tính điểm khi mũi phi tiêu chạm tới mặt bia
-  const resolveDartLanding = useCallback(
-    (hitX: number, hitY: number, playerIdx: 0 | 1) => {
-      const boardX = boardPosRef.current.x;
-      const boardY = boardPosRef.current.y;
-      const baseRadius = 128 * (gameMode === 'pvp' ? 0.94 : levelConfig.boardScale);
-
-      const dx = hitX - boardX;
-      const dy = hitY - boardY;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      const normDist = dist / baseRadius;
-
-      let pts = 0;
-      let hitLabel = 'Trượt bia (0đ)';
-      let isBull = false;
-
-      const targetLabel = targetPersonName.trim() || 'mục tiêu';
-
-      if (normDist <= 0.14) {
-        pts = 50;
-        isBull = true;
-        hitLabel = targetPhotoUrl
-          ? `💥 HỒNG TÂM! Trúng giữa trán ${targetLabel} (+50đ)`
-          : '💥 BULLSEYE! Hồng tâm tuyệt đỉnh (+50đ)';
-      } else if (normDist <= 0.32) {
-        pts = 35;
-        isBull = true;
-        hitLabel = targetPhotoUrl
-          ? `🎯 Trúng ngay mặt ${targetLabel}! (+35đ)`
-          : '🔥 Tâm trong xuất sắc! (+35đ)';
-      } else if (normDist <= 0.55) {
-        pts = 25;
-        hitLabel = targetPhotoUrl
-          ? `✨ Trúng má ${targetLabel}! (+25đ)`
-          : '✨ Vòng vàng (+25đ)';
-      } else if (normDist <= 0.78) {
-        pts = 15;
-        hitLabel = '👍 Vòng trong (+15đ)';
-      } else if (normDist <= 1.0) {
-        pts = 10;
-        hitLabel = '👌 Vòng ngoài (+10đ)';
-      } else {
-        pts = 0;
-        hitLabel = '💨 Phóng trượt ra ngoài bia! (0đ)';
-      }
-
-      if (soundEnabled && pts > 0) {
-        playDartHitSound(isBull);
-      }
-      boardShakeRef.current = isBull ? 12 : pts > 0 ? 6 : 2;
-
-      const newDart: LandedDart = {
-        id: `${Date.now()}-${Math.random()}`,
-        relX: dx / baseRadius,
-        relY: dy / baseRadius,
-        score: pts,
-        label: hitLabel,
-        playerIndex: playerIdx,
-      };
-
-      setLandedDarts((prev) => [...prev, newDart]);
-      setLastHitBanner(hitLabel);
-
-      if (gameMode === 'campaign') {
-        setScore((prevScore) => {
-          const updatedScore = prevScore + pts;
-          if (updatedScore > bestScore) {
-            setBestScore(updatedScore);
-            try {
-              window.localStorage.setItem(STORAGE_BEST_SCORE_KEY, String(updatedScore));
-            } catch {
-              // ignore
-            }
-          }
-          return updatedScore;
-        });
-
-        setDartsRemaining((prevLeft) => {
-          const nextLeft = prevLeft - 1;
-          if (nextLeft <= 0) {
-            setRoundFinished(true);
-          } else {
-            rollWind(levelConfig.maxWind);
-          }
-          return nextLeft;
-        });
-      } else {
-        // Chế độ Solo PvP 2 người
-        setPvpScores((prev) => {
-          const next: [number, number] = [...prev] as [number, number];
-          next[playerIdx] += pts;
-          return next;
-        });
-
-        setPvpDartsLeft((prev) => {
-          const next: [number, number] = [...prev] as [number, number];
-          next[playerIdx] = Math.max(0, next[playerIdx] - 1);
-          if (next[0] === 0 && next[1] === 0) {
-            setRoundFinished(true);
-          } else {
-            // Đổi lượt sang người chơi tiếp theo nếu họ còn phi tiêu
-            const otherIdx: 0 | 1 = playerIdx === 0 ? 1 : 0;
-            if (next[otherIdx] > 0) {
-              setActiveTurnPlayer(otherIdx);
-            }
-            rollWind(2.2);
-          }
-          return next;
-        });
-      }
-    },
-    [
-      gameMode,
-      levelConfig,
-      targetPersonName,
-      targetPhotoUrl,
-      soundEnabled,
-      bestScore,
-      rollWind,
-    ]
-  );
-
-  // Mở khóa level tiếp theo khi hoàn thành đủ điểm ở chế độ 1 mình
-  useEffect(() => {
-    if (
-      roundFinished &&
-      gameMode === 'campaign' &&
-      score >= levelConfig.targetScore &&
-      currentLevelNum < DART_LEVELS.length
-    ) {
-      const nextUnlock = Math.max(unlockedLevel, currentLevelNum + 1);
-      if (nextUnlock !== unlockedLevel) {
-        setUnlockedLevel(nextUnlock);
-        try {
-          window.localStorage.setItem(STORAGE_UNLOCKED_LEVEL_KEY, String(nextUnlock));
-        } catch {
-          // ignore
-        }
-      }
-    }
-  }, [roundFinished, gameMode, score, levelConfig.targetScore, currentLevelNum, unlockedLevel]);
-
-  // Vòng lặp vẽ Canvas Bia Phóng Phi Tiêu 60FPS
-  useEffect(() => {
-    if (!isOpen || selectedGameTab !== 'darts') return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    let animId = 0;
-    const startTime = performance.now();
-
-    const renderLoop = (now: number) => {
-      const elapsed = (now - startTime) / 1000;
-      const w = canvas.width;
-      const h = canvas.height;
-      const centerX = w / 2;
-      const centerY = h / 2;
-
-      // Tính vị trí tâm bia di chuyển theo độ khó của Level
-      const spdX = gameMode === 'pvp' ? 1.4 : levelConfig.speedX;
-      const spdY = gameMode === 'pvp' ? 0.65 : levelConfig.speedY;
-      const scale = gameMode === 'pvp' ? 0.94 : levelConfig.boardScale;
-
-      let shakeOffsetX = 0;
-      let shakeOffsetY = 0;
-      if (boardShakeRef.current > 0.2) {
-        shakeOffsetX = (Math.random() - 0.5) * boardShakeRef.current;
-        shakeOffsetY = (Math.random() - 0.5) * boardShakeRef.current;
-        boardShakeRef.current *= 0.85;
-      } else {
-        boardShakeRef.current = 0;
-      }
-
-      const bx =
-        centerX +
-        Math.sin(elapsed * spdX) * (spdX > 0 ? 58 : 0) +
-        shakeOffsetX;
-      const by =
-        centerY +
-        Math.sin(elapsed * spdY * 1.6) * (spdY > 0 ? 32 : 0) +
-        shakeOffsetY;
-
-      boardPosRef.current = { x: bx, y: by };
-      const radius = 128 * scale;
-
-      // 1. Nền gỗ/neon phòng giải trí
-      const bgGrad = ctx.createRadialGradient(centerX, centerY, 30, centerX, centerY, w * 0.7);
-      bgGrad.addColorStop(0, '#1e1b4b');
-      bgGrad.addColorStop(1, '#090d16');
-      ctx.fillStyle = bgGrad;
-      ctx.fillRect(0, 0, w, h);
-
-      // Lưới neon trang trí nền
-      ctx.strokeStyle = 'rgba(99, 102, 241, 0.12)';
-      ctx.lineWidth = 1;
-      for (let gx = 0; gx < w; gx += 36) {
-        ctx.beginPath();
-        ctx.moveTo(gx, 0);
-        ctx.lineTo(gx, h);
-        ctx.stroke();
-      }
-      for (let gy = 0; gy < h; gy += 36) {
-        ctx.beginPath();
-        ctx.moveTo(0, gy);
-        ctx.lineTo(w, gy);
-        ctx.stroke();
-      }
-
-      // 2. Vẽ Bóng đổ của Bia Phóng
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(bx + 6, by + 10, radius + 12, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
-      ctx.fill();
-      ctx.restore();
-
-      // 3. Vẽ Viền ngoài Bia Phóng
-      ctx.beginPath();
-      ctx.arc(bx, by, radius + 10, 0, Math.PI * 2);
-      ctx.fillStyle = '#1e293b';
-      ctx.fill();
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = '#f59e0b';
-      ctx.stroke();
-
-      // 4. Vẽ các vòng tính điểm đồng tâm (10đ -> 15đ -> 25đ -> 35đ -> 50đ)
-      const rings = [
-        { r: 1.0, fill: '#0f172a', stroke: '#475569' },
-        { r: 0.78, fill: '#dc2626', stroke: '#fca5a5' },
-        { r: 0.55, fill: '#f8fafc', stroke: '#cbd5e1' },
-        { r: 0.32, fill: '#16a34a', stroke: '#86efac' },
-        { r: 0.14, fill: '#eab308', stroke: '#fef08a' },
-      ];
-
-      for (const ring of rings) {
-        ctx.beginPath();
-        ctx.arc(bx, by, radius * ring.r, 0, Math.PI * 2);
-        ctx.fillStyle = ring.fill;
-        ctx.fill();
-        ctx.lineWidth = 1.5;
-        ctx.strokeStyle = ring.stroke;
-        ctx.stroke();
-      }
-
-      // Vẽ các đường chia múi bia phi tiêu
-      ctx.save();
-      ctx.strokeStyle = 'rgba(255,255,255,0.22)';
-      ctx.lineWidth = 1;
-      for (let i = 0; i < 12; i++) {
-        const ang = (i * Math.PI) / 6;
-        ctx.beginPath();
-        ctx.moveTo(bx + Math.cos(ang) * (radius * 0.14), by + Math.sin(ang) * (radius * 0.14));
-        ctx.lineTo(bx + Math.cos(ang) * radius, by + Math.sin(ang) * radius);
-        ctx.stroke();
-      }
-      ctx.restore();
-
-      // 5. NẾU CÓ ẢNH GHÉP LÊN BIA -> Vẽ ảnh cắt tròn ngay trên mặt bia!
-      if (loadedImageRef.current) {
-        const photoRadius =
-          photoCoverageMode === 'full' ? radius * 0.76 : radius * 0.38;
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(bx, by, photoRadius, 0, Math.PI * 2);
-        ctx.closePath();
-        ctx.clip();
-
-        ctx.drawImage(
-          loadedImageRef.current,
-          bx - photoRadius,
-          by - photoRadius,
-          photoRadius * 2,
-          photoRadius * 2
-        );
-
-        // Vẽ lại các vòng ngắm mờ đè nhẹ lên trên ảnh để người chơi vẫn căn được hồng tâm
-        ctx.strokeStyle = 'rgba(250, 204, 21, 0.75)';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(bx, by, radius * 0.32, 0, Math.PI * 2);
-        ctx.stroke();
-
-        ctx.strokeStyle = 'rgba(239, 68, 68, 0.9)';
-        ctx.lineWidth = 2.5;
-        ctx.beginPath();
-        ctx.arc(bx, by, radius * 0.14, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.restore();
-
-        // Viền phát sáng quanh ảnh mục tiêu
-        ctx.beginPath();
-        ctx.arc(bx, by, photoRadius, 0, Math.PI * 2);
-        ctx.strokeStyle = '#f59e0b';
-        ctx.lineWidth = 3;
-        ctx.stroke();
-      }
-
-      // Nhãn tên mục tiêu dưới/trên tâm bia
-      if (targetPersonName.trim()) {
-        ctx.save();
-        ctx.font = 'bold 13px Inter, sans-serif';
-        ctx.textAlign = 'center';
-        const badgeW = Math.min(200, ctx.measureText(targetPersonName).width + 24);
-        ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
-        ctx.strokeStyle = '#f59e0b';
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.roundRect(bx - badgeW / 2, by + radius - 14, badgeW, 24, 12);
-        ctx.fill();
-        ctx.stroke();
-
-        ctx.fillStyle = '#fde68a';
-        ctx.fillText(`🎯 ${targetPersonName}`, bx, by + radius + 2);
-        ctx.restore();
-      }
-
-      // 6. Vẽ các mũi phi tiêu đã cắm trên bia (di chuyển cùng bia)
-      for (const dart of landedDarts) {
-        const dx = bx + dart.relX * radius;
-        const dy = by + dart.relY * radius;
-
-        ctx.save();
-        // Bóng mũi tiêu
-        ctx.fillStyle = 'rgba(0,0,0,0.45)';
-        ctx.beginPath();
-        ctx.arc(dx + 3, dy + 4, 6, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Thân & Cánh phi tiêu (Đỏ cho P1, Xanh ngọc cho P2)
-        const finColor = dart.playerIndex === 0 ? '#f43f5e' : '#06b6d4';
-        ctx.strokeStyle = '#e2e8f0';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(dx, dy);
-        ctx.lineTo(dx + 14, dy - 18);
-        ctx.stroke();
-
-        // Cánh đuôi phi tiêu
-        ctx.fillStyle = finColor;
-        ctx.beginPath();
-        ctx.moveTo(dx + 14, dy - 18);
-        ctx.lineTo(dx + 24, dy - 16);
-        ctx.lineTo(dx + 18, dy - 28);
-        ctx.closePath();
-        ctx.fill();
-
-        // Đầu kim cắm vào bia
-        ctx.fillStyle = '#facc15';
-        ctx.beginPath();
-        ctx.arc(dx, dy, 4, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-      }
-
-      // 7. Vẽ mũi phi tiêu đang bay (nếu có)
-      if (flyingDartRef.current && flyingDartRef.current.active) {
-        const fd = flyingDartRef.current;
-        fd.progress += 0.14;
-        if (fd.progress >= 1) {
-          fd.active = false;
-          resolveDartLanding(fd.targetX, fd.targetY, fd.playerIndex);
-        } else {
-          const curX = fd.startX + (fd.targetX - fd.startX) * fd.progress;
-          const curY =
-            fd.startY +
-            (fd.targetY - fd.startY) * fd.progress -
-            Math.sin(fd.progress * Math.PI) * 45;
-          const dartScale = 1.6 - fd.progress * 0.6;
-
-          ctx.save();
-          ctx.translate(curX, curY);
-          ctx.scale(dartScale, dartScale);
-          ctx.fillStyle = fd.playerIndex === 0 ? '#f43f5e' : '#06b6d4';
-          ctx.beginPath();
-          ctx.arc(0, 0, 8, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.strokeStyle = '#ffffff';
-          ctx.lineWidth = 2;
-          ctx.stroke();
-          ctx.restore();
-        }
-      }
-
-      // 8. Vẽ Tâm Ngắm (Crosshair) lắc nhẹ tự nhiên để tăng cảm giác ngắm bắn
-      const aimX =
-        (aimPosRef.current.x || centerX) + Math.sin(elapsed * 4.2) * 3.5;
-      const aimY =
-        (aimPosRef.current.y || centerY) + Math.cos(elapsed * 3.5) * 3.5;
-
-      ctx.save();
-      ctx.strokeStyle = activeTurnPlayer === 0 ? '#34d399' : '#38bdf8';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(aimX, aimY, 16, 0, Math.PI * 2);
-      ctx.stroke();
-
-      ctx.beginPath();
-      ctx.moveTo(aimX - 22, aimY);
-      ctx.lineTo(aimX - 8, aimY);
-      ctx.moveTo(aimX + 8, aimY);
-      ctx.lineTo(aimX + 22, aimY);
-      ctx.moveTo(aimX, aimY - 22);
-      ctx.lineTo(aimX, aimY - 8);
-      ctx.moveTo(aimX, aimY + 8);
-      ctx.lineTo(aimX, aimY + 22);
-      ctx.stroke();
-
-      ctx.fillStyle = '#f43f5e';
-      ctx.beginPath();
-      ctx.arc(aimX, aimY, 2.5, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-
-      animId = window.requestAnimationFrame(renderLoop);
-    };
-
-    animId = window.requestAnimationFrame(renderLoop);
-    return () => window.cancelAnimationFrame(animId);
-  }, [
-    isOpen,
-    selectedGameTab,
-    gameMode,
-    levelConfig,
-    landedDarts,
-    photoCoverageMode,
-    targetPersonName,
-    activeTurnPlayer,
-    resolveDartLanding,
-  ]);
-
-  // Xử lý khi người chơi bấm hoặc chạm vào mặt Canvas để Phóng Phi Tiêu
-  const handleCanvasPointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    aimPosRef.current = {
-      x: (e.clientX - rect.left) * scaleX,
-      y: (e.clientY - rect.top) * scaleY,
-    };
-  };
-
-  const handleThrowDartAt = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (roundFinished) return;
-    if (flyingDartRef.current?.active) return;
-
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-
-    const clickX = (e.clientX - rect.left) * scaleX;
-    const clickY = (e.clientY - rect.top) * scaleY;
-    aimPosRef.current = { x: clickX, y: clickY };
-
-    // Cộng độ lệch của gió (windX)
-    const windOffsetPx = windX * 12;
-
-    flyingDartRef.current = {
-      active: true,
-      startX: canvas.width / 2,
-      startY: canvas.height + 20,
-      targetX: clickX + windOffsetPx,
-      targetY: clickY,
-      progress: 0,
-      playerIndex: gameMode === 'pvp' ? activeTurnPlayer : 0,
-    };
-  };
-
-  // Gửi lời mời thách đấu phi tiêu cho bạn bè trong phòng
   const handleSendRoomChallenge = () => {
     const targetMember = members.find((m) => m.userId === selectedOpponentId);
     const opponentLabel = targetMember ? targetMember.nickname : opponentName;
     const targetInfo = targetPersonName
-      ? ` (Bia mục tiêu: "${targetPersonName}")`
+      ? ` (Mục tiêu trên gỗ: "${targetPersonName}")`
       : '';
-    const msg = `🎯 [THÁCH ĐẤU PHI TIÊU] ${currentNickname} vừa gửi lời mời @${opponentLabel} vào 🎮 Phòng Giải Trí đấu Solo Phóng Phi Tiêu${targetInfo}! Ai cao điểm hơn thắng nhé!`;
+    const msg = `🎯 [THÁCH ĐẤU PHI TIÊU] ${currentNickname} vừa thách đấu @${opponentLabel} chơi 🗡️ Knife Hit (Phóng Dao Cắm Gỗ)${targetInfo} trong 🎮 Phòng Giải Trí!`;
     onBroadcastChallengeMessage(msg);
-    setLastHitBanner(`📣 Đã gửi lời mời thách đấu tới ${opponentLabel} trên kênh phòng!`);
+    setLastHitBanner(`📣 Đã gửi lời thách đấu Knife Hit tới ${opponentLabel}!`);
   };
 
   const handleShareMatchResult = () => {
     if (gameMode === 'campaign') {
-      const passed = score >= levelConfig.targetScore;
-      const msg = `🎯 [KẾT QUẢ PHI TIÊU] ${currentNickname} vừa đạt ${score} điểm tại ${levelConfig.title}${
-        targetPersonName ? ` (Bia mục tiêu: ${targetPersonName})` : ''
-      } — ${passed ? '🏆 VƯỢT ẢI THÀNH CÔNG!' : '💪 Đang phục thù!'}`;
+      const msg = `🗡️ [KNIFE HIT] ${currentNickname} vừa đạt ${score} dao liên tiếp (Tới Stage ${currentStageNum}, thu thập ${appleCount} 🍎)${
+        targetPersonName ? ` — Đã chẻ vỡ mục tiêu "${targetPersonName}"` : ''
+      }!`;
       onBroadcastChallengeMessage(msg);
     } else {
       const winner =
@@ -853,13 +1173,12 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
           : pvpScores[1] > pvpScores[0]
             ? `${opponentName} thắng!`
             : 'Hòa kịch tính!';
-      const msg = `⚔️ [SOLO PHI TIÊU] ${currentNickname} (${pvpScores[0]}đ) vs ${opponentName} (${pvpScores[1]}đ) — Kết quả: 🏆 ${winner}`;
+      const msg = `⚔️ [SOLO KNIFE HIT] ${currentNickname} (${pvpScores[0]}đ) vs ${opponentName} (${pvpScores[1]}đ) — Kết quả: 🏆 ${winner}`;
       onBroadcastChallengeMessage(msg);
     }
-    setLastHitBanner('📣 Đã khoe bảng điểm lên kênh Chat của văn phòng!');
+    setLastHitBanner('📣 Đã khoe thành tích Knife Hit lên kênh Chat của phòng!');
   };
 
-  // Quay Vòng Quay Nhân Phẩm
   const handleSpinWheel = () => {
     const items = wheelItemsText
       .split('\n')
@@ -878,48 +1197,46 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
   if (!isOpen) return null;
 
   const otherMembers = members.filter((m) => m.userId !== currentUserId);
-  const levelPassed = score >= levelConfig.targetScore;
 
   return (
     <div
       data-testid="entertainment-room-overlay"
       className="fixed inset-0 z-30 flex items-center justify-center bg-slate-950/75 p-2 sm:p-4 backdrop-blur-md"
     >
-      <div className="relative flex max-h-[92dvh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-indigo-400/35 bg-slate-900/95 text-slate-100 shadow-2xl">
+      <div className="relative flex max-h-[92dvh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-teal-400/35 bg-slate-900/95 text-slate-100 shadow-2xl">
         {/* HEADER PHÒNG GIẢI TRÍ */}
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 bg-gradient-to-r from-indigo-950/90 via-slate-900 to-fuchsia-950/80 px-3.5 py-2.5 sm:px-5 sm:py-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 bg-gradient-to-r from-[#072e38] via-slate-900 to-indigo-950/90 px-3.5 py-2.5 sm:px-5 sm:py-3">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-indigo-500/25 text-indigo-300 ring-1 ring-indigo-400/40">
+            <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-amber-500/20 text-amber-300 ring-1 ring-amber-400/40">
               <Gamepad2 className="h-5 w-5" />
             </div>
             <div>
               <h2 className="text-sm sm:text-base font-extrabold text-white flex items-center gap-2">
-                <span>🎮 Phòng Giải Trí — Tịnh Tâm Arcade</span>
+                <span>🗡️ Phòng Giải Trí — Knife Hit 3D</span>
                 <span className="hidden sm:inline-flex items-center gap-1 rounded-full bg-amber-400/20 border border-amber-400/40 px-2.5 py-0.5 text-[11px] font-bold text-amber-300">
-                  <Trophy className="h-3 w-3" /> Kỷ lục: {bestScore}đ
+                  <Trophy className="h-3 w-3" /> Kỷ lục: {bestScore} dao • {appleCount} 🍎
                 </span>
               </h2>
-              <p className="text-[11px] text-slate-400">
-                Chơi 1 mình vượt Level hoặc mời bạn bè trong phòng đấu Solo • Hỗ trợ ghép ảnh vào bia phóng
+              <p className="text-[11px] text-slate-300">
+                Phóng dao cắm khúc gỗ xoay vượt Stage hoặc đấu Solo • Ghép ảnh vào khúc gỗ để chẻ vỡ tung!
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-2">
-            {/* Chuyển đổi giữa các Game trong Phòng Giải Trí */}
             <div className="flex items-center rounded-xl bg-slate-950/80 p-1 border border-white/10">
               <button
                 type="button"
                 data-testid="game-tab-darts"
-                onClick={() => setSelectedGameTab('darts')}
+                onClick={() => setSelectedGameTab('knife_hit')}
                 className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-bold transition-all cursor-pointer ${
-                  selectedGameTab === 'darts'
-                    ? 'bg-indigo-500 text-white shadow'
+                  selectedGameTab === 'knife_hit'
+                    ? 'bg-amber-500 text-slate-950 shadow'
                     : 'text-slate-400 hover:text-white'
                 }`}
               >
-                <Target className="h-3.5 w-3.5" />
-                <span>Phóng Phi Tiêu</span>
+                <Flame className="h-3.5 w-3.5" />
+                <span>Knife Hit</span>
               </button>
               <button
                 type="button"
@@ -961,7 +1278,6 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
           </div>
         </div>
 
-        {/* Banner thông báo khi có người thách đấu trong phòng */}
         {activeChallengeBanner && (
           <div className="bg-amber-500/20 border-b border-amber-400/40 px-4 py-1.5 text-center text-xs font-semibold text-amber-200">
             {activeChallengeBanner}
@@ -970,129 +1286,54 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
 
         {/* NỘI DUNG CHÍNH */}
         <div className="flex-1 overflow-y-auto p-3 sm:p-4">
-          {selectedGameTab === 'darts' ? (
+          {selectedGameTab === 'knife_hit' ? (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
-              {/* CỘT TRÁI (7/12): BẢNG BIA PHÓNG PHI TIÊU TƯƠNG TÁC */}
-              <div className="lg:col-span-7 flex flex-col items-center bg-slate-950/80 rounded-2xl border border-indigo-500/25 p-3 shadow-inner">
-                {/* Thanh thông số trực tiếp phía trên Bia */}
-                <div className="w-full flex flex-wrap items-center justify-between gap-2 mb-2 px-1">
-                  {gameMode === 'campaign' ? (
-                    <div className="flex items-center gap-2">
-                      <span className="rounded-xl bg-indigo-500/20 border border-indigo-400/40 px-2.5 py-1 text-xs font-bold text-indigo-200">
-                        {levelConfig.title}
-                      </span>
-                      <span
-                        data-testid="dart-score-display"
-                        className="rounded-xl bg-emerald-500/20 border border-emerald-400/40 px-2.5 py-1 text-xs font-extrabold text-emerald-300"
-                      >
-                        Điểm: {score} / {levelConfig.targetScore}
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`rounded-xl px-2.5 py-1 text-xs font-bold border ${
-                          activeTurnPlayer === 0
-                            ? 'bg-rose-500/25 border-rose-400 text-rose-200 ring-1 ring-rose-400'
-                            : 'bg-slate-800/80 border-white/10 text-slate-400'
-                        }`}
-                      >
-                        🔴 {currentNickname}: {pvpScores[0]}đ ({pvpDartsLeft[0]} tiêu)
-                      </span>
-                      <span className="text-xs font-bold text-slate-500">VS</span>
-                      <span
-                        className={`rounded-xl px-2.5 py-1 text-xs font-bold border ${
-                          activeTurnPlayer === 1
-                            ? 'bg-cyan-500/25 border-cyan-400 text-cyan-200 ring-1 ring-cyan-400'
-                            : 'bg-slate-800/80 border-white/10 text-slate-400'
-                        }`}
-                      >
-                        🔵 {opponentName}: {pvpScores[1]}đ ({pvpDartsLeft[1]} tiêu)
-                      </span>
-                    </div>
-                  )}
-
-                  <div className="flex items-center gap-2 text-xs">
-                    <span className="inline-flex items-center gap-1 rounded-xl bg-slate-800 px-2.5 py-1 text-sky-300 font-semibold">
-                      <Wind className="h-3.5 w-3.5" />
-                      Gió:{' '}
-                      {windX === 0
-                        ? 'Lặng gió'
-                        : windX > 0
-                          ? `Sang phải +${windX}`
-                          : `Sang trái ${windX}`}
-                    </span>
-                    {gameMode === 'campaign' && (
-                      <span
-                        data-testid="darts-remaining-badge"
-                        className="rounded-xl bg-amber-500/20 border border-amber-400/30 px-2.5 py-1 font-bold text-amber-300"
-                      >
-                        🎯 Phi tiêu: {dartsRemaining}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* KHUNG CANVAS BIA PHÓNG PHI TIÊU */}
-                <div className="relative w-full max-w-[380px] aspect-square rounded-2xl overflow-hidden border border-indigo-400/30 shadow-2xl">
+              {/* CỘT TRÁI (7/12): MÀN HÌNH DỌC KNIFE HIT CHUẨN NHƯ ẢNH MẪU */}
+              <div className="lg:col-span-7 flex flex-col items-center bg-[#041d24] rounded-2xl border border-teal-500/30 p-3 shadow-inner">
+                <div className="relative w-full max-w-[330px] aspect-[320/420] rounded-2xl overflow-hidden border-2 border-teal-400/35 shadow-2xl">
                   <canvas
                     ref={canvasRef}
                     data-testid="dartboard-canvas"
-                    width={360}
-                    height={360}
-                    onPointerMove={handleCanvasPointerMove}
-                    onPointerDown={handleThrowDartAt}
-                    className="w-full h-full cursor-crosshair touch-none select-none"
+                    width={320}
+                    height={420}
+                    onPointerDown={handleThrowKnife}
+                    className="w-full h-full cursor-pointer touch-none select-none"
                   />
 
-                  {/* Lớp phủ Tổng kết khi hết lượt phi tiêu */}
-                  {roundFinished && (
+                  {/* Màn hình Khi Đụng Phải Dao Khác (Failed) hoặc Kết thúc ván Solo PvP */}
+                  {(stageState === 'failed' || stageState === 'pvp_over') && (
                     <div
                       data-testid="dart-round-summary"
                       className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/88 p-4 text-center backdrop-blur-md animate-fade-in"
                     >
-                      {gameMode === 'campaign' ? (
+                      {stageState === 'failed' ? (
                         <>
-                          <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-400/20 text-amber-300 ring-2 ring-amber-400/50">
-                            <Trophy className="h-6 w-6" />
+                          <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-500/20 text-rose-300 ring-2 ring-rose-400/50">
+                            <Flame className="h-6 w-6" />
                           </div>
                           <h3 className="text-base sm:text-lg font-extrabold text-white">
-                            {levelPassed
-                              ? '🎉 Chúc mừng! Bạn đã vượt ải!'
-                              : '💪 Chưa đủ điểm qua ải!'}
+                            💥 Trúng Dao Đã Cắm!
                           </h3>
                           <p className="mt-1 text-xs text-slate-300">
-                            Tổng điểm:{' '}
-                            <strong className="text-emerald-400 text-sm">{score}</strong> / Mục tiêu{' '}
-                            <strong>{levelConfig.targetScore}</strong> điểm
+                            Bạn đã phóng trúng liên tiếp{' '}
+                            <strong className="text-amber-400 text-sm">{score}</strong> con dao (Tới{' '}
+                            <strong>Stage {currentStageNum}</strong>)
                           </p>
                           <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
                             <button
                               type="button"
                               data-testid="dart-retry-btn"
-                              onClick={() => resetDartMatch(currentLevelNum, 'campaign')}
-                              className="inline-flex items-center gap-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-white/15 px-3.5 py-2 text-xs font-bold text-white cursor-pointer"
+                              onClick={() => setupStage(currentStageNum, 'campaign', true)}
+                              className="inline-flex items-center gap-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 px-4 py-2 text-xs font-extrabold text-slate-950 shadow-lg cursor-pointer"
                             >
                               <RotateCcw className="h-3.5 w-3.5" />
-                              <span>Chơi lại ải này</span>
+                              <span>Chơi lại Stage {currentStageNum}</span>
                             </button>
-
-                            {levelPassed && currentLevelNum < DART_LEVELS.length && (
-                              <button
-                                type="button"
-                                data-testid="dart-next-level-btn"
-                                onClick={() => setCurrentLevelNum((l) => l + 1)}
-                                className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 px-4 py-2 text-xs font-extrabold text-slate-950 shadow-lg cursor-pointer"
-                              >
-                                <Sparkles className="h-3.5 w-3.5" />
-                                <span>Qua Level {currentLevelNum + 1} →</span>
-                              </button>
-                            )}
 
                             <button
                               type="button"
                               onClick={handleShareMatchResult}
-                              className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-500/25 hover:bg-indigo-500/35 border border-indigo-400/40 px-3 py-2 text-xs font-bold text-indigo-200 cursor-pointer"
+                              className="inline-flex items-center gap-1.5 rounded-xl bg-teal-500/25 hover:bg-teal-500/35 border border-teal-400/40 px-3.5 py-2 text-xs font-bold text-teal-200 cursor-pointer"
                             >
                               <Send className="h-3.5 w-3.5" />
                               <span>Khoe điểm lên phòng</span>
@@ -1120,7 +1361,7 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
                           <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
                             <button
                               type="button"
-                              onClick={() => resetDartMatch(currentLevelNum, 'pvp')}
+                              onClick={() => setupStage(currentStageNum, 'pvp', true)}
                               className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 px-4 py-2 text-xs font-extrabold text-slate-950 cursor-pointer"
                             >
                               <RotateCcw className="h-3.5 w-3.5" />
@@ -1129,7 +1370,7 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
                             <button
                               type="button"
                               onClick={handleShareMatchResult}
-                              className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-500/25 hover:bg-indigo-500/35 border border-indigo-400/40 px-3.5 py-2 text-xs font-bold text-indigo-200 cursor-pointer"
+                              className="inline-flex items-center gap-1.5 rounded-xl bg-teal-500/25 hover:bg-teal-500/35 border border-teal-400/40 px-3.5 py-2 text-xs font-bold text-teal-200 cursor-pointer"
                             >
                               <Send className="h-3.5 w-3.5" />
                               <span>Báo kết quả lên phòng</span>
@@ -1141,26 +1382,26 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
                   )}
                 </div>
 
-                {/* Thông báo kết quả mũi phóng vừa rồi */}
-                <div className="mt-2 min-h-[28px] flex items-center justify-center text-center">
+                {/* Dòng hướng dẫn & thông báo dưới màn hình Knife Hit */}
+                <div className="mt-2 min-h-[26px] flex items-center justify-center text-center">
                   {lastHitBanner ? (
                     <span
                       data-testid="dart-hit-banner"
-                      className="rounded-full bg-indigo-500/20 border border-indigo-400/40 px-3.5 py-1 text-xs font-bold text-amber-200"
+                      className="rounded-full bg-amber-500/20 border border-amber-400/40 px-3.5 py-1 text-xs font-bold text-amber-200"
                     >
                       {lastHitBanner}
                     </span>
                   ) : (
-                    <span className="text-[11px] text-slate-400">
-                      💡 Chạm hoặc bấm chuột trực tiếp vào Bia để phóng phi tiêu!
+                    <span className="text-[11px] text-teal-200/80">
+                      💡 Chạm vào màn hình gỗ hoặc bấm phím <strong>Space</strong> để phóng dao! Đừng phóng trúng dao đã cắm!
                     </span>
                   )}
                 </div>
               </div>
 
-              {/* CỘT PHẢI (5/12): CHỌN CHẾ ĐỘ CHƠI • LEVEL • GHÉP ẢNH VÀO BIA • MỜI BẠN BÈ */}
+              {/* CỘT PHẢI (5/12): CHỌN CHẾ ĐỘ • CHỌN STAGE • GHÉP ẢNH VÀO KHÚC GỖ • MỜI BẠN BÈ */}
               <div className="lg:col-span-5 flex flex-col gap-3">
-                {/* 1. CHỌN CHẾ ĐỘ: CHƠI 1 MÌNH QUA LEVEL vs SOLO CÙNG BẠN BÈ */}
+                {/* 1. CHỌN CHẾ ĐỘ: VƯỢT STAGE 1 MÌNH vs SOLO CÙNG BẠN BÈ */}
                 <div className="rounded-2xl border border-white/10 bg-slate-950/65 p-3 space-y-2.5">
                   <div className="grid grid-cols-2 gap-2">
                     <button
@@ -1169,12 +1410,12 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
                       onClick={() => setGameMode('campaign')}
                       className={`flex items-center justify-center gap-1.5 rounded-xl py-2 px-3 text-xs font-bold transition-all cursor-pointer ${
                         gameMode === 'campaign'
-                          ? 'bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/25'
+                          ? 'bg-amber-400 text-slate-950 shadow-lg shadow-amber-400/25'
                           : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
                       }`}
                     >
                       <Trophy className="h-3.5 w-3.5" />
-                      <span>Chơi 1 mình (5 Level)</span>
+                      <span>Vượt Stage (1 Mình)</span>
                     </button>
 
                     <button
@@ -1195,37 +1436,40 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
                   {gameMode === 'campaign' ? (
                     <div className="space-y-1.5">
                       <p className="text-[11px] font-semibold text-slate-400">
-                        Chọn Level thử thách (Đã mở khóa {unlockedLevel}/{DART_LEVELS.length}):
+                        Chọn Stage thử thách (Cắm đủ dao khúc gỗ sẽ nổ tung qua màn):
                       </p>
                       <div className="grid grid-cols-5 gap-1.5">
-                        {DART_LEVELS.map((lvl) => {
-                          const active = currentLevelNum === lvl.level;
+                        {KNIFE_STAGES.map((stg) => {
+                          const active = currentStageNum === stg.stage;
                           return (
                             <button
-                              key={lvl.level}
+                              key={stg.stage}
                               type="button"
-                              data-testid={`dart-level-${lvl.level}`}
-                              onClick={() => setCurrentLevelNum(lvl.level)}
+                              data-testid={`dart-level-${stg.stage}`}
+                              onClick={() => {
+                                setCurrentStageNum(stg.stage);
+                                setupStage(stg.stage, 'campaign', false);
+                              }}
                               className={`flex flex-col items-center justify-center rounded-xl border py-1.5 text-xs font-bold transition-all cursor-pointer ${
                                 active
                                   ? 'border-amber-300 bg-amber-400 text-slate-950 shadow'
-                                  : lvl.level <= unlockedLevel
-                                    ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20'
+                                  : stg.stage <= unlockedStage
+                                    ? 'border-teal-400/30 bg-teal-500/10 text-teal-200 hover:bg-teal-500/20'
                                     : 'border-white/10 bg-slate-900 text-slate-400 hover:bg-slate-800'
                               }`}
                             >
-                              <span>Lv.{lvl.level}</span>
-                              <span className="text-[9px] opacity-80">{lvl.targetScore}đ</span>
+                              <span>{stg.isBoss ? '⚔️ Boss' : `Stg.${stg.stage}`}</span>
+                              <span className="text-[9px] opacity-80">{stg.knivesToThrow} 🗡️</span>
                             </button>
                           );
                         })}
                       </div>
-                      <p className="text-[11px] text-slate-400 pt-0.5">{levelConfig.subtitle}</p>
+                      <p className="text-[11px] text-slate-400 pt-0.5">{stageConfig.subtitle}</p>
                     </div>
                   ) : (
                     <div className="space-y-2">
                       <p className="text-[11px] text-slate-300 font-medium">
-                        Chọn bạn bè trong phòng để thách đấu hoặc đấu luân phiên 5 mũi tiêu:
+                        Đấu luân phiên trên cùng 1 khúc gỗ xoay (Trúng gỗ +10đ, trúng Táo +25đ, đụng dao mất lượt!):
                       </p>
 
                       {otherMembers.length > 0 && (
@@ -1237,7 +1481,7 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
                               onClick={() => {
                                 setSelectedOpponentId(m.userId);
                                 setOpponentName(m.nickname);
-                                resetDartMatch(currentLevelNum, 'pvp');
+                                setupStage(currentStageNum, 'pvp', true);
                               }}
                               className={`rounded-xl px-2.5 py-1 text-xs font-semibold border transition-all cursor-pointer ${
                                 opponentName === m.nickname
@@ -1273,13 +1517,13 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
                   )}
                 </div>
 
-                {/* 2. CHỨC NĂNG ĐẶC BIỆT: THAY ẢNH NGƯỜI NÀO ĐÓ VÀO BIA PHÓNG */}
+                {/* 2. CHỨC NĂNG ĐẶC BIỆT: THAY ẢNH NGƯỜI NÀO ĐÓ VÀO KHÚC GỖ XOAY */}
                 <div className="rounded-2xl border border-amber-400/35 bg-gradient-to-br from-amber-500/10 via-slate-950/80 to-rose-500/10 p-3 space-y-2.5">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Camera className="h-4 w-4 text-amber-300" />
                       <h3 className="text-xs font-extrabold text-amber-200 uppercase tracking-wider">
-                        Ghép ảnh người vào Bia Phóng
+                        Ghép ảnh người vào Khúc Gỗ Xoay
                       </h3>
                     </div>
                     <button
@@ -1292,7 +1536,10 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
                     </button>
                   </div>
 
-                  {/* Nút tải ảnh nhanh luôn hiển thị */}
+                  <p className="text-[11px] text-slate-300 leading-relaxed">
+                    Ảnh được gắn tròn lên mặt khúc gỗ, xoay theo gỗ và <strong>vỡ tung thành 3 mảnh</strong> khi bạn cắm nhát dao cuối cùng!
+                  </p>
+
                   <div className="flex flex-wrap items-center gap-2">
                     <input
                       ref={photoInputRef}
@@ -1323,7 +1570,7 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
                         data-testid="dart-clear-photo-btn"
                         onClick={handleClearTargetPhoto}
                         className="inline-flex items-center gap-1 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 border border-rose-400/40 px-2.5 py-2 text-xs font-semibold text-rose-200 cursor-pointer"
-                        title="Xóa ảnh trên bia"
+                        title="Xóa ảnh trên khúc gỗ"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                         <span>Xóa ảnh</span>
@@ -1331,7 +1578,6 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
                     )}
                   </div>
 
-                  {/* Đặt tên mục tiêu hiển thị trên bia */}
                   <div className="flex items-center gap-2">
                     <input
                       type="text"
@@ -1345,16 +1591,15 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
                           // ignore
                         }
                       }}
-                      placeholder="Nhập tên mục tiêu trên bia (VD: Deadline, Sếp, Bạn thân...)"
+                      placeholder="Nhập tên trên khúc gỗ (VD: Deadline, Bug, Bạn thân...)"
                       className="w-full rounded-xl border border-white/15 bg-slate-900/90 px-3 py-1.5 text-xs text-white outline-none focus:border-amber-400"
                     />
                   </div>
 
-                  {/* Mở rộng: Chọn kích thước ảnh trên bia, dán URL ảnh, hoặc chọn thành viên trong phòng */}
                   {showPhotoCustomizer && (
                     <div className="space-y-2 pt-1 border-t border-white/10">
                       <div className="flex items-center justify-between text-[11px] text-slate-300">
-                        <span>Kích cỡ ảnh trên bia:</span>
+                        <span>Kích cỡ ảnh trên khúc gỗ:</span>
                         <div className="flex items-center gap-1">
                           <button
                             type="button"
@@ -1365,7 +1610,7 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
                                 : 'bg-slate-800 text-slate-300'
                             }`}
                           >
-                            Toàn mặt bia
+                            Tràn mặt gỗ
                           </button>
                           <button
                             type="button"
@@ -1376,12 +1621,11 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
                                 : 'bg-slate-800 text-slate-300'
                             }`}
                           >
-                            Chỉ vùng tâm
+                            Giữa tâm gỗ
                           </button>
                         </div>
                       </div>
 
-                      {/* Dán link ảnh URL */}
                       <div className="flex items-center gap-1.5">
                         <input
                           type="url"
@@ -1404,11 +1648,10 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
                         </button>
                       </div>
 
-                      {/* Chọn nhanh thành viên trong phòng làm bia */}
                       {members.length > 0 && (
                         <div className="space-y-1">
                           <span className="text-[11px] text-slate-400">
-                            Hoặc gắn nhanh thành viên trong phòng lên bia:
+                            Hoặc gắn nhanh thành viên trong phòng lên khúc gỗ:
                           </span>
                           <div className="flex flex-wrap gap-1">
                             {members.map((m) => (
@@ -1429,24 +1672,24 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
                   )}
                 </div>
 
-                {/* 3. NÚT LÀM MỚI VÁN & KHOE ĐIỂM */}
+                {/* 3. NÚT CHƠI LẠI & KHOE THÀNH TÍCH */}
                 <div className="flex items-center justify-between gap-2">
                   <button
                     type="button"
-                    onClick={() => resetDartMatch(currentLevelNum, gameMode)}
+                    onClick={() => setupStage(currentStageNum, gameMode, true)}
                     className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-white/10 py-2 text-xs font-semibold text-slate-200 cursor-pointer"
                   >
                     <RotateCcw className="h-3.5 w-3.5" />
-                    <span>Phóng lại từ đầu</span>
+                    <span>Làm mới màn chơi</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={handleShareMatchResult}
-                    className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-400/40 py-2 text-xs font-bold text-indigo-200 cursor-pointer"
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-teal-500/20 hover:bg-teal-500/30 border border-teal-400/40 py-2 text-xs font-bold text-teal-200 cursor-pointer"
                   >
                     <Send className="h-3.5 w-3.5" />
-                    <span>Gửi điểm ra phòng</span>
+                    <span>Khoe điểm ra phòng</span>
                   </button>
                 </div>
               </div>

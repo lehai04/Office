@@ -332,44 +332,95 @@ export function playTempleBellSound(): void {
 }
 
 /**
- * Phát âm thanh phi tiêu cắm vào bia ("Phập!" hoặc "Keng!" khi trúng hồng tâm Bullseye)
+ * Phát âm thanh phi tiêu / dao cắm phập vào khúc gỗ xoay (Knife Hit wood thud)
  */
 export function playDartHitSound(isBullseye = false): void {
   const ctx = getAudioContext();
   if (!ctx) return;
   const now = ctx.currentTime;
 
-  // Tiếng cắm phập vào gỗ/bia
+  // Tiếng dao cắm phập vào thân gỗ
   const thudOsc = ctx.createOscillator();
   const thudGain = ctx.createGain();
   thudOsc.type = 'triangle';
-  thudOsc.frequency.setValueAtTime(190, now);
-  thudOsc.frequency.exponentialRampToValueAtTime(55, now + 0.09);
+  thudOsc.frequency.setValueAtTime(220, now);
+  thudOsc.frequency.exponentialRampToValueAtTime(58, now + 0.085);
 
-  thudGain.gain.setValueAtTime(0.55, now);
-  thudGain.gain.exponentialRampToValueAtTime(0.001, now + 0.11);
+  thudGain.gain.setValueAtTime(0.65, now);
+  thudGain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
 
   thudOsc.connect(thudGain);
   thudGain.connect(ctx.destination);
   thudOsc.start(now);
-  thudOsc.stop(now + 0.12);
+  thudOsc.stop(now + 0.11);
 
   if (isBullseye) {
-    // Âm thanh ngân vang chúc mừng khi trúng tâm (Bullseye!)
+    // Âm thanh chém trúng Táo hoặc phá vỡ khúc gỗ (Stage Clear!)
     const notes = [523.25, 659.25, 783.99, 1046.5];
     notes.forEach((freq, idx) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(freq, now + idx * 0.06);
-      gain.gain.setValueAtTime(0.001, now + idx * 0.06);
-      gain.gain.linearRampToValueAtTime(0.22, now + idx * 0.06 + 0.015);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.06 + 0.35);
+      osc.frequency.setValueAtTime(freq, now + idx * 0.055);
+      gain.gain.setValueAtTime(0.001, now + idx * 0.055);
+      gain.gain.linearRampToValueAtTime(0.24, now + idx * 0.055 + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.055 + 0.32);
       osc.connect(gain);
       gain.connect(ctx.destination);
-      osc.start(now + idx * 0.06);
-      osc.stop(now + idx * 0.06 + 0.36);
+      osc.start(now + idx * 0.055);
+      osc.stop(now + idx * 0.055 + 0.34);
     });
   }
+}
+
+/**
+ * Phát âm thanh "KENG!" khi phóng dao trúng phải con dao khác đang cắm trên khúc gỗ (Game Over / Mất lượt)
+ */
+export function playKnifeClangSound(): void {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+
+  const freqs = [1180, 1760, 2420];
+  freqs.forEach((f, idx) => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = idx === 0 ? 'sawtooth' : 'square';
+    osc.frequency.setValueAtTime(f, now);
+    osc.frequency.exponentialRampToValueAtTime(f * 0.65, now + 0.28);
+
+    gain.gain.setValueAtTime(0.22 / (idx + 1), now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.32);
+  });
+}
+
+/**
+ * Phát âm thanh Khúc Gỗ Vỡ Tung ("RẦM! CRACK!") khi cắm con dao cuối cùng qua màn
+ */
+export function playWoodShatterSound(): void {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+
+  const boomOsc = ctx.createOscillator();
+  const boomGain = ctx.createGain();
+  boomOsc.type = 'sawtooth';
+  boomOsc.frequency.setValueAtTime(160, now);
+  boomOsc.frequency.exponentialRampToValueAtTime(32, now + 0.32);
+
+  boomGain.gain.setValueAtTime(0.7, now);
+  boomGain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+
+  boomOsc.connect(boomGain);
+  boomGain.connect(ctx.destination);
+  boomOsc.start(now);
+  boomOsc.stop(now + 0.36);
+
+  playDartHitSound(true);
 }
 
