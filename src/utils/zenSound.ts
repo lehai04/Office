@@ -24,7 +24,7 @@ export const ZEN_MUSIC_TRACKS: ZenMusicTrack[] = [
     id: 'zen_flute_528',
     name: '🪷 Hòa Âm Tịnh Tâm 528Hz',
     description: 'Giai điệu tần số 528Hz nhẹ nhàng giải tỏa căng thẳng',
-    audioUrl: '',
+    audioUrl: './nhac-thien.mp3',
   },
   {
     id: 'temple_breeze',
@@ -55,7 +55,7 @@ export const ZEN_MUSIC_TRACKS: ZenMusicTrack[] = [
 //   2. Điền đường dẫn vào bên dưới (ví dụ: './tieng-mo.mp3' hoặc link https://...mp3)
 export const ZEN_SFX_CONFIG = {
   woodenFishAudioUrl: '', // Ví dụ: './tieng-mo.mp3'
-  templeBellAudioUrl: '', // Ví dụ: './tieng-chuong.mp3'
+  templeBellAudioUrl: './tieng-chuong.mp3', // Ví dụ: './tieng-chuong.mp3'
 };
 
 let sharedAudioCtx: AudioContext | null = null;
@@ -74,7 +74,7 @@ function getAudioContext(): AudioContext | null {
     sharedAudioCtx = new AudioCtx();
   }
   if (sharedAudioCtx.state === 'suspended') {
-    sharedAudioCtx.resume().catch(() => {});
+    sharedAudioCtx.resume().catch(() => { });
   }
   return sharedAudioCtx;
 }
@@ -147,7 +147,7 @@ export function startZenBackgroundMusic(
       }
       htmlAudioElement.src = targetUrl;
       htmlAudioElement.volume = 0.45;
-      htmlAudioElement.play().catch(() => {});
+      htmlAudioElement.play().catch(() => { });
       return;
     } catch {
       // fallback sang bộ tổng hợp nhạc thiền Web Audio bên dưới
@@ -232,7 +232,7 @@ export function playWoodenFishSound(): void {
     try {
       const sfx = new Audio(ZEN_SFX_CONFIG.woodenFishAudioUrl);
       sfx.volume = 0.85;
-      sfx.play().catch(() => {});
+      sfx.play().catch(() => { });
       return;
     } catch {
       // Nếu lỗi tải file thì tự động dùng âm thanh mõ tổng hợp bên dưới
@@ -295,7 +295,7 @@ export function playTempleBellSound(): void {
     try {
       const sfx = new Audio(ZEN_SFX_CONFIG.templeBellAudioUrl);
       sfx.volume = 0.85;
-      sfx.play().catch(() => {});
+      sfx.play().catch(() => { });
       return;
     } catch {
       // Nếu lỗi tải file thì tự động dùng âm thanh chuông tổng hợp bên dưới

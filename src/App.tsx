@@ -112,7 +112,7 @@ export function App() {
   const [isBowing, setIsBowing] = useState<boolean>(false);
   const [autoMo, setAutoMo] = useState<boolean>(false);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
-  const [zenTrackId, setZenTrackId] = useState<ZenTrackId>('singing_bowl_432');
+  const [zenTrackId, setZenTrackId] = useState<ZenTrackId>('zen_flute_528');
   const [customZenAudioUrl, setCustomZenAudioUrl] = useState<string | null>(null);
   const [customZenTrackName, setCustomZenTrackName] = useState<string | null>(null);
   const [moPulseKey, setMoPulseKey] = useState<number>(0);
