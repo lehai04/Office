@@ -72,7 +72,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
               value={nickname}
               onChange={(e) => setNickname(e.target.value)}
               placeholder="VD: Minh, Lan, Cà Phê Sữa..."
-              className="w-full rounded-xl border border-white/15 bg-slate-800/90 px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/30"
+              className="w-full rounded-xl border border-white/15 bg-slate-800/90 px-3.5 py-2.5 text-base sm:text-sm text-white placeholder-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/30"
             />
           </div>
 
@@ -147,7 +147,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
               value={roomCode}
               onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
               placeholder="TINHTAM"
-              className="w-full rounded-xl border border-white/15 bg-slate-800/90 px-3.5 py-2 text-sm font-mono uppercase tracking-wider text-emerald-300 placeholder-slate-500 focus:border-emerald-400 focus:outline-none"
+              className="w-full rounded-xl border border-white/15 bg-slate-800/90 px-3.5 py-2 text-base sm:text-sm font-mono uppercase tracking-wider text-emerald-300 placeholder-slate-500 focus:border-emerald-400 focus:outline-none"
             />
             <label className="mt-2 flex items-center gap-2 text-xs text-slate-400 cursor-pointer select-none">
               <input

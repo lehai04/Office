@@ -197,11 +197,11 @@ export const SeatSelectorModal: React.FC<SeatSelectorModalProps> = ({
           </div>
         )}
 
-        {/* Sơ đồ mặt bằng khớp 1:1 với ảnh sơ đồ gốc */}
-        <div className="rounded-2xl border border-white/15 bg-slate-950/80 p-3.5 space-y-3">
+        {/* Sơ đồ mặt bằng khớp 1:1 với ảnh sơ đồ gốc (Tối ưu hiển thị gọn trên điện thoại) */}
+        <div className="rounded-2xl border border-white/15 bg-slate-950/80 p-3 sm:p-3.5 space-y-3">
           <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-stretch">
-            {/* Cột 1 (Sát tường trái): 2 tủ dọc lớn + Chậu cây góc dưới trái */}
-            <div className="md:col-span-2 flex flex-col justify-between gap-2">
+            {/* Cột 1 (Sát tường trái): 2 tủ dọc lớn + Chậu cây góc dưới trái (Ẩn trên màn nhỏ điện thoại để ưu tiên ghế bấm) */}
+            <div className="hidden md:flex md:col-span-2 flex-col justify-between gap-2">
               <div className="flex-1 rounded-xl border border-slate-700 bg-slate-800/60 p-2 text-center text-[10px] text-slate-300 flex items-center justify-center">
                 🗄️ Tủ dọc trái 1 (Ngăn kéo)
               </div>
@@ -278,8 +278,8 @@ export const SeatSelectorModal: React.FC<SeatSelectorModalProps> = ({
 
             {/* Cột 3 (Giữa phòng): Tủ ngăn dọc giữa ở phía trên + Vùng đứng gần cửa + Cụm bàn dưới phải (C1-C2) */}
             <div className="md:col-span-3 flex flex-col justify-between gap-3">
-              <div className="grid grid-cols-2 gap-2 flex-1">
-                <div className="rounded-xl border border-slate-700 bg-slate-800/60 p-2 text-[10px] text-slate-300 flex items-center justify-center text-center">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 flex-1">
+                <div className="hidden md:flex rounded-xl border border-slate-700 bg-slate-800/60 p-2 text-[10px] text-slate-300 items-center justify-center text-center">
                   🗄️ Tủ dọc ngăn giữa
                 </div>
                 <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-2 flex flex-col justify-between">
@@ -290,7 +290,7 @@ export const SeatSelectorModal: React.FC<SeatSelectorModalProps> = ({
                     type="button"
                     data-testid="stand-near-door-btn"
                     onClick={onStandNearDoor}
-                    className="mt-1 w-full rounded-lg bg-slate-800 hover:bg-slate-700 border border-white/15 px-2 py-1 text-[10px] font-semibold text-slate-200 cursor-pointer"
+                    className="mt-1 w-full rounded-lg bg-slate-800 hover:bg-slate-700 border border-white/15 px-2 py-1.5 text-[10px] font-semibold text-slate-200 cursor-pointer"
                   >
                     {mySeat || myMeetingChairId ? 'Ra đứng gần cửa' : 'Đang đứng tại đây'}
                   </button>
@@ -310,7 +310,7 @@ export const SeatSelectorModal: React.FC<SeatSelectorModalProps> = ({
 
             {/* Cột 4 (Sát tường phải): Cửa đôi góc trên phải -> Cây xanh -> Bàn D1 -> Cây xanh -> Bàn D2 */}
             <div className="md:col-span-3 flex flex-col justify-between gap-2">
-              <div className="rounded-xl border border-amber-500/40 bg-amber-500/15 px-2.5 py-1.5 text-[11px] font-semibold text-amber-300 flex items-center justify-between">
+              <div className="hidden md:flex rounded-xl border border-amber-500/40 bg-amber-500/15 px-2.5 py-1.5 text-[11px] font-semibold text-amber-300 items-center justify-between">
                 <span className="flex items-center gap-1">
                   <DoorOpen className="h-3.5 w-3.5" />
                   Cửa đôi (Góc trên phải)
@@ -318,28 +318,26 @@ export const SeatSelectorModal: React.FC<SeatSelectorModalProps> = ({
                 <span>🌿</span>
               </div>
 
-              <div>
-                <div className="text-[10px] font-semibold text-slate-400 mb-1">
-                  Sát tường phải — Trên (D1):
+              <div className="grid grid-cols-2 md:grid-cols-1 gap-2">
+                <div>
+                  <div className="text-[10px] font-semibold text-slate-400 mb-1">
+                    Sát tường phải — Trên (D1):
+                  </div>
+                  {renderSeatButton('seat-right-1')}
                 </div>
-                {renderSeatButton('seat-right-1')}
-              </div>
 
-              <div className="rounded-lg bg-emerald-950/30 border border-emerald-500/20 py-1 text-center text-[10px] text-emerald-300">
-                🌿 Cây xanh giữa 2 bàn phải
-              </div>
-
-              <div>
-                <div className="text-[10px] font-semibold text-slate-400 mb-1">
-                  Sát tường phải — Dưới (D2):
+                <div>
+                  <div className="text-[10px] font-semibold text-slate-400 mb-1">
+                    Sát tường phải — Dưới (D2):
+                  </div>
+                  {renderSeatButton('seat-right-2')}
                 </div>
-                {renderSeatButton('seat-right-2')}
               </div>
             </div>
           </div>
 
           {/* Hàng dưới cùng: 4 tủ hồ sơ ngang sát tường dưới */}
-          <div className="grid grid-cols-4 gap-2 pt-1">
+          <div className="hidden md:grid grid-cols-4 gap-2 pt-1">
             {[1, 2, 3, 4].map((idx) => (
               <div
                 key={idx}

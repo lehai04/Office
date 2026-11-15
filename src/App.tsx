@@ -712,7 +712,7 @@ export function App() {
   };
 
   return (
-    <main className="relative h-screen w-screen overflow-hidden select-none bg-slate-950">
+    <main className="relative h-[100dvh] w-screen overflow-hidden select-none bg-slate-950">
       {/* CẢNH PHÒNG 3D CHÍNH & GIAN PHÒNG TỊNH TÂM 3D */}
       <OfficeScene3D
         currentUserId={session.userId}
@@ -735,11 +735,13 @@ export function App() {
       />
 
       {/* THANH THÔNG TIN PHÒNG, CHỖ NGỒI & NÚT CHUYỂN GÓC NHÌN THỨ NHẤT Ở TRÊN CÙNG */}
-      <header className="pointer-events-none fixed top-3 left-3 right-3 z-20 flex flex-wrap items-center justify-between gap-2">
-        <div className="pointer-events-auto flex items-center gap-2 rounded-2xl border border-white/15 bg-slate-900/75 px-3.5 py-2 backdrop-blur-md shadow-lg">
-          <div className="flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-xs sm:text-sm font-bold text-white">{room.name}</span>
+      <header className="pointer-events-none fixed top-2 sm:top-3 left-2 sm:left-3 right-2 sm:right-3 z-20 flex flex-wrap items-center justify-between gap-1.5 sm:gap-2">
+        <div className="pointer-events-auto flex items-center gap-1.5 sm:gap-2 rounded-2xl border border-white/15 bg-slate-900/80 px-2.5 sm:px-3.5 py-1.5 sm:py-2 backdrop-blur-md shadow-lg max-w-full">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="h-2 w-2 sm:h-2.5 sm:w-2.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+            <span className="text-[11px] sm:text-sm font-bold text-white truncate max-w-[110px] sm:max-w-none">
+              {room.name}
+            </span>
           </div>
           {editingRoomCode ? (
             <form onSubmit={handleSaveNewRoomCode} className="flex items-center gap-1">
@@ -749,19 +751,19 @@ export function App() {
                 maxLength={20}
                 value={newRoomCodeDraft}
                 onChange={(e) => setNewRoomCodeDraft(e.target.value.toUpperCase())}
-                placeholder="ID phòng mới..."
-                className="w-28 rounded-lg border border-emerald-400 bg-slate-950 px-2 py-0.5 text-[11px] font-mono font-bold uppercase text-emerald-300 focus:outline-none"
+                placeholder="ID phòng..."
+                className="w-20 sm:w-28 rounded-lg border border-emerald-400 bg-slate-950 px-2 py-0.5 text-xs sm:text-[11px] font-mono font-bold uppercase text-emerald-300 focus:outline-none"
               />
               <button
                 type="submit"
-                className="rounded-lg bg-emerald-500 px-2 py-0.5 text-[11px] font-bold text-slate-950 cursor-pointer"
+                className="rounded-lg bg-emerald-500 px-2 py-0.5 text-[10px] sm:text-[11px] font-bold text-slate-950 cursor-pointer"
               >
                 Lưu
               </button>
               <button
                 type="button"
                 onClick={() => setEditingRoomCode(false)}
-                className="rounded-lg bg-slate-800 px-1.5 py-0.5 text-[11px] text-slate-400 cursor-pointer"
+                className="rounded-lg bg-slate-800 px-1.5 py-0.5 text-[10px] sm:text-[11px] text-slate-400 cursor-pointer"
               >
                 Hủy
               </button>
@@ -774,9 +776,9 @@ export function App() {
                 setEditingRoomCode(true);
               }}
               title="Bấm để đổi ID / Mã phòng"
-              className="inline-flex items-center gap-1 rounded-lg bg-slate-800 hover:bg-slate-700 px-2 py-0.5 text-[11px] font-mono font-semibold text-emerald-300 border border-white/10 transition-all cursor-pointer"
+              className="inline-flex items-center gap-1 rounded-lg bg-slate-800 hover:bg-slate-700 px-1.5 sm:px-2 py-0.5 text-[10px] sm:text-[11px] font-mono font-semibold text-emerald-300 border border-white/10 transition-all cursor-pointer shrink-0"
             >
-              <span>Mã: {room.code}</span>
+              <span>{room.code}</span>
               <PenSquare className="h-3 w-3 text-emerald-400" />
             </button>
           )}
@@ -784,12 +786,12 @@ export function App() {
             type="button"
             onClick={handleCopyInviteLink}
             title="Sao chép link mời vào phòng"
-            className="inline-flex items-center gap-1 rounded-xl bg-white/10 hover:bg-white/20 px-2.5 py-1 text-[11px] font-medium text-slate-200 transition-all cursor-pointer"
+            className="inline-flex items-center gap-1 rounded-xl bg-white/10 hover:bg-white/20 px-2 sm:px-2.5 py-1 text-[10px] sm:text-[11px] font-medium text-slate-200 transition-all cursor-pointer shrink-0"
           >
             {copiedInvite ? (
               <>
                 <Check className="h-3 w-3 text-emerald-400" />
-                <span className="text-emerald-300">Đã chép link</span>
+                <span className="text-emerald-300 hidden xs:inline">Đã chép</span>
               </>
             ) : (
               <>
@@ -801,7 +803,7 @@ export function App() {
         </div>
 
         {/* Nút chuyển đổi Góc nhìn thứ nhất (FPV) & Trạng thái nhân vật */}
-        <div className="pointer-events-auto flex flex-wrap items-center gap-2 rounded-2xl border border-white/15 bg-slate-900/75 px-3 py-1.5 backdrop-blur-md shadow-lg text-xs">
+        <div className="pointer-events-auto flex flex-wrap items-center gap-1 sm:gap-2 rounded-2xl border border-white/15 bg-slate-900/80 px-2 sm:px-3 py-1 sm:py-1.5 backdrop-blur-md shadow-lg text-[11px] sm:text-xs max-w-full">
           {/* Nút bật/tắt Góc nhìn thứ nhất của nhân vật */}
           <button
             type="button"
@@ -809,7 +811,7 @@ export function App() {
             onClick={() =>
               setCameraMode((prev) => (prev === 'overview' ? 'first_person' : 'overview'))
             }
-            className={`inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1 font-bold transition-all cursor-pointer ${
+            className={`inline-flex items-center gap-1 sm:gap-1.5 rounded-xl px-2 sm:px-2.5 py-1 font-bold transition-all cursor-pointer ${
               cameraMode === 'first_person'
                 ? 'bg-emerald-500 text-slate-950 shadow ring-2 ring-emerald-300'
                 : 'bg-sky-500/20 hover:bg-sky-500/30 text-sky-200 border border-sky-400/40'
@@ -818,36 +820,36 @@ export function App() {
           >
             {cameraMode === 'first_person' ? (
               <>
-                <Compass className="h-3.5 w-3.5" />
-                <span>Đang ở Góc nhìn thứ 1 (Bấm về 3D)</span>
+                <Compass className="h-3.5 w-3.5 shrink-0" />
+                <span className="hidden sm:inline">Đang ở Góc nhìn thứ 1 (Bấm về 3D)</span>
+                <span className="sm:hidden">Về 3D</span>
               </>
             ) : (
               <>
-                <Eye className="h-3.5 w-3.5" />
-                <span>Góc nhìn thứ nhất</span>
+                <Eye className="h-3.5 w-3.5 shrink-0" />
+                <span className="hidden sm:inline">Góc nhìn thứ nhất</span>
+                <span className="sm:hidden">Góc nhìn 1</span>
               </>
             )}
           </button>
-
-          <span className="text-slate-600">•</span>
 
           <button
             type="button"
             onClick={() => togglePanel('seats')}
             title="Xem danh sách thành viên & Quản lý Trưởng phòng"
-            className="flex items-center gap-1.5 rounded-xl bg-white/5 hover:bg-white/10 px-2 py-1 text-slate-200 transition-all cursor-pointer"
+            className="flex items-center gap-1 sm:gap-1.5 rounded-xl bg-white/5 hover:bg-white/10 px-2 py-1 text-slate-200 transition-all cursor-pointer"
           >
-            <Users className="h-3.5 w-3.5 text-sky-400" />
-            <span data-testid="hud-user-nickname" className="font-bold text-white">
+            <Users className="h-3.5 w-3.5 text-sky-400 shrink-0" />
+            <span data-testid="hud-user-nickname" className="font-bold text-white truncate max-w-[80px] sm:max-w-none">
               {session.nickname}
             </span>
             {myMember?.isManager && (
               <span
                 data-testid="hud-manager-badge"
-                className="inline-flex items-center gap-0.5 rounded-full bg-amber-400 px-1.5 py-0.2 text-[10px] font-extrabold text-slate-950"
+                className="inline-flex items-center gap-0.5 rounded-full bg-amber-400 px-1.5 py-0.2 text-[9px] sm:text-[10px] font-extrabold text-slate-950 shrink-0"
               >
-                <Crown className="h-3 w-3" />
-                <span>Trưởng phòng</span>
+                <Crown className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
+                <span className="hidden xs:inline">Trưởng phòng</span>
               </span>
             )}
           </button>
@@ -856,7 +858,7 @@ export function App() {
             type="button"
             data-testid="hud-seat-status-btn"
             onClick={() => togglePanel('seats')}
-            className={`inline-flex items-center gap-1 rounded-xl px-2.5 py-1 font-semibold transition-all cursor-pointer ${
+            className={`inline-flex items-center gap-1 rounded-xl px-2 sm:px-2.5 py-1 font-semibold transition-all cursor-pointer ${
               activePanel === 'zen'
                 ? 'bg-amber-500/25 text-amber-200 border border-amber-400/40'
                 : myMeetingChair
@@ -866,15 +868,15 @@ export function App() {
                     : 'bg-amber-500/20 text-amber-300 border border-amber-400/40 animate-pulse'
             }`}
           >
-            <Armchair className="h-3.5 w-3.5" />
-            <span>
+            <Armchair className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate max-w-[115px] sm:max-w-none">
               {activePanel === 'zen'
-                ? 'Đang ở Phòng Tịnh Tâm'
+                ? 'Phòng Tịnh Tâm'
                 : myMeetingChair
-                  ? `Bàn họp ${myMeetingChair.shortLabel}${mySeatLayout ? ` (Ghế ${mySeatLayout.shortLabel})` : ''}`
+                  ? `Họp ${myMeetingChair.shortLabel}${mySeatLayout ? ` (${mySeatLayout.shortLabel})` : ''}`
                   : mySeatLayout
                     ? `Ghế ${mySeatLayout.shortLabel}`
-                    : 'Đang đứng gần cửa (Chọn ghế)'}
+                    : 'Chọn ghế'}
             </span>
           </button>
 
@@ -882,7 +884,7 @@ export function App() {
             type="button"
             onClick={handleLogoutOrSwitch}
             title="Rời phòng / Đổi tài khoản ẩn danh"
-            className="rounded-xl bg-slate-800 hover:bg-rose-500/20 p-1.5 text-slate-400 hover:text-rose-300 transition-all cursor-pointer"
+            className="rounded-xl bg-slate-800 hover:bg-rose-500/20 p-1.5 text-slate-400 hover:text-rose-300 transition-all cursor-pointer shrink-0"
           >
             <LogOut className="h-3.5 w-3.5" />
           </button>
@@ -976,22 +978,22 @@ export function App() {
         onToggleSound={() => setSoundEnabled((v) => !v)}
       />
 
-      {/* THANH NÚT KÍNH MỜ GỌN Ở PHÍA DƯỚI MÀN HÌNH */}
+      {/* THANH NÚT KÍNH MỜ GỌN Ở PHÍA DƯỚI MÀN HÌNH (Tối ưu cho cả Điện thoại & Máy tính) */}
       <nav
         aria-label="Điều khiển văn phòng"
-        className="fixed bottom-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1 sm:gap-2 rounded-full border border-white/20 bg-slate-900/80 px-2.5 sm:px-3.5 py-2 backdrop-blur-xl shadow-2xl max-w-[98vw] overflow-x-auto"
+        className="fixed bottom-2 sm:bottom-3 left-1/2 -translate-x-1/2 z-30 flex items-center justify-between sm:justify-center gap-1 sm:gap-2 rounded-2xl sm:rounded-full border border-white/20 bg-slate-900/90 px-1.5 sm:px-3.5 py-1.5 sm:py-2 backdrop-blur-xl shadow-2xl w-[calc(100vw-16px)] sm:w-auto max-w-xl no-scrollbar overflow-x-auto"
       >
         <button
           type="button"
           data-testid="dock-seats-btn"
           onClick={() => togglePanel('seats')}
-          className={`flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-2 text-xs font-semibold transition-all cursor-pointer ${
+          className={`flex flex-1 sm:flex-initial flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 whitespace-nowrap rounded-xl sm:rounded-full px-2 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs font-semibold transition-all cursor-pointer ${
             activePanel === 'seats'
               ? 'bg-sky-500 text-slate-950 shadow-lg shadow-sky-500/30'
               : 'text-slate-200 hover:bg-white/10'
           }`}
         >
-          <Armchair className="h-4 w-4" />
+          <Armchair className="h-4 w-4 shrink-0" />
           <span>Chỗ ngồi</span>
         </button>
 
@@ -999,16 +1001,16 @@ export function App() {
           type="button"
           data-testid="dock-chat-btn"
           onClick={() => togglePanel('chat')}
-          className={`flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-2 text-xs font-semibold transition-all cursor-pointer ${
+          className={`relative flex flex-1 sm:flex-initial flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 whitespace-nowrap rounded-xl sm:rounded-full px-2 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs font-semibold transition-all cursor-pointer ${
             activePanel === 'chat'
               ? 'bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/30'
               : 'text-slate-200 hover:bg-white/10'
           }`}
         >
-          <MessageSquare className="h-4 w-4" />
+          <MessageSquare className="h-4 w-4 shrink-0" />
           <span>Chat</span>
           {messages.length > 0 && (
-            <span className="rounded-full bg-white/20 px-1.5 py-0.2 text-[10px]">
+            <span className="rounded-full bg-white/20 px-1.5 py-0.2 text-[9px] sm:text-[10px] hidden sm:inline">
               {messages.length}
             </span>
           )}
@@ -1018,13 +1020,13 @@ export function App() {
           type="button"
           data-testid="dock-attendance-btn"
           onClick={() => togglePanel('attendance')}
-          className={`flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-2 text-xs font-semibold transition-all cursor-pointer ${
+          className={`flex flex-1 sm:flex-initial flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 whitespace-nowrap rounded-xl sm:rounded-full px-2 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs font-semibold transition-all cursor-pointer ${
             activePanel === 'attendance'
               ? 'bg-amber-400 text-slate-950 shadow-lg shadow-amber-400/30'
               : 'text-slate-200 hover:bg-white/10'
           }`}
         >
-          <CalendarCheck className="h-4 w-4" />
+          <CalendarCheck className="h-4 w-4 shrink-0" />
           <span>Chấm công</span>
         </button>
 
@@ -1032,27 +1034,30 @@ export function App() {
           type="button"
           data-testid="dock-diary-btn"
           onClick={() => togglePanel('diary')}
-          className={`flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-2 text-xs font-semibold transition-all cursor-pointer ${
+          className={`flex flex-1 sm:flex-initial flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 whitespace-nowrap rounded-xl sm:rounded-full px-2 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs font-semibold transition-all cursor-pointer ${
             activePanel === 'diary'
               ? 'bg-purple-500 text-white shadow-lg shadow-purple-500/30'
               : 'text-slate-200 hover:bg-white/10'
           }`}
         >
-          <BookHeart className="h-4 w-4" />
-          <span>Nhật ký ẩn danh</span>
+          <BookHeart className="h-4 w-4 shrink-0" />
+          <span className="sm:hidden">Nhật ký</span>
+          <span className="hidden sm:inline">Nhật ký ẩn danh</span>
         </button>
 
         <button
           type="button"
           data-testid="dock-zen-btn"
           onClick={() => togglePanel('zen')}
-          className={`flex items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-xs font-bold transition-all cursor-pointer ${
+          className={`flex flex-1 sm:flex-initial flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 whitespace-nowrap rounded-xl sm:rounded-full px-2 sm:px-3.5 py-1.5 sm:py-2 text-[10px] sm:text-xs font-bold transition-all cursor-pointer ${
             activePanel === 'zen'
               ? 'bg-gradient-to-r from-amber-400 to-orange-400 text-slate-950 shadow-lg shadow-amber-500/30 ring-2 ring-amber-200'
               : 'bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 border border-amber-400/30'
           }`}
         >
-          <span>🪷 Phòng Tịnh Tâm</span>
+          <span className="text-sm sm:text-xs leading-none">🪷</span>
+          <span className="sm:hidden">Tịnh Tâm</span>
+          <span className="hidden sm:inline">Phòng Tịnh Tâm</span>
         </button>
       </nav>
     </main>

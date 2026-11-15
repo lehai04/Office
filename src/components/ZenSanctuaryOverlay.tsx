@@ -131,7 +131,7 @@ export const ZenSanctuaryOverlay: React.FC<ZenSanctuaryOverlayProps> = ({
       )}
 
       {/* Bảng điều khiển Phòng Tịnh Tâm kính mờ gọn ở phía dưới */}
-      <div className="pointer-events-auto w-full max-w-2xl rounded-3xl border border-amber-400/30 bg-slate-900/90 p-4 shadow-2xl backdrop-blur-xl text-slate-100 space-y-3">
+      <div className="pointer-events-auto w-full max-w-2xl max-h-[52dvh] sm:max-h-none overflow-y-auto rounded-3xl border border-amber-400/30 bg-slate-900/90 p-3 sm:p-4 shadow-2xl backdrop-blur-xl text-slate-100 space-y-2.5 sm:space-y-3">
         {/* Hàng trên: Tiêu đề + Điểm Công Đức / Tịnh Tâm + Nút Góc nhìn thứ nhất + Quay về văn phòng */}
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-2.5">
           <div className="flex items-center gap-2.5">

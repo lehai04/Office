@@ -53,6 +53,7 @@ const SceneCameraController: React.FC<{
   myPosition: [number, number, number];
   myRotationY: number;
   isMyCharacterSeated: boolean;
+  virtualKeysRef: React.MutableRefObject<Set<string>>;
 }> = ({
   cameraMode,
   inZenRoom,
@@ -60,8 +61,9 @@ const SceneCameraController: React.FC<{
   myPosition,
   myRotationY,
   isMyCharacterSeated,
+  virtualKeysRef,
 }) => {
-  const { camera, gl } = useThree();
+  const { camera, gl, size } = useThree();
   const yawRef = useRef(0);
   const pitchRef = useRef(-0.06);
   const walkOffsetRef = useRef<{ x: number; z: number }>({ x: 0, z: 0 });
@@ -69,6 +71,8 @@ const SceneCameraController: React.FC<{
   const draggingRef = useRef(false);
   const prevPointerRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const bowStartRef = useRef<number>(0);
+
+  const isPortraitMobile = size.width < size.height * 0.85;
 
   // Khi chuyển vị trí ghế / vào phòng tịnh tâm / đổi chế độ camera, đặt hướng nhìn mắt nhân vật theo hướng nhân vật đang quay
   useEffect(() => {
@@ -83,18 +87,26 @@ const SceneCameraController: React.FC<{
     }
   }, [isBowing]);
 
-  // Khi ở chế độ overview, chuyển góc nhìn mượt giữa Văn phòng chính và Phòng Tịnh Tâm
+  // Khi ở chế độ overview, chuyển góc nhìn mượt giữa Văn phòng chính và Phòng Tịnh Tâm (tự động lùi xa trên màn hình dọc điện thoại)
   useEffect(() => {
     if (cameraMode === 'overview') {
       if (inZenRoom) {
-        camera.position.set(0, 3.6, -6.2);
+        if (isPortraitMobile) {
+          camera.position.set(0, 4.3, -4.6);
+        } else {
+          camera.position.set(0, 3.6, -6.2);
+        }
         camera.lookAt(0, 1.1, -11.4);
       } else {
-        camera.position.set(0, 14.2, 11.2);
+        if (isPortraitMobile) {
+          camera.position.set(0, 21.5, 16.5);
+        } else {
+          camera.position.set(0, 14.2, 11.2);
+        }
         camera.lookAt(0, 0, 0);
       }
     }
-  }, [cameraMode, inZenRoom, camera]);
+  }, [cameraMode, inZenRoom, isPortraitMobile, camera]);
 
   // Sự kiện chuột / bàn phím cho Góc nhìn thứ nhất (First-Person View)
   useEffect(() => {
@@ -163,24 +175,25 @@ const SceneCameraController: React.FC<{
 
     const speed = 3.2 * delta;
     const keys = keysPressedRef.current;
+    const vKeys = virtualKeysRef.current;
     const forwardX = Math.sin(yawRef.current);
     const forwardZ = Math.cos(yawRef.current);
     const rightX = Math.cos(yawRef.current);
     const rightZ = -Math.sin(yawRef.current);
 
-    if (keys.has('w')) {
+    if (keys.has('w') || vKeys.has('w')) {
       walkOffsetRef.current.x += forwardX * speed;
       walkOffsetRef.current.z += forwardZ * speed;
     }
-    if (keys.has('s')) {
+    if (keys.has('s') || vKeys.has('s')) {
       walkOffsetRef.current.x -= forwardX * speed;
       walkOffsetRef.current.z -= forwardZ * speed;
     }
-    if (keys.has('a')) {
+    if (keys.has('a') || vKeys.has('a')) {
       walkOffsetRef.current.x += rightX * speed;
       walkOffsetRef.current.z += rightZ * speed;
     }
-    if (keys.has('d')) {
+    if (keys.has('d') || vKeys.has('d')) {
       walkOffsetRef.current.x -= rightX * speed;
       walkOffsetRef.current.z -= rightZ * speed;
     }
@@ -224,8 +237,8 @@ const SceneCameraController: React.FC<{
       maxPolarAngle={Math.PI / 2.15}
       minAzimuthAngle={-Math.PI / 2.2}
       maxAzimuthAngle={Math.PI / 2.2}
-      minDistance={inZenRoom ? 3.5 : 7}
-      maxDistance={21}
+      minDistance={inZenRoom ? 3.5 : 6.5}
+      maxDistance={28}
       enablePan={true}
     />
   );
@@ -487,7 +500,7 @@ const LowPolyCharacter: React.FC<{
             )}
 
             <div
-              className={`flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-0.5 text-[11px] font-semibold shadow-md backdrop-blur-md transition-all ${
+              className={`flex items-center gap-1 sm:gap-1.5 whitespace-nowrap rounded-full px-1.5 sm:px-2.5 py-0.5 text-[9px] sm:text-[11px] font-semibold shadow-md backdrop-blur-md transition-all ${
                 isCurrentUser
                   ? 'bg-emerald-600/95 text-white ring-2 ring-emerald-300'
                   : isOnline
@@ -501,13 +514,13 @@ const LowPolyCharacter: React.FC<{
                 }`}
               />
               {isManager && (
-                <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-400 px-1.5 py-0.2 text-[9px] font-extrabold text-slate-950 shadow-sm">
-                  👑 Trưởng phòng
+                <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-400 px-1 sm:px-1.5 py-0.2 text-[8px] sm:text-[9px] font-extrabold text-slate-950 shadow-sm">
+                  👑 <span className="hidden sm:inline">Trưởng phòng</span>
                 </span>
               )}
               <span>{displayName}</span>
-              {isCurrentUser && <span className="text-[10px] opacity-90">(Bạn)</span>}
-              {!isOnline && <span className="text-[10px] opacity-75">(Offline)</span>}
+              {isCurrentUser && <span className="text-[9px] sm:text-[10px] opacity-90">(Bạn)</span>}
+              {!isOnline && <span className="text-[9px] sm:text-[10px] opacity-75">(Offline)</span>}
             </div>
           </div>
         </Html>
@@ -988,7 +1001,7 @@ const WorkDeskUnit: React.FC<{
                 onSelectSeat(layout.seatId);
               }}
               data-testid={`seat-3d-btn-${layout.seatId}`}
-              className="group flex items-center justify-center whitespace-nowrap rounded-full bg-sky-500/90 hover:bg-sky-400 active:scale-95 px-2.5 py-0.5 text-[11px] font-semibold text-slate-950 shadow-lg ring-2 ring-white/70 transition-all cursor-pointer"
+              className="group flex items-center justify-center whitespace-nowrap rounded-full bg-sky-500/90 hover:bg-sky-400 active:scale-95 px-2 sm:px-2.5 py-0.5 text-[9px] sm:text-[11px] font-semibold text-slate-950 shadow-lg ring-1 sm:ring-2 ring-white/70 transition-all cursor-pointer"
             >
               <span>Trống</span>
             </button>
@@ -1084,7 +1097,7 @@ const SharedMeetingChairUnit: React.FC<{
             }}
             data-testid={`meeting-chair-3d-${chair.id}`}
             title={`${chair.label} — Bấm để vào ngồi họp tự do`}
-            className="flex items-center justify-center whitespace-nowrap rounded-full bg-amber-500/90 hover:bg-amber-400 active:scale-95 px-2.5 py-0.5 text-[10px] font-bold text-slate-950 shadow-md ring-1 ring-white/70 transition-all cursor-pointer"
+            className="flex items-center justify-center whitespace-nowrap rounded-full bg-amber-500/90 hover:bg-amber-400 active:scale-95 px-1.5 sm:px-2.5 py-0.5 text-[9px] sm:text-[10px] font-bold text-slate-950 shadow-md ring-1 ring-white/70 transition-all cursor-pointer"
           >
             <span>Trống</span>
           </button>
@@ -1291,17 +1304,76 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
 
   const myMember = members.find((m) => m.userId === currentUserId);
   const isMeAtMeetingTable = Boolean(myMember?.meetingChairId);
+  const virtualKeysRef = useRef<Set<string>>(new Set());
+
+  const bindVirtualKey = (key: 'w' | 'a' | 's' | 'd') => ({
+    onPointerDown: (e: React.PointerEvent) => {
+      e.stopPropagation();
+      virtualKeysRef.current.add(key);
+    },
+    onPointerUp: (e: React.PointerEvent) => {
+      e.stopPropagation();
+      virtualKeysRef.current.delete(key);
+    },
+    onPointerLeave: () => {
+      virtualKeysRef.current.delete(key);
+    },
+    onPointerCancel: () => {
+      virtualKeysRef.current.delete(key);
+    },
+  });
 
   return (
-    <div className="relative w-full h-full bg-gradient-to-b from-slate-900 via-slate-950 to-slate-900">
-      {/* Tâm ngắm & hướng dẫn nhanh khi đang ở Góc nhìn thứ nhất (First-Person View) */}
+    <div className="relative w-full h-full touch-none bg-gradient-to-b from-slate-900 via-slate-950 to-slate-900">
+      {/* Tâm ngắm, hướng dẫn & Cụm nút di chuyển cảm ứng (D-Pad) cho điện thoại khi ở Góc nhìn thứ nhất */}
       {cameraMode === 'first_person' && (
         <>
           <div className="pointer-events-none fixed inset-0 z-10 flex items-center justify-center">
             <div className="h-2.5 w-2.5 rounded-full border-2 border-emerald-400/80 bg-white/40 shadow" />
           </div>
-          <div className="pointer-events-none fixed top-16 left-1/2 -translate-x-1/2 z-20 rounded-full border border-white/15 bg-slate-950/75 px-3.5 py-1 text-[11px] text-slate-200 backdrop-blur-md shadow">
-            👁️ <strong>Góc nhìn thứ nhất:</strong> Kéo chuột / phím mũi tên để nhìn 360° • Phím <strong>W A S D</strong> để bước đi
+          <div className="pointer-events-none fixed top-20 sm:top-16 left-1/2 -translate-x-1/2 z-20 max-w-[92vw] text-center rounded-full border border-white/15 bg-slate-950/75 px-3 py-1 text-[10px] sm:text-[11px] text-slate-200 backdrop-blur-md shadow">
+            👁️ Vuốt màn hình để nhìn 360° • Dùng nút di chuyển hoặc phím <strong>WASD</strong> để đi bộ
+          </div>
+
+          {/* Cụm phím di chuyển cảm ứng (D-Pad) hỗ trợ điện thoại & máy tính bảng */}
+          <div
+            data-testid="mobile-fpv-dpad"
+            className="fixed bottom-20 left-3 z-20 grid grid-cols-3 gap-1.5 w-28 h-28 select-none"
+          >
+            <div />
+            <button
+              type="button"
+              aria-label="Tiến lên"
+              {...bindVirtualKey('w')}
+              className="flex items-center justify-center rounded-xl border border-white/25 bg-slate-900/75 active:bg-emerald-500 active:text-slate-950 text-white text-sm font-bold backdrop-blur-md shadow-lg cursor-pointer"
+            >
+              ▲
+            </button>
+            <div />
+            <button
+              type="button"
+              aria-label="Sang trái"
+              {...bindVirtualKey('a')}
+              className="flex items-center justify-center rounded-xl border border-white/25 bg-slate-900/75 active:bg-emerald-500 active:text-slate-950 text-white text-sm font-bold backdrop-blur-md shadow-lg cursor-pointer"
+            >
+              ◀
+            </button>
+            <button
+              type="button"
+              aria-label="Lùi lại"
+              {...bindVirtualKey('s')}
+              className="flex items-center justify-center rounded-xl border border-white/25 bg-slate-900/75 active:bg-emerald-500 active:text-slate-950 text-white text-sm font-bold backdrop-blur-md shadow-lg cursor-pointer"
+            >
+              ▼
+            </button>
+            <button
+              type="button"
+              aria-label="Sang phải"
+              {...bindVirtualKey('d')}
+              className="flex items-center justify-center rounded-xl border border-white/25 bg-slate-900/75 active:bg-emerald-500 active:text-slate-950 text-white text-sm font-bold backdrop-blur-md shadow-lg cursor-pointer"
+            >
+              ▶
+            </button>
           </div>
         </>
       )}
@@ -1385,9 +1457,9 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
                     e.stopPropagation();
                     onEnterZenRoom();
                   }}
-                  className="whitespace-nowrap rounded-full bg-amber-500/95 hover:bg-amber-400 px-2.5 py-0.5 text-[10px] font-bold text-slate-950 shadow-lg ring-2 ring-amber-200 cursor-pointer"
+                  className="whitespace-nowrap rounded-full bg-amber-500/95 hover:bg-amber-400 px-2 sm:px-2.5 py-0.5 text-[9px] sm:text-[10px] font-bold text-slate-950 shadow-lg ring-1 sm:ring-2 ring-amber-200 cursor-pointer"
                 >
-                  🪷 Vào Phòng Tịnh Tâm (Phật • Ông Địa • Thần Tài)
+                  🪷 Phòng Tịnh Tâm <span className="hidden sm:inline">(Phật • Ông Địa • Thần Tài)</span>
                 </button>
               </Html>
             </group>
@@ -1568,6 +1640,7 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
             myPosition={myPlacement.position}
             myRotationY={myPlacement.rotationY}
             isMyCharacterSeated={myPlacement.isSeated}
+            virtualKeysRef={virtualKeysRef}
           />
         </group>
       </Canvas>

@@ -172,7 +172,7 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
           onChange={(e) => setDraft(e.target.value)}
           maxLength={1000}
           placeholder="Nhập tin nhắn cho đồng nghiệp..."
-          className="flex-1 rounded-2xl border border-white/15 bg-slate-800/90 px-3.5 py-2 text-xs sm:text-sm text-white placeholder-slate-400 focus:border-emerald-400 focus:outline-none"
+          className="flex-1 rounded-2xl border border-white/15 bg-slate-800/90 px-3.5 py-2 text-base sm:text-sm text-white placeholder-slate-400 focus:border-emerald-400 focus:outline-none"
         />
         <button
           type="submit"
