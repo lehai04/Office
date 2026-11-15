@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Trophy,
   Users,
   Upload,
   RotateCcw,
@@ -14,6 +13,11 @@ import {
   Disc,
   Flame,
   X,
+  ArrowLeft,
+  Lock,
+  Sparkles,
+  Hammer,
+  Bomb,
 } from 'lucide-react';
 import type { RoomMember } from '../types/office';
 import {
@@ -79,6 +83,262 @@ export const KNIFE_STAGES: KnifeStageConfig[] = [
     baseSpeed: 3.1,
     pattern: 'boss_chaos',
     isBoss: true,
+  },
+];
+
+type PlayableGameId = 'knife_hit' | 'whack_bug' | 'pass_bomb' | 'wheel';
+
+interface GameCatalogItem {
+  id: string;
+  playableId?: PlayableGameId;
+  title: string;
+  playersText: string;
+  badge?: string;
+  locked?: boolean;
+  bgGradient: string;
+  sceneRender: () => React.ReactNode;
+}
+
+/**
+ * Nhân vật Blob tròn dễ thương phong cách Bloop Party
+ */
+const CuteBlob: React.FC<{
+  color: string;
+  size?: string;
+  className?: string;
+  expression?: 'happy' | 'angry' | 'surprised' | 'king';
+}> = ({ color, size = 'h-9 w-9', className = '', expression = 'happy' }) => (
+  <div
+    className={`relative inline-flex items-center justify-center rounded-full shadow-md border-2 border-white/80 ${size} ${className}`}
+    style={{ backgroundColor: color }}
+  >
+    {expression === 'king' && (
+      <span className="absolute -top-3.5 text-xs drop-shadow">👑</span>
+    )}
+    <div className="flex flex-col items-center justify-center gap-0.5">
+      <div className="flex items-center gap-1.5">
+        <span className="h-1.5 w-1.5 rounded-full bg-slate-900" />
+        <span className="h-1.5 w-1.5 rounded-full bg-slate-900" />
+      </div>
+      {expression === 'surprised' ? (
+        <span className="h-2 w-2 rounded-full bg-rose-900" />
+      ) : expression === 'angry' ? (
+        <span className="h-0.5 w-2.5 bg-slate-900 rounded-full" />
+      ) : (
+        <span className="h-1.5 w-2.5 rounded-b-full bg-rose-900/80" />
+      )}
+    </div>
+    {/* Má hồng */}
+    <span className="absolute left-1.5 top-1/2 h-1 w-1.5 rounded-full bg-pink-300/80" />
+    <span className="absolute right-1.5 top-1/2 h-1 w-1.5 rounded-full bg-pink-300/80" />
+  </div>
+);
+
+/**
+ * Danh sách các thẻ Game dễ thương phong cách Bloop Party trong Phòng Giải Trí
+ */
+const GAME_CATALOG: GameCatalogItem[] = [
+  {
+    id: 'knife_hit',
+    playableId: 'knife_hit',
+    title: 'Phóng Phi Tiêu',
+    playersText: '1-2 người',
+    badge: 'HOT • Ghép Ảnh',
+    bgGradient: 'from-amber-200 via-orange-100 to-emerald-200',
+    sceneRender: () => (
+      <div className="relative flex h-full w-full items-center justify-center overflow-hidden">
+        <div className="h-14 w-14 rounded-full border-4 border-[#9a4d22] bg-[#f4a261] shadow-inner flex items-center justify-center">
+          <div className="h-8 w-8 rounded-full border-2 border-[#e07a3c] flex items-center justify-center">
+            <CuteBlob color="#ff6b8b" size="h-6 w-6" expression="surprised" />
+          </div>
+        </div>
+        <span className="absolute bottom-1 left-1/2 -translate-x-1/2 text-lg drop-shadow">
+          🗡️
+        </span>
+        <span className="absolute top-2 right-4 text-sm">🍎</span>
+        <CuteBlob
+          color="#38bdf8"
+          size="h-7 w-7"
+          className="absolute bottom-2 left-3"
+        />
+      </div>
+    ),
+  },
+  {
+    id: 'whack_bug',
+    playableId: 'whack_bug',
+    title: 'Đập Chuột Deadline',
+    playersText: '1-2 người',
+    badge: 'Chơi ngay',
+    bgGradient: 'from-lime-200 via-emerald-100 to-teal-200',
+    sceneRender: () => (
+      <div className="relative flex h-full w-full items-center justify-center">
+        <div className="mt-4 h-6 w-14 rounded-full bg-amber-900/75 flex items-center justify-center">
+          <CuteBlob
+            color="#a855f7"
+            size="h-9 w-9"
+            className="-mt-6"
+            expression="surprised"
+          />
+        </div>
+        <span className="absolute top-2 right-6 text-xl -rotate-12 drop-shadow">
+          🔨
+        </span>
+        <CuteBlob
+          color="#4ade80"
+          size="h-6 w-6"
+          className="absolute bottom-2 left-4"
+        />
+      </div>
+    ),
+  },
+  {
+    id: 'pass_bomb',
+    playableId: 'pass_bomb',
+    title: 'Truyền Bom Hẹn Giờ',
+    playersText: '1-4 người',
+    badge: 'Party',
+    bgGradient: 'from-amber-100 via-orange-200 to-rose-200',
+    sceneRender: () => (
+      <div className="relative flex h-full w-full items-center justify-center gap-2">
+        <CuteBlob color="#f472b6" size="h-8 w-8" expression="surprised" />
+        <span className="text-xl animate-bounce">💣</span>
+        <CuteBlob color="#4ade80" size="h-7 w-7" />
+      </div>
+    ),
+  },
+  {
+    id: 'wheel',
+    playableId: 'wheel',
+    title: 'Vòng Quay Trà Sữa',
+    playersText: '1-8 người',
+    badge: 'Party',
+    bgGradient: 'from-fuchsia-200 via-pink-100 to-indigo-200',
+    sceneRender: () => (
+      <div className="relative flex h-full w-full items-center justify-center gap-1">
+        <div className="h-12 w-12 rounded-full border-4 border-white bg-gradient-to-tr from-rose-400 via-amber-300 to-sky-400 shadow flex items-center justify-center">
+          <span className="text-sm">🧋</span>
+        </div>
+        <CuteBlob color="#fbbf24" size="h-7 w-7" className="-ml-2 mt-4" />
+      </div>
+    ),
+  },
+  {
+    id: 'big_fish',
+    title: 'Cá Lớn Nuốt Cá Bé',
+    playersText: '1-4 người',
+    locked: true,
+    bgGradient: 'from-sky-200 via-cyan-100 to-blue-200',
+    sceneRender: () => (
+      <div className="relative flex h-full w-full items-center justify-center gap-2">
+        <CuteBlob color="#38bdf8" size="h-10 w-10" expression="surprised" />
+        <CuteBlob color="#fb7185" size="h-6 w-6" />
+        <CuteBlob color="#4ade80" size="h-7 w-7" />
+      </div>
+    ),
+  },
+  {
+    id: 'boom_boss',
+    title: 'Vua Đặt Boom',
+    playersText: '2-4 người',
+    locked: true,
+    bgGradient: 'from-orange-200 via-amber-100 to-yellow-200',
+    sceneRender: () => (
+      <div className="relative flex h-full w-full items-center justify-center gap-1.5">
+        <CuteBlob color="#ef4444" size="h-10 w-10" expression="angry" />
+        <span className="text-lg">💥</span>
+        <CuteBlob color="#a855f7" size="h-7 w-7" />
+      </div>
+    ),
+  },
+  {
+    id: 'snow_roll',
+    title: 'Lăn Cầu Tuyết',
+    playersText: '2-4 người',
+    locked: true,
+    bgGradient: 'from-slate-100 via-sky-100 to-indigo-100',
+    sceneRender: () => (
+      <div className="relative flex h-full w-full items-center justify-center gap-2">
+        <div className="h-11 w-11 rounded-full bg-white border-2 border-sky-200 shadow-inner flex items-center justify-center">
+          <CuteBlob color="#60a5fa" size="h-6 w-6" />
+        </div>
+        <CuteBlob color="#f472b6" size="h-7 w-7" />
+      </div>
+    ),
+  },
+  {
+    id: 'catch_chicken',
+    title: 'Bắt Gà Văn Phòng',
+    playersText: '1-4 người',
+    locked: true,
+    bgGradient: 'from-lime-200 via-green-100 to-emerald-200',
+    sceneRender: () => (
+      <div className="relative flex h-full w-full items-center justify-center gap-2">
+        <span className="text-xl">🐔</span>
+        <CuteBlob color="#38bdf8" size="h-8 w-8" />
+        <span className="text-lg">🐥</span>
+      </div>
+    ),
+  },
+  {
+    id: 'laser_dodge',
+    title: 'Né Tia Laser',
+    playersText: '1-4 người',
+    locked: true,
+    bgGradient: 'from-rose-200 via-amber-100 to-orange-200',
+    sceneRender: () => (
+      <div className="relative flex h-full w-full items-center justify-center">
+        <div className="h-0.5 w-full bg-rose-500 rotate-12 shadow" />
+        <CuteBlob
+          color="#f43f5e"
+          size="h-8 w-8"
+          className="absolute"
+          expression="surprised"
+        />
+      </div>
+    ),
+  },
+  {
+    id: 'hide_light',
+    title: 'Trốn Đèn Sếp Soi',
+    playersText: '1-4 người',
+    locked: true,
+    bgGradient: 'from-slate-700 via-slate-800 to-amber-900',
+    sceneRender: () => (
+      <div className="relative flex h-full w-full items-center justify-center">
+        <div className="h-12 w-12 rounded-full bg-amber-200/90 flex items-center justify-center">
+          <CuteBlob color="#fb7185" size="h-7 w-7" expression="surprised" />
+        </div>
+      </div>
+    ),
+  },
+  {
+    id: 'math_quiz',
+    title: 'Đố Toán Tốc Độ',
+    playersText: '1-4 người',
+    locked: true,
+    bgGradient: 'from-amber-200 via-yellow-100 to-orange-100',
+    sceneRender: () => (
+      <div className="relative flex h-full w-full items-center justify-center gap-2">
+        <span className="rounded-lg bg-amber-700/20 px-2 py-0.5 text-xs font-black text-amber-900">
+          1 + 1 = ?
+        </span>
+        <CuteBlob color="#a855f7" size="h-8 w-8" />
+      </div>
+    ),
+  },
+  {
+    id: 'king_crown',
+    title: 'Giành Vương Miện',
+    playersText: '2-4 người',
+    locked: true,
+    bgGradient: 'from-yellow-200 via-amber-100 to-rose-100',
+    sceneRender: () => (
+      <div className="relative flex h-full w-full items-center justify-center gap-2">
+        <CuteBlob color="#4ade80" size="h-9 w-9" expression="king" />
+        <CuteBlob color="#38bdf8" size="h-7 w-7" />
+      </div>
+    ),
   },
 ];
 
@@ -163,7 +423,10 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
   onToggleSound,
   onBroadcastChallengeMessage,
 }) => {
-  const [selectedGameTab, setSelectedGameTab] = useState<'knife_hit' | 'wheel'>('knife_hit');
+  // Mặc định khi bấm vào Phòng Giải Trí -> hiện Sảnh Danh Sách Game dễ thương (lobby)
+  const [activeView, setActiveView] = useState<'lobby' | PlayableGameId>('lobby');
+  const [lobbyNotice, setLobbyNotice] = useState<string | null>(null);
+
   const [gameMode, setGameMode] = useState<'campaign' | 'pvp'>('campaign');
   const [currentStageNum, setCurrentStageNum] = useState<number>(1);
   const [unlockedStage, setUnlockedStage] = useState<number>(() => {
@@ -224,7 +487,18 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
     'playing'
   );
 
-  // Vòng quay nhân phẩm
+  // Mini-game 2: Đập Chuột Deadline (Whack-a-Bug)
+  const [whackScore, setWhackScore] = useState<number>(0);
+  const [whackTimeLeft, setWhackTimeLeft] = useState<number>(20);
+  const [whackRunning, setWhackRunning] = useState<boolean>(false);
+  const [activeMoleHole, setActiveMoleHole] = useState<number>(2);
+
+  // Mini-game 3: Truyền Bom Hẹn Giờ (Pass the Bomb)
+  const [bombHolderName, setBombHolderName] = useState<string>(currentNickname);
+  const [bombTicking, setBombTicking] = useState<boolean>(false);
+  const [bombExploded, setBombExploded] = useState<boolean>(false);
+
+  // Mini-game 4: Vòng quay nhân phẩm
   const [wheelItemsText, setWheelItemsText] = useState<string>(
     'Bao trà sữa cả phòng 🧋\nĐược về sớm 15 phút 🏃\nHát 1 bài tặng phòng 🎤\nTrực nhật dọn bàn 🧹\nNhận pháo tay 👏\nMiễn phạt 1 lần ✨'
   );
@@ -251,6 +525,14 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
     rot: number;
     vRot: number;
   } | null>(null);
+
+  // Khi mới mở Phòng Giải Trí -> luôn bắt đầu từ Sảnh Chọn Game dễ thương
+  useEffect(() => {
+    if (isOpen) {
+      setActiveView('lobby');
+      setLobbyNotice(null);
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     if (!targetPhotoUrl) {
@@ -323,10 +605,42 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
   );
 
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && activeView === 'knife_hit') {
       setupStage(currentStageNum, gameMode, true);
     }
-  }, [isOpen, gameMode, setupStage]);
+  }, [isOpen, activeView, gameMode, setupStage]);
+
+  // Bộ đếm cho mini-game Đập Chuột Deadline
+  useEffect(() => {
+    if (!whackRunning || activeView !== 'whack_bug') return;
+    const moleTimer = window.setInterval(() => {
+      setActiveMoleHole(Math.floor(Math.random() * 9));
+    }, 620);
+    const clockTimer = window.setInterval(() => {
+      setWhackTimeLeft((t) => {
+        if (t <= 1) {
+          setWhackRunning(false);
+          return 0;
+        }
+        return t - 1;
+      });
+    }, 1000);
+    return () => {
+      window.clearInterval(moleTimer);
+      window.clearInterval(clockTimer);
+    };
+  }, [whackRunning, activeView]);
+
+  // Bộ đếm cho mini-game Truyền Bom Hẹn Giờ
+  useEffect(() => {
+    if (!bombTicking || activeView !== 'pass_bomb') return;
+    const timer = window.setTimeout(() => {
+      setBombTicking(false);
+      setBombExploded(true);
+      if (soundEnabled) playWoodShatterSound();
+    }, 4500 + Math.random() * 4000);
+    return () => window.clearTimeout(timer);
+  }, [bombTicking, activeView, soundEnabled]);
 
   const spawnSplinters = useCallback(
     (x: number, y: number, count: number, color = '#f4a261') => {
@@ -429,7 +743,7 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
   }, [stageState, gameMode, activeTurnPlayer]);
 
   useEffect(() => {
-    if (!isOpen || selectedGameTab !== 'knife_hit') return;
+    if (!isOpen || activeView !== 'knife_hit') return;
     const onKeyDown = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
@@ -440,11 +754,11 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [isOpen, selectedGameTab, handleThrowKnife]);
+  }, [isOpen, activeView, handleThrowKnife]);
 
   // Vòng lặp vẽ Canvas Knife Hit 60FPS
   useEffect(() => {
-    if (!isOpen || selectedGameTab !== 'knife_hit') return;
+    if (!isOpen || activeView !== 'knife_hit') return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -957,7 +1271,7 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
     return () => window.cancelAnimationFrame(animId);
   }, [
     isOpen,
-    selectedGameTab,
+    activeView,
     stageState,
     stageConfig,
     gameMode,
@@ -1109,12 +1423,213 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
 
   const otherMembers = members.filter((m) => m.userId !== currentUserId);
 
+  // ============================================================================
+  // LUỒNG 1: SẢNH CHỌN GAME DỄ THƯƠNG PHONG CÁCH BLOOP PARTY (Khi mới vào Phòng Giải Trí)
+  // ============================================================================
+  if (activeView === 'lobby') {
+    return (
+      <div
+        data-testid="entertainment-room-overlay"
+        className="fixed inset-0 z-30 flex items-center justify-center bg-slate-950/70 p-2 sm:p-4 backdrop-blur-sm"
+      >
+        <div className="relative flex max-h-[90dvh] w-full max-w-5xl flex-col overflow-hidden rounded-[28px] border-4 border-[#e8dfd1] bg-[#fdf8f0] text-[#3d2b1f] shadow-2xl">
+          {/* HEADER PHONG CÁCH BLOOP PARTY */}
+          <div className="flex items-center justify-between gap-2 border-b border-[#ece2d0] bg-[#fbf4e8] px-3.5 py-2.5 sm:px-6 sm:py-3.5">
+            <div className="flex items-baseline gap-2">
+              <h2 className="text-base sm:text-xl font-black tracking-tight text-[#3d2b1f]">
+                Chọn game
+              </h2>
+              <span className="hidden sm:inline text-xs font-semibold text-[#8c7865]">
+                {GAME_CATALOG.length} game giải trí văn phòng
+              </span>
+            </div>
+
+            {/* Logo chữ nổi dễ thương ở giữa giống "bloop" */}
+            <div className="flex items-center gap-0.5 select-none">
+              <span className="text-lg sm:text-2xl font-black tracking-tight text-[#4a3326]">
+                p
+              </span>
+              <CuteBlob color="#60a5fa" size="h-5 w-5 sm:h-6 sm:w-6" />
+              <CuteBlob color="#f472b6" size="h-5 w-5 sm:h-6 sm:w-6" />
+              <span className="text-lg sm:text-2xl font-black tracking-tight text-[#4a3326]">
+                p party
+              </span>
+            </div>
+
+            {/* Cụm nút bên phải: Số người trong phòng • Âm thanh • Đóng */}
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <div className="inline-flex items-center gap-1.5 rounded-full border border-[#e2d6c3] bg-white px-2.5 py-1 text-xs font-extrabold text-[#4a3326] shadow-sm">
+                <span className="h-2.5 w-2.5 rounded-full bg-sky-400" />
+                <span className="h-2.5 w-2.5 -ml-1 rounded-full bg-pink-400" />
+                <span>{members.length} người</span>
+              </div>
+
+              <button
+                type="button"
+                onClick={onToggleSound}
+                className="rounded-full border border-[#e2d6c3] bg-white hover:bg-[#f5ede0] p-1.5 text-[#4a3326] shadow-sm cursor-pointer"
+                title={soundEnabled ? 'Tắt âm thanh' : 'Bật âm thanh'}
+              >
+                {soundEnabled ? (
+                  <Volume2 className="h-4 w-4 text-amber-600" />
+                ) : (
+                  <VolumeX className="h-4 w-4 text-slate-400" />
+                )}
+              </button>
+
+              <button
+                type="button"
+                data-testid="exit-game-room-btn"
+                onClick={onExitGameRoom}
+                className="inline-flex items-center gap-1 rounded-full border border-[#e2d6c3] bg-white hover:bg-rose-50 px-3 py-1 text-xs font-extrabold text-[#4a3326] shadow-sm cursor-pointer"
+              >
+                <X className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Đóng</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Thông báo nhỏ khi bấm vào game sắp ra mắt */}
+          {lobbyNotice && (
+            <div className="bg-amber-100 border-b border-amber-200 px-4 py-1.5 text-center text-xs font-bold text-amber-900">
+              {lobbyNotice}
+            </div>
+          )}
+
+          {/* LƯỚI DANH SÁCH CÁC GAME DỄ THƯƠNG (2 cột trên điện thoại, 3-4 cột trên màn hình lớn) */}
+          <div className="flex-1 overflow-y-auto p-3 sm:p-5">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 sm:gap-3.5">
+              {/* Ô ĐẦU TIÊN: PARTY NGẪU NHIÊN (Giống ô P-A-R-T-Y viền xanh trong ảnh mẫu) */}
+              <button
+                type="button"
+                onClick={() => {
+                  const playableList: PlayableGameId[] = [
+                    'knife_hit',
+                    'whack_bug',
+                    'pass_bomb',
+                    'wheel',
+                  ];
+                  const pick =
+                    playableList[Math.floor(Math.random() * playableList.length)];
+                  setActiveView(pick);
+                }}
+                className="group relative flex flex-col justify-between rounded-2xl border-[3px] border-sky-400 bg-white p-2.5 text-left shadow-sm hover:shadow-md transition-all active:scale-95 cursor-pointer min-h-[126px] sm:min-h-[142px]"
+              >
+                <div className="flex items-center gap-1">
+                  {[
+                    { ch: 'P', bg: 'bg-sky-400' },
+                    { ch: 'A', bg: 'bg-pink-400' },
+                    { ch: 'R', bg: 'bg-amber-400' },
+                    { ch: 'T', bg: 'bg-emerald-400' },
+                    { ch: 'Y', bg: 'bg-purple-400' },
+                  ].map((item, i) => (
+                    <span
+                      key={i}
+                      className={`${item.bg} inline-flex h-5 w-5 sm:h-6 sm:w-6 items-center justify-center rounded-md text-[11px] sm:text-xs font-black text-white shadow-sm -rotate-3 group-hover:rotate-3 transition-transform`}
+                    >
+                      {item.ch}
+                    </span>
+                  ))}
+                </div>
+
+                <div className="flex items-center justify-center py-1">
+                  <CuteBlob color="#60a5fa" size="h-8 w-8" />
+                  <CuteBlob color="#f472b6" size="h-9 w-9" className="-ml-2" />
+                  <CuteBlob color="#4ade80" size="h-7 w-7" className="-ml-2" />
+                </div>
+
+                <div>
+                  <div className="text-xs sm:text-sm font-black text-[#3d2b1f]">
+                    Chơi Ngẫu Nhiên
+                  </div>
+                  <span className="mt-0.5 inline-block rounded-md bg-[#f3ece0] px-2 py-0.5 text-[10px] font-bold text-[#7c6855]">
+                    1-4 người
+                  </span>
+                </div>
+              </button>
+
+              {/* CÁC THẺ GAME TRONG DANH SÁCH */}
+              {GAME_CATALOG.map((game) => {
+                const isPlayable = Boolean(game.playableId);
+                return (
+                  <button
+                    key={game.id}
+                    type="button"
+                    data-testid={`lobby-game-${game.id}`}
+                    onClick={() => {
+                      if (game.playableId) {
+                        setActiveView(game.playableId);
+                        setLobbyNotice(null);
+                      } else {
+                        setLobbyNotice(
+                          `✨ Game "${game.title}" đang được hoàn thiện và sẽ sớm mở khóa! Hãy thử Phóng Phi Tiêu, Đập Chuột, Truyền Bom hoặc Vòng Quay nhé!`
+                        );
+                      }
+                    }}
+                    className={`group relative flex flex-col justify-between overflow-hidden rounded-2xl border-2 bg-white p-2 text-left transition-all active:scale-95 cursor-pointer min-h-[126px] sm:min-h-[142px] ${
+                      isPlayable
+                        ? 'border-[#e5dccb] hover:border-sky-400 hover:ring-2 hover:ring-sky-300 shadow-sm hover:shadow-md'
+                        : 'border-[#ebe3d5] opacity-80 hover:opacity-100'
+                    }`}
+                  >
+                    {/* Hình minh họa dễ thương ở nửa trên thẻ */}
+                    <div
+                      className={`relative h-16 sm:h-20 w-full overflow-hidden rounded-xl bg-gradient-to-br ${game.bgGradient} border border-black/5`}
+                    >
+                      {game.sceneRender()}
+
+                      {/* Huy hiệu góc phải trên */}
+                      {game.badge && (
+                        <span className="absolute top-1.5 right-1.5 rounded-full bg-rose-500 px-2 py-0.5 text-[9px] font-black text-white shadow">
+                          {game.badge}
+                        </span>
+                      )}
+
+                      {/* Ổ khóa cho các game Sắp ra mắt giống ảnh Bloop Party */}
+                      {game.locked && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-white/35 backdrop-blur-[1px]">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-[#7c6855] shadow">
+                            <Lock className="h-4 w-4" />
+                          </div>
+                          <span className="absolute top-1.5 right-1.5 rounded-full bg-[#8c7865]/90 px-2 py-0.5 text-[9px] font-bold text-white">
+                            Sắp ra mắt
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Tên game & Số người chơi ở nửa dưới thẻ */}
+                    <div className="pt-1.5 px-0.5">
+                      <div className="truncate text-xs sm:text-sm font-black text-[#3d2b1f]">
+                        {game.title}
+                      </div>
+                      <span className="mt-0.5 inline-block rounded-md bg-[#f3ece0] px-2 py-0.5 text-[10px] font-bold text-[#7c6855]">
+                        {game.playersText}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* CHÂN TRANG GỌN */}
+          <div className="border-t border-[#ece2d0] bg-[#fbf4e8] px-4 py-2 text-center text-[11px] font-bold text-[#7c6855]">
+            <span className="text-emerald-600">{currentNickname}</span> đang chọn game • Chạm vào game bất kỳ để bắt đầu chơi hoặc mời bạn bè!
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ============================================================================
+  // LUỒNG 2: MÀN HÌNH CHƠI GAME CỤ THỂ (Gọn gàng 1 khung dọc chuẩn điện thoại, có nút "⬅ Chọn game")
+  // ============================================================================
   return (
     <div
       data-testid="entertainment-room-overlay"
       className="fixed inset-0 z-30 flex items-center justify-center bg-slate-950/75 p-2 backdrop-blur-sm"
     >
-      {/* KHUNG GAME DỌC GỌN GÀNG NHƯ ĐIỆN THOẠI (Vừa khít 1 màn hình, không cần cuộn) */}
       <div className="relative flex w-full max-w-[380px] sm:max-w-[400px] flex-col overflow-hidden rounded-3xl border border-teal-400/35 bg-[#041d24] text-slate-100 shadow-2xl">
         {/* Input file ảnh ẩn */}
         <input
@@ -1131,42 +1646,21 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
           }}
         />
 
-        {/* THANH ĐẦU GỌN 1 DÒNG: Đổi tab game • Ghép ảnh • Đổi chế độ Solo • Âm thanh • Thoát */}
-        <div className="flex items-center justify-between gap-1 border-b border-white/10 bg-slate-950/80 px-2.5 py-2">
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              data-testid="game-tab-darts"
-              onClick={() => setSelectedGameTab('knife_hit')}
-              className={`inline-flex items-center gap-1 rounded-xl px-2.5 py-1 text-xs font-extrabold transition-all cursor-pointer ${
-                selectedGameTab === 'knife_hit'
-                  ? 'bg-amber-400 text-slate-950 shadow'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <Flame className="h-3.5 w-3.5" />
-              <span>Knife Hit</span>
-            </button>
-
-            <button
-              type="button"
-              data-testid="game-tab-wheel"
-              onClick={() => setSelectedGameTab('wheel')}
-              className={`inline-flex items-center gap-1 rounded-xl px-2 py-1 text-xs font-bold transition-all cursor-pointer ${
-                selectedGameTab === 'wheel'
-                  ? 'bg-fuchsia-500 text-white shadow'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <Disc className="h-3.5 w-3.5" />
-              <span>Vòng Quay</span>
-            </button>
-          </div>
+        {/* THANH ĐẦU GỌN 1 DÒNG: Nút "⬅ Chọn game" quay về Sảnh • Công cụ game • Đóng */}
+        <div className="flex items-center justify-between gap-1 border-b border-white/10 bg-slate-950/85 px-2.5 py-2">
+          <button
+            type="button"
+            data-testid="back-to-game-lobby-btn"
+            onClick={() => setActiveView('lobby')}
+            className="inline-flex items-center gap-1 rounded-xl bg-amber-400 hover:bg-amber-300 px-2.5 py-1 text-xs font-extrabold text-slate-950 shadow cursor-pointer"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            <span>Chọn game</span>
+          </button>
 
           <div className="flex items-center gap-1">
-            {selectedGameTab === 'knife_hit' && (
+            {activeView === 'knife_hit' && (
               <>
-                {/* Nút bật/tắt bảng Ghép Ảnh vào Khúc Gỗ */}
                 <button
                   type="button"
                   data-testid="toggle-photo-customizer-btn"
@@ -1176,13 +1670,11 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
                       ? 'border-amber-300 bg-amber-400/20 text-amber-200'
                       : 'border-white/15 bg-slate-800 text-slate-200 hover:bg-slate-700'
                   }`}
-                  title="Ghép ảnh người vào Khúc Gỗ"
                 >
                   <Camera className="h-3.5 w-3.5 text-amber-300" />
                   <span>Ghép ảnh</span>
                 </button>
 
-                {/* Nút chuyển nhanh 1 Mình <-> Solo Bạn Bè */}
                 <button
                   type="button"
                   data-testid={gameMode === 'campaign' ? 'mode-pvp-btn' : 'mode-campaign-btn'}
@@ -1192,7 +1684,6 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
                       ? 'border-rose-400 bg-rose-500 text-white'
                       : 'border-white/15 bg-slate-800 text-slate-200 hover:bg-slate-700'
                   }`}
-                  title="Đổi chế độ 1 mình / Solo cùng bạn bè"
                 >
                   <Swords className="h-3.5 w-3.5" />
                   <span>{gameMode === 'pvp' ? 'Solo' : '1 Mình'}</span>
@@ -1224,9 +1715,9 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
           </div>
         </div>
 
-        {selectedGameTab === 'knife_hit' ? (
+        {/* ==================== GAME 1: KNIFE HIT (PHÓNG PHI TIÊU CẮM GỖ XOAY) ==================== */}
+        {activeView === 'knife_hit' && (
           <>
-            {/* THANH PHỤ GỌN 1 DÒNG: Chọn nhanh Stage 1..5 HOẶC Chọn Đối Thủ Solo */}
             <div className="flex items-center justify-between gap-1 bg-[#05252e] px-2.5 py-1.5 border-b border-teal-500/20">
               {gameMode === 'campaign' ? (
                 <div className="flex items-center justify-between w-full gap-1">
@@ -1306,7 +1797,6 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
               )}
             </div>
 
-            {/* KHUNG GAME KNIFE HIT CHÍNH (Chiếm trọn diện tích, không vướng chữ thừa) */}
             <div className="relative w-full aspect-[320/410] max-h-[68dvh] bg-[#041d24] flex items-center justify-center overflow-hidden">
               <canvas
                 ref={canvasRef}
@@ -1317,7 +1807,6 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
                 className="w-full h-full object-contain cursor-pointer touch-none select-none"
               />
 
-              {/* POPOVER GHÉP ẢNH VÀO KHÚC GỖ (Chỉ hiện khi bấm nút "📸 Ghép ảnh") */}
               {showPhotoPopover && (
                 <div className="absolute inset-x-3 top-3 z-20 rounded-2xl border border-amber-400/50 bg-slate-950/95 p-3 shadow-2xl backdrop-blur-xl space-y-2.5">
                   <div className="flex items-center justify-between">
@@ -1419,7 +1908,6 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
                 </div>
               )}
 
-              {/* Màn hình Kết thúc khi Đụng Dao hoặc Xong Ván Solo */}
               {(stageState === 'failed' || stageState === 'pvp_over') && (
                 <div
                   data-testid="dart-round-summary"
@@ -1497,7 +1985,6 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
               )}
             </div>
 
-            {/* THANH DƯỚI CÙNG SIÊU GỌN: Chơi lại • Khoe điểm */}
             <div className="flex items-center justify-between gap-2 bg-slate-950/90 px-3 py-2 border-t border-white/10">
               <button
                 type="button"
@@ -1522,19 +2009,179 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
               </button>
             </div>
           </>
-        ) : (
-          /* TAB 2: VÒNG QUAY NHÂN PHẨM GỌN CHO ĐIỆN THOẠI */
-          <div className="flex flex-col items-center p-4 space-y-3 bg-slate-950/80">
+        )}
+
+        {/* ==================== GAME 2: ĐẬP CHUỘT DEADLINE (WHACK-A-BUG) ==================== */}
+        {activeView === 'whack_bug' && (
+          <div className="flex flex-col items-center p-4 space-y-3 bg-[#fdf8f0] text-[#3d2b1f]">
+            <div className="flex w-full items-center justify-between rounded-2xl bg-[#f3ece0] px-3.5 py-2">
+              <span className="text-xs font-black text-emerald-700">
+                🔨 Điểm: {whackScore}
+              </span>
+              <span className="text-xs font-black text-rose-600">
+                ⏱️ Thời gian: {whackTimeLeft}s
+              </span>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2.5 w-full max-w-[300px] aspect-square p-2 rounded-2xl bg-lime-200/80 border-2 border-lime-400/50">
+              {Array.from({ length: 9 }).map((_, idx) => {
+                const isUp = whackRunning && activeMoleHole === idx;
+                return (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => {
+                      if (!isUp) return;
+                      if (soundEnabled) playDartHitSound(true);
+                      setWhackScore((s) => s + 10);
+                      setActiveMoleHole(-1);
+                    }}
+                    className="relative flex items-center justify-center rounded-2xl bg-amber-900/80 shadow-inner overflow-hidden cursor-pointer active:scale-90 transition-transform"
+                  >
+                    {isUp && (
+                      <div className="flex flex-col items-center animate-bounce">
+                        <CuteBlob
+                          color="#a855f7"
+                          size="h-11 w-11"
+                          expression="surprised"
+                        />
+                        <span className="text-[9px] font-black text-white bg-rose-500 px-1.5 rounded-full -mt-1">
+                          BUG!
+                        </span>
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setWhackScore(0);
+                  setWhackTimeLeft(20);
+                  setWhackRunning(true);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 px-4 py-2 text-xs font-extrabold text-white shadow cursor-pointer"
+              >
+                <Hammer className="h-3.5 w-3.5" />
+                <span>{whackRunning ? 'Chơi lại từ đầu' : 'Bắt đầu đập Bug (20s)'}</span>
+              </button>
+
+              {whackScore > 0 && !whackRunning && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    onBroadcastChallengeMessage(
+                      `🔨 [ĐẬP CHUỘT DEADLINE] ${currentNickname} vừa đập trúng ${whackScore} điểm Bug trong 20 giây!`
+                    )
+                  }
+                  className="inline-flex items-center gap-1 rounded-xl bg-amber-400 px-3 py-2 text-xs font-extrabold text-slate-950 cursor-pointer"
+                >
+                  <Send className="h-3.5 w-3.5" />
+                  <span>Khoe điểm</span>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ==================== GAME 3: TRUYỀN BOM HẸN GIỜ (PASS THE BOMB) ==================== */}
+        {activeView === 'pass_bomb' && (
+          <div className="flex flex-col items-center p-5 space-y-4 bg-[#fdf8f0] text-[#3d2b1f] text-center">
+            <div className="relative flex h-28 w-28 items-center justify-center rounded-full bg-amber-100 border-4 border-amber-300 shadow-inner">
+              {bombExploded ? (
+                <span className="text-5xl animate-bounce">💥</span>
+              ) : (
+                <span className={`text-5xl ${bombTicking ? 'animate-ping' : ''}`}>
+                  💣
+                </span>
+              )}
+            </div>
+
+            <div>
+              <h3 className="text-base font-black text-[#3d2b1f]">
+                {bombExploded
+                  ? `💥 BÙM! Bom nổ trên tay ${bombHolderName}!`
+                  : bombTicking
+                    ? `🔥 ${bombHolderName} đang cầm bom! Chuyền mau!`
+                    : '💣 Truyền Bom Hẹn Giờ'}
+              </h3>
+              <p className="text-xs text-[#7c6855] mt-1">
+                Bấm vào tên người khác để chuyền bom trước khi phát nổ!
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              {(members.length > 0
+                ? members.map((m) => m.nickname)
+                : [currentNickname, 'Đồng nghiệp A', 'Đồng nghiệp B']
+              ).map((name, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  disabled={!bombTicking}
+                  onClick={() => {
+                    if (soundEnabled) playDartHitSound(false);
+                    setBombHolderName(name);
+                  }}
+                  className={`rounded-xl px-3 py-1.5 text-xs font-extrabold border-2 transition-all cursor-pointer ${
+                    bombHolderName === name
+                      ? 'border-rose-500 bg-rose-500 text-white shadow'
+                      : 'border-[#e2d6c3] bg-white text-[#3d2b1f] hover:border-sky-400'
+                  }`}
+                >
+                  💣 Chuyền cho {name}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setBombExploded(false);
+                  setBombHolderName(currentNickname);
+                  setBombTicking(true);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-rose-500 hover:bg-rose-400 px-4 py-2 text-xs font-extrabold text-white shadow cursor-pointer"
+              >
+                <Bomb className="h-3.5 w-3.5" />
+                <span>{bombTicking ? 'Đang đếm ngược...' : 'Châm ngòi Bom mới!'}</span>
+              </button>
+
+              {bombExploded && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    onBroadcastChallengeMessage(
+                      `💣 [TRUYỀN BOM] Quả bom hẹn giờ vừa phát nổ BÙM trên tay "${bombHolderName}"!`
+                    )
+                  }
+                  className="inline-flex items-center gap-1 rounded-xl bg-amber-400 px-3 py-2 text-xs font-extrabold text-slate-950 cursor-pointer"
+                >
+                  <Send className="h-3.5 w-3.5" />
+                  <span>Báo phòng</span>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ==================== GAME 4: VÒNG QUAY TRÀ SỮA / NHÂN PHẨM ==================== */}
+        {activeView === 'wheel' && (
+          <div className="flex flex-col items-center p-4 space-y-3 bg-[#fdf8f0] text-[#3d2b1f]">
             <div
-              className={`flex h-20 w-20 items-center justify-center rounded-full border-4 border-fuchsia-400 bg-gradient-to-br from-fuchsia-600/40 to-indigo-600/40 shadow-xl ${
+              className={`flex h-20 w-20 items-center justify-center rounded-full border-4 border-fuchsia-400 bg-gradient-to-br from-fuchsia-400 to-amber-300 shadow-xl ${
                 spinningWheel ? 'animate-spin' : ''
               }`}
             >
-              <Disc className="h-10 w-10 text-fuchsia-300" />
+              <Disc className="h-10 w-10 text-white" />
             </div>
 
             {wheelResult && (
-              <div className="rounded-xl border border-amber-300/60 bg-amber-500/20 px-3 py-1.5 text-xs font-extrabold text-amber-200">
+              <div className="rounded-xl border-2 border-amber-400 bg-amber-100 px-3 py-1.5 text-xs font-black text-amber-900">
                 🎉 {wheelResult}
               </div>
             )}
@@ -1556,7 +2203,7 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
                       `🎡 [VÒNG QUAY] ${currentNickname} quay trúng: "${wheelResult}"!`
                     )
                   }
-                  className="rounded-xl bg-slate-800 border border-white/15 px-3 py-2 text-xs font-bold text-slate-200 cursor-pointer"
+                  className="rounded-xl bg-amber-400 px-3 py-2 text-xs font-extrabold text-slate-950 cursor-pointer"
                 >
                   📣 Báo phòng
                 </button>
@@ -1567,7 +2214,7 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
               rows={4}
               value={wheelItemsText}
               onChange={(e) => setWheelItemsText(e.target.value)}
-              className="w-full rounded-xl border border-white/15 bg-slate-900 p-2.5 text-xs text-slate-100 outline-none focus:border-fuchsia-400"
+              className="w-full rounded-xl border-2 border-[#e2d6c3] bg-white p-2.5 text-xs font-medium text-[#3d2b1f] outline-none focus:border-fuchsia-400"
               placeholder="Mỗi dòng 1 mục..."
             />
           </div>
