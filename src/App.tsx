@@ -13,6 +13,7 @@ import {
   Compass,
   PenSquare,
   Crown,
+  Gamepad2,
 } from 'lucide-react';
 import { OfficeScene3D, type ActiveSpeechBubble } from './components/OfficeScene3D';
 import { EntryModal } from './components/EntryModal';
@@ -28,6 +29,7 @@ import {
   DEITY_OPTIONS,
   type DeityType,
 } from './components/ZenSanctuaryOverlay';
+import { EntertainmentRoomModal } from './components/EntertainmentRoomModal';
 import {
   playWoodenFishSound,
   playTempleBellSound,
@@ -71,7 +73,7 @@ import type {
   WorkSeat,
 } from './types/office';
 
-type ActivePanel = 'none' | 'seats' | 'chat' | 'attendance' | 'diary' | 'zen';
+type ActivePanel = 'none' | 'seats' | 'chat' | 'attendance' | 'diary' | 'zen' | 'games';
 
 export function App() {
   const [session, setSession] = useState<AuthSession | null>(null);
@@ -118,6 +120,7 @@ export function App() {
   const [moPulseKey, setMoPulseKey] = useState<number>(0);
   const [floatingMeritText, setFloatingMeritText] = useState<string | null>(null);
   const [activeBlessing, setActiveBlessing] = useState<string | null>(null);
+  const [activeChallengeBanner, setActiveChallengeBanner] = useState<string | null>(null);
   const meritTimerRef = useRef<number | null>(null);
 
   // Bong bóng chat 5 giây trên đầu nhân vật
@@ -363,6 +366,13 @@ export function App() {
           return [...prev, { ...incoming, status: 'sent' }];
         });
         triggerSpeechBubble(incoming.userId, incoming.content);
+        if (
+          incoming.content.startsWith('🎯 [THÁCH ĐẤU PHI TIÊU]') &&
+          incoming.userId !== session.userId
+        ) {
+          setActiveChallengeBanner(incoming.content);
+          showToast(`${incoming.nickname} vừa thách đấu Phóng Phi Tiêu trong 🎮 Phòng Giải Trí!`);
+        }
       } else if (data.type === 'diary_sync') {
         fetchDiaryLists(room.code, session.sessionToken)
           .then(({ feed, mine }) => {
@@ -761,6 +771,8 @@ export function App() {
         cameraMode={cameraMode}
         inZenRoom={activePanel === 'zen'}
         onEnterZenRoom={() => setActivePanel('zen')}
+        inGameRoom={activePanel === 'games'}
+        onEnterGameRoom={() => setActivePanel('games')}
         selectedDeity={selectedDeity}
         incenseLit={incenseLit}
         isBowing={isBowing}
@@ -1023,10 +1035,24 @@ export function App() {
         onToggleSound={() => setSoundEnabled((v) => !v)}
       />
 
+      <EntertainmentRoomModal
+        isOpen={activePanel === 'games'}
+        onExitGameRoom={() => setActivePanel('none')}
+        currentUserId={session.userId}
+        currentNickname={session.nickname}
+        members={members}
+        soundEnabled={soundEnabled}
+        onToggleSound={() => setSoundEnabled((v) => !v)}
+        onBroadcastChallengeMessage={(text) => {
+          handleSendMessage(text).catch(() => {});
+        }}
+        activeChallengeBanner={activeChallengeBanner}
+      />
+
       {/* THANH NÚT KÍNH MỜ GỌN Ở PHÍA DƯỚI MÀN HÌNH (Tối ưu cho cả Điện thoại & Máy tính) */}
       <nav
         aria-label="Điều khiển văn phòng"
-        className="fixed bottom-2 sm:bottom-3 left-1/2 -translate-x-1/2 z-30 flex items-center justify-between sm:justify-center gap-1 sm:gap-2 rounded-2xl sm:rounded-full border border-white/20 bg-slate-900/90 px-1.5 sm:px-3.5 py-1.5 sm:py-2 backdrop-blur-xl shadow-2xl w-[calc(100vw-16px)] sm:w-auto max-w-xl no-scrollbar overflow-x-auto"
+        className="fixed bottom-2 sm:bottom-3 left-1/2 -translate-x-1/2 z-30 flex items-center justify-between sm:justify-center gap-1 sm:gap-1.5 rounded-2xl sm:rounded-full border border-white/20 bg-slate-900/90 px-1.5 sm:px-3.5 py-1.5 sm:py-2 backdrop-blur-xl shadow-2xl w-[calc(100vw-16px)] sm:w-auto max-w-2xl no-scrollbar overflow-x-auto"
       >
         <button
           type="button"
@@ -1094,7 +1120,7 @@ export function App() {
           type="button"
           data-testid="dock-zen-btn"
           onClick={() => togglePanel('zen')}
-          className={`flex flex-1 sm:flex-initial flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 whitespace-nowrap rounded-xl sm:rounded-full px-2 sm:px-3.5 py-1.5 sm:py-2 text-[10px] sm:text-xs font-bold transition-all cursor-pointer ${
+          className={`flex flex-1 sm:flex-initial flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 whitespace-nowrap rounded-xl sm:rounded-full px-2 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs font-bold transition-all cursor-pointer ${
             activePanel === 'zen'
               ? 'bg-gradient-to-r from-amber-400 to-orange-400 text-slate-950 shadow-lg shadow-amber-500/30 ring-2 ring-amber-200'
               : 'bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 border border-amber-400/30'
@@ -1103,6 +1129,21 @@ export function App() {
           <span className="text-sm sm:text-xs leading-none">🪷</span>
           <span className="sm:hidden">Tịnh Tâm</span>
           <span className="hidden sm:inline">Phòng Tịnh Tâm</span>
+        </button>
+
+        <button
+          type="button"
+          data-testid="dock-games-btn"
+          onClick={() => togglePanel('games')}
+          className={`flex flex-1 sm:flex-initial flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 whitespace-nowrap rounded-xl sm:rounded-full px-2 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs font-bold transition-all cursor-pointer ${
+            activePanel === 'games'
+              ? 'bg-gradient-to-r from-indigo-500 to-fuchsia-500 text-white shadow-lg shadow-indigo-500/30 ring-2 ring-indigo-300'
+              : 'bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/30 border border-indigo-400/35'
+          }`}
+        >
+          <Gamepad2 className="h-4 w-4 shrink-0" />
+          <span className="sm:hidden">Giải Trí</span>
+          <span className="hidden sm:inline">Phòng Giải Trí</span>
         </button>
       </nav>
     </main>

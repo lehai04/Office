@@ -330,3 +330,46 @@ export function playTempleBellSound(): void {
     osc.stop(now + h.decay + 0.05);
   }
 }
+
+/**
+ * Phát âm thanh phi tiêu cắm vào bia ("Phập!" hoặc "Keng!" khi trúng hồng tâm Bullseye)
+ */
+export function playDartHitSound(isBullseye = false): void {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+
+  // Tiếng cắm phập vào gỗ/bia
+  const thudOsc = ctx.createOscillator();
+  const thudGain = ctx.createGain();
+  thudOsc.type = 'triangle';
+  thudOsc.frequency.setValueAtTime(190, now);
+  thudOsc.frequency.exponentialRampToValueAtTime(55, now + 0.09);
+
+  thudGain.gain.setValueAtTime(0.55, now);
+  thudGain.gain.exponentialRampToValueAtTime(0.001, now + 0.11);
+
+  thudOsc.connect(thudGain);
+  thudGain.connect(ctx.destination);
+  thudOsc.start(now);
+  thudOsc.stop(now + 0.12);
+
+  if (isBullseye) {
+    // Âm thanh ngân vang chúc mừng khi trúng tâm (Bullseye!)
+    const notes = [523.25, 659.25, 783.99, 1046.5];
+    notes.forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now + idx * 0.06);
+      gain.gain.setValueAtTime(0.001, now + idx * 0.06);
+      gain.gain.linearRampToValueAtTime(0.22, now + idx * 0.06 + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.06 + 0.35);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + idx * 0.06);
+      osc.stop(now + idx * 0.06 + 0.36);
+    });
+  }
+}
+

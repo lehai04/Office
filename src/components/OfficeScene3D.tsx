@@ -27,10 +27,12 @@ interface OfficeScene3DProps {
   onSelectSeat: (seatId: string) => void;
   onSelectMeetingChair: (chairId: string | null) => void;
   claimingSeatId: string | null;
-  // Góc nhìn & Phòng Tịnh Tâm
+  // Góc nhìn & Phòng Tịnh Tâm / Phòng Giải Trí
   cameraMode: 'overview' | 'first_person';
   inZenRoom: boolean;
   onEnterZenRoom: () => void;
+  inGameRoom?: boolean;
+  onEnterGameRoom?: () => void;
   selectedDeity: DeityType;
   incenseLit: boolean;
   isBowing: boolean;
@@ -49,6 +51,7 @@ interface OfficeScene3DProps {
 const SceneCameraController: React.FC<{
   cameraMode: 'overview' | 'first_person';
   inZenRoom: boolean;
+  inGameRoom?: boolean;
   isBowing: boolean;
   myPosition: [number, number, number];
   myRotationY: number;
@@ -57,6 +60,7 @@ const SceneCameraController: React.FC<{
 }> = ({
   cameraMode,
   inZenRoom,
+  inGameRoom = false,
   isBowing,
   myPosition,
   myRotationY,
@@ -74,12 +78,12 @@ const SceneCameraController: React.FC<{
 
   const isPortraitMobile = size.width < size.height * 0.85;
 
-  // Khi chuyển vị trí ghế / vào phòng tịnh tâm / đổi chế độ camera, đặt hướng nhìn mắt nhân vật theo hướng nhân vật đang quay
+  // Khi chuyển vị trí ghế / vào phòng tịnh tâm / phòng giải trí / đổi chế độ camera, đặt hướng nhìn mắt nhân vật theo hướng nhân vật đang quay
   useEffect(() => {
     yawRef.current = myRotationY;
-    pitchRef.current = inZenRoom ? 0.08 : -0.05;
+    pitchRef.current = inZenRoom || inGameRoom ? 0.08 : -0.05;
     walkOffsetRef.current = { x: 0, z: 0 };
-  }, [myPosition[0], myPosition[2], myRotationY, inZenRoom, cameraMode]);
+  }, [myPosition[0], myPosition[2], myRotationY, inZenRoom, inGameRoom, cameraMode]);
 
   useEffect(() => {
     if (isBowing) {
@@ -87,7 +91,7 @@ const SceneCameraController: React.FC<{
     }
   }, [isBowing]);
 
-  // Khi ở chế độ overview, chuyển góc nhìn mượt giữa Văn phòng chính và Phòng Tịnh Tâm (tự động lùi xa trên màn hình dọc điện thoại)
+  // Khi ở chế độ overview, chuyển góc nhìn mượt giữa Văn phòng chính, Phòng Tịnh Tâm và Phòng Giải Trí
   useEffect(() => {
     if (cameraMode === 'overview') {
       if (inZenRoom) {
@@ -97,6 +101,13 @@ const SceneCameraController: React.FC<{
           camera.position.set(0, 3.6, -6.2);
         }
         camera.lookAt(0, 1.1, -11.4);
+      } else if (inGameRoom) {
+        if (isPortraitMobile) {
+          camera.position.set(-7.6, 4.5, -4.8);
+        } else {
+          camera.position.set(-7.6, 3.8, -6.2);
+        }
+        camera.lookAt(-7.6, 1.2, -11.4);
       } else {
         if (isPortraitMobile) {
           camera.position.set(0, 21.5, 16.5);
@@ -106,7 +117,7 @@ const SceneCameraController: React.FC<{
         camera.lookAt(0, 0, 0);
       }
     }
-  }, [cameraMode, inZenRoom, isPortraitMobile, camera]);
+  }, [cameraMode, inZenRoom, inGameRoom, isPortraitMobile, camera]);
 
   // Sự kiện chuột / bàn phím cho Góc nhìn thứ nhất (First-Person View)
   useEffect(() => {
@@ -232,12 +243,18 @@ const SceneCameraController: React.FC<{
   return (
     <OrbitControls
       makeDefault
-      target={inZenRoom ? [0, 0.9, -11.2] : [0, 0, 0]}
+      target={
+        inZenRoom
+          ? [0, 0.9, -11.2]
+          : inGameRoom
+            ? [-7.6, 0.9, -11.2]
+            : [0, 0, 0]
+      }
       minPolarAngle={Math.PI / 8}
       maxPolarAngle={Math.PI / 2.15}
       minAzimuthAngle={-Math.PI / 2.2}
       maxAzimuthAngle={Math.PI / 2.2}
-      minDistance={inZenRoom ? 3.5 : 6.5}
+      minDistance={inZenRoom || inGameRoom ? 3.5 : 6.5}
       maxDistance={28}
       enablePan={true}
     />
@@ -890,6 +907,110 @@ const ZenSanctuaryRoom3D: React.FC<{
 };
 
 /**
+ * Gian Phòng Giải Trí 3D (Bia Phóng Phi Tiêu 3D, Máy Game Arcade Neon & Bàn Bida/Lounge)
+ * Nằm cạnh Phòng Tịnh Tâm ở phía sau bức tường Bắc (-7.6, 0, -10.2)
+ */
+const EntertainmentRoom3D: React.FC<{
+  onOpenGameHub?: () => void;
+}> = ({ onOpenGameHub }) => {
+  return (
+    <group position={[-7.6, 0, -10.2]}>
+      {/* Đèn Neon Tím & Xanh Cyan cho Phòng Giải Trí */}
+      <pointLight position={[0, 3.4, -0.5]} intensity={1.35} color="#818cf8" distance={9} />
+      <pointLight position={[-2.0, 2.2, -1.2]} intensity={0.9} color="#ec4899" distance={6} />
+      <pointLight position={[2.0, 2.2, -1.2]} intensity={0.9} color="#06b6d4" distance={6} />
+
+      {/* Sàn Phòng Giải Trí (Tông xanh đen Cyber) */}
+      <mesh position={[0, -0.05, 0]} receiveShadow>
+        <boxGeometry args={[7.0, 0.14, 6.2]} />
+        <meshStandardMaterial color="#1e1b4b" roughness={0.7} />
+      </mesh>
+      {/* Thảm đứng phóng phi tiêu */}
+      <mesh position={[0, 0.03, 0.5]} receiveShadow>
+        <boxGeometry args={[2.8, 0.02, 3.4]} />
+        <meshStandardMaterial color="#312e81" roughness={0.85} />
+      </mesh>
+      {/* Vạch đứng ném tiêu (Throw line) */}
+      <mesh position={[0, 0.045, 1.4]}>
+        <boxGeometry args={[1.8, 0.01, 0.08]} />
+        <meshBasicMaterial color="#f43f5e" />
+      </mesh>
+
+      {/* Vách tường hậu & Vách 2 bên của Phòng Giải Trí */}
+      <mesh position={[0, 1.6, -2.95]} receiveShadow castShadow>
+        <boxGeometry args={[7.0, 3.2, 0.18]} />
+        <meshStandardMaterial color="#0f172a" roughness={0.65} />
+      </mesh>
+      <mesh position={[-3.45, 1.6, 0]} receiveShadow castShadow>
+        <boxGeometry args={[0.18, 3.2, 6.2]} />
+        <meshStandardMaterial color="#1e293b" roughness={0.7} />
+      </mesh>
+      <mesh position={[3.45, 1.6, 0]} receiveShadow castShadow>
+        <boxGeometry args={[0.18, 3.2, 6.2]} />
+        <meshStandardMaterial color="#1e293b" roughness={0.7} />
+      </mesh>
+
+      {/* BIA PHÓNG PHI TIÊU 3D TREO TRÊN TƯỜNG CHÍNH GIỮA */}
+      <group
+        position={[0, 1.75, -2.8]}
+        onClick={(e) => {
+          e.stopPropagation();
+          onOpenGameHub?.();
+        }}
+        onPointerOver={() => {
+          document.body.style.cursor = 'pointer';
+        }}
+        onPointerOut={() => {
+          document.body.style.cursor = 'auto';
+        }}
+      >
+        {/* Bảng gỗ lót sau bia */}
+        <mesh position={[0, 0, -0.03]} castShadow>
+          <boxGeometry args={[1.7, 1.7, 0.06]} />
+          <meshStandardMaterial color="#31102f" roughness={0.6} />
+        </mesh>
+        {/* Các vòng tròn đồng tâm của Bia Phóng Phi Tiêu 3D */}
+        <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, 0, 0.02]}>
+          <cylinderGeometry args={[0.68, 0.68, 0.05, 32]} />
+          <meshStandardMaterial color="#0f172a" />
+        </mesh>
+        <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, 0, 0.03]}>
+          <cylinderGeometry args={[0.52, 0.52, 0.05, 32]} />
+          <meshStandardMaterial color="#dc2626" />
+        </mesh>
+        <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, 0, 0.04]}>
+          <cylinderGeometry args={[0.36, 0.36, 0.05, 32]} />
+          <meshStandardMaterial color="#f8fafc" />
+        </mesh>
+        <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, 0, 0.05]}>
+          <cylinderGeometry args={[0.21, 0.21, 0.05, 32]} />
+          <meshStandardMaterial color="#16a34a" />
+        </mesh>
+        <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, 0, 0.06]}>
+          <cylinderGeometry args={[0.09, 0.09, 0.05, 24]} />
+          <meshBasicMaterial color="#facc15" />
+        </mesh>
+      </group>
+
+      {/* 2 MÁY GAME THÙNG ARCADE HAI BÊN TƯỜNG */}
+      {[-2.15, 2.15].map((xPos, idx) => (
+        <group key={idx} position={[xPos, 0, -2.2]}>
+          <mesh position={[0, 0.95, 0]} castShadow>
+            <boxGeometry args={[0.95, 1.9, 0.85]} />
+            <meshStandardMaterial color={idx === 0 ? '#4f46e5' : '#db2777'} roughness={0.4} />
+          </mesh>
+          {/* Màn hình phát sáng */}
+          <mesh position={[0, 1.25, 0.43]}>
+            <boxGeometry args={[0.72, 0.58, 0.04]} />
+            <meshBasicMaterial color={idx === 0 ? '#38bdf8' : '#f472b6'} />
+          </mesh>
+        </group>
+      ))}
+    </group>
+  );
+};
+
+/**
  * Bàn và ghế làm việc cố định (8 vị trí đăng ký)
  */
 const WorkDeskUnit: React.FC<{
@@ -1209,6 +1330,8 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
   cameraMode,
   inZenRoom,
   onEnterZenRoom,
+  inGameRoom = false,
+  onEnterGameRoom,
   selectedDeity,
   incenseLit,
   isBowing,
@@ -1252,6 +1375,16 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
         };
       }
 
+      // Nếu là người dùng hiện tại đang ở trong Phòng Giải Trí -> đứng trước vạch phóng phi tiêu nhìn vào Bia 3D
+      if (member.userId === currentUserId && inGameRoom) {
+        return {
+          member,
+          isSeated: false,
+          position: [-7.6, 0, -8.85] as [number, number, number],
+          rotationY: Math.PI, // Nhìn thẳng về phía Bia Phóng Phi Tiêu (-Z)
+        };
+      }
+
       if (member.meetingChairId && meetingChairMap.has(member.meetingChairId)) {
         const mChair = meetingChairMap.get(member.meetingChairId)!;
         return {
@@ -1289,7 +1422,7 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
         rotationY: slot.rotationY,
       };
     });
-  }, [members, currentUserId, inZenRoom]);
+  }, [members, currentUserId, inZenRoom, inGameRoom]);
 
   const myPlacement = useMemo(() => {
     const found = characterPlacements.find((p) => p.member.userId === currentUserId);
@@ -1407,6 +1540,9 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
             onRingBell={onRingBell}
           />
 
+          {/* GIAN PHÒNG GIẢI TRÍ 3D (Bia Phóng Phi Tiêu 3D • Máy Arcade • Đấu Solo) */}
+          <EntertainmentRoom3D onOpenGameHub={onEnterGameRoom} />
+
           {/* SÀN PHÒNG VĂN PHÒNG CHÍNH (16.0m x 10.8m) */}
           <mesh position={[0, -0.08, 0]} receiveShadow>
             <boxGeometry args={[16.0, 0.16, 10.8]} />
@@ -1427,42 +1563,82 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
             <meshStandardMaterial color="#e2e8f0" roughness={0.75} />
           </mesh>
 
-          {/* CỔNG VÀO PHÒNG TỊNH TÂM TRÊN TƯỜNG Bắc (Giữa tủ ngăn và khu vực cửa) */}
-          {!inZenRoom && (
-            <group
-              position={[2.3, 0, -5.22]}
-              onClick={(e) => {
-                e.stopPropagation();
-                onEnterZenRoom();
-              }}
-              onPointerOver={() => {
-                document.body.style.cursor = 'pointer';
-              }}
-              onPointerOut={() => {
-                document.body.style.cursor = 'auto';
-              }}
-            >
-              <mesh position={[0, 0.95, 0]} castShadow>
-                <boxGeometry args={[1.55, 1.9, 0.16]} />
-                <meshStandardMaterial color="#78350f" roughness={0.6} />
-              </mesh>
-              <mesh position={[0, 0.92, 0.04]}>
-                <boxGeometry args={[1.3, 1.75, 0.12]} />
-                <meshStandardMaterial color="#b45309" roughness={0.5} />
-              </mesh>
-              <Html position={[0, 2.05, 0]} center zIndexRange={[10, 0]}>
-                <button
-                  type="button"
+          {/* CỔNG VÀO PHÒNG TỊNH TÂM & PHÒNG GIẢI TRÍ TRÊN TƯỜNG BẮC */}
+          {!inZenRoom && !inGameRoom && (
+            <>
+              <group
+                position={[2.3, 0, -5.22]}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEnterZenRoom();
+                }}
+                onPointerOver={() => {
+                  document.body.style.cursor = 'pointer';
+                }}
+                onPointerOut={() => {
+                  document.body.style.cursor = 'auto';
+                }}
+              >
+                <mesh position={[0, 0.95, 0]} castShadow>
+                  <boxGeometry args={[1.55, 1.9, 0.16]} />
+                  <meshStandardMaterial color="#78350f" roughness={0.6} />
+                </mesh>
+                <mesh position={[0, 0.92, 0.04]}>
+                  <boxGeometry args={[1.3, 1.75, 0.12]} />
+                  <meshStandardMaterial color="#b45309" roughness={0.5} />
+                </mesh>
+                <Html position={[0, 2.05, 0]} center zIndexRange={[10, 0]}>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onEnterZenRoom();
+                    }}
+                    className="whitespace-nowrap rounded-full bg-amber-500/95 hover:bg-amber-400 px-2 sm:px-2.5 py-0.5 text-[9px] sm:text-[10px] font-bold text-slate-950 shadow-lg ring-1 sm:ring-2 ring-amber-200 cursor-pointer"
+                  >
+                    🪷 Phòng Tịnh Tâm <span className="hidden sm:inline">(Phật • Ông Địa • Thần Tài)</span>
+                  </button>
+                </Html>
+              </group>
+
+              {onEnterGameRoom && (
+                <group
+                  position={[-3.2, 0, -5.22]}
                   onClick={(e) => {
                     e.stopPropagation();
-                    onEnterZenRoom();
+                    onEnterGameRoom();
                   }}
-                  className="whitespace-nowrap rounded-full bg-amber-500/95 hover:bg-amber-400 px-2 sm:px-2.5 py-0.5 text-[9px] sm:text-[10px] font-bold text-slate-950 shadow-lg ring-1 sm:ring-2 ring-amber-200 cursor-pointer"
+                  onPointerOver={() => {
+                    document.body.style.cursor = 'pointer';
+                  }}
+                  onPointerOut={() => {
+                    document.body.style.cursor = 'auto';
+                  }}
                 >
-                  🪷 Phòng Tịnh Tâm <span className="hidden sm:inline">(Phật • Ông Địa • Thần Tài)</span>
-                </button>
-              </Html>
-            </group>
+                  <mesh position={[0, 0.95, 0]} castShadow>
+                    <boxGeometry args={[1.55, 1.9, 0.16]} />
+                    <meshStandardMaterial color="#312e81" roughness={0.5} />
+                  </mesh>
+                  <mesh position={[0, 0.92, 0.04]}>
+                    <boxGeometry args={[1.3, 1.75, 0.12]} />
+                    <meshStandardMaterial color="#4f46e5" roughness={0.4} />
+                  </mesh>
+                  <Html position={[0, 2.05, 0]} center zIndexRange={[10, 0]}>
+                    <button
+                      type="button"
+                      data-testid="enter-game-room-3d-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onEnterGameRoom();
+                      }}
+                      className="whitespace-nowrap rounded-full bg-indigo-500/95 hover:bg-indigo-400 px-2 sm:px-2.5 py-0.5 text-[9px] sm:text-[10px] font-bold text-white shadow-lg ring-1 sm:ring-2 ring-indigo-300 cursor-pointer"
+                    >
+                      🎮 Phòng Giải Trí <span className="hidden sm:inline">(Phóng Phi Tiêu • Solo)</span>
+                    </button>
+                  </Html>
+                </group>
+              )}
+            </>
           )}
 
           {/* 1. CỬA ĐÔI MỞ VÀO Ở GÓC TRÊN BÊN PHẢI */}
@@ -1636,6 +1812,7 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
           <SceneCameraController
             cameraMode={cameraMode}
             inZenRoom={inZenRoom}
+            inGameRoom={inGameRoom}
             isBowing={isBowing}
             myPosition={myPlacement.position}
             myRotationY={myPlacement.rotationY}
