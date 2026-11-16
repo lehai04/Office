@@ -242,7 +242,7 @@ function publishOverMqtt(data: Record<string, unknown>): void {
   }
 }
 
-const PURGED_MEMBER_TAGS = new Set<string>(['#D0D4']);
+const PURGED_MEMBER_TAGS = new Set<string>(['#D0D4', '#C864']);
 // Mốc xóa toàn bộ lịch sử chat từ đầu tới 2026-11-16T14:16+07:00
 const CHAT_RESET_CUTOFF_ISO = '2026-11-16T07:16:00.000Z';
 
