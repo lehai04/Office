@@ -1941,9 +1941,8 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
             </div>
           </div>
 
-          {/* THANH 4 TAB GỌN GÀNG */}
-          {myCat && (
-            <div className="grid grid-cols-4 gap-1 border-b border-amber-200/60 bg-[#f9f1e4] px-2 py-1.5">
+          {/* THANH 4 TAB GỌN GÀNG (Luôn hiển thị để mở Cửa hàng / Mua Chó ngay) */}
+          <div className="grid grid-cols-4 gap-1 border-b border-amber-200/60 bg-[#f9f1e4] px-2 py-1.5">
               <button
                 type="button"
                 data-testid="cat-tab-my-cat"
@@ -2001,7 +2000,6 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
                 🎒 Túi đồ
               </button>
             </div>
-          )}
 
           {/* Thông báo ngắn 1 dòng */}
           {catNotice && (
@@ -2016,7 +2014,7 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
           {/* NỘI DUNG CHÍNH */}
           <div className="flex-1 overflow-y-auto p-3 space-y-3">
             {/* LẦN ĐẦU VÀO GAME -> CHỌN MÈO & ĐẶT TÊN */}
-            {!myCat ? (
+            {catSubTab === 'my_cat' && !myCat && (
               <form
                 onSubmit={handleAdoptCat}
                 data-testid="cat-adopt-form"
@@ -2106,10 +2104,10 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
                   🐾 Nhận nuôi bé mèo ngay
                 </button>
               </form>
-            ) : (
-              <>
-                {/* ==================== MỤC 1: THÚ CƯNG CỦA TÔI (SỞ HỮU NHIỀU BÉ, CHỈ 1 BÉ RA NGOÀI CHĂM SÓC) ==================== */}
-                {catSubTab === 'my_cat' && (
+            )}
+
+            {/* ==================== MỤC 1: THÚ CƯNG CỦA TÔI (SỞ HỮU NHIỀU BÉ, CHỈ 1 BÉ RA NGOÀI CHĂM SÓC) ==================== */}
+            {catSubTab === 'my_cat' && myCat && (
                   <div data-testid="my-cat-panel" className="space-y-2.5">
                     {ownedPets.length > 1 && (
                       <div className="rounded-2xl border border-amber-200 bg-white/90 p-2 space-y-1.5">
@@ -2783,8 +2781,6 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
                     )}
                   </div>
                 )}
-              </>
-            )}
           </div>
         </div>
       </div>
