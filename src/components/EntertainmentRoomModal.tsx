@@ -41,6 +41,7 @@ import {
   type OfficeCatProfile,
 } from '../utils/officeCatsData';
 import { formatVnd } from '../utils/officeEconomyData';
+import { BlockBlastGame } from './BlockBlastGame';
 import {
   clampPuzzleGrid,
   MAX_PUZZLE_PIECES,
@@ -110,7 +111,7 @@ export const KNIFE_STAGES: KnifeStageConfig[] = [
   },
 ];
 
-type PlayableGameId = 'office_cat' | 'puzzle' | 'knife_hit' | 'wheel';
+type PlayableGameId = 'office_cat' | 'puzzle' | 'block_blast' | 'knife_hit' | 'wheel';
 
 interface GameCatalogItem {
   id: string;
@@ -303,6 +304,26 @@ const GAME_CATALOG: GameCatalogItem[] = [
         <span className="absolute right-2.5 bottom-1.5 rounded-full bg-indigo-500 px-1.5 py-0.5 text-[9px] font-black text-white shadow">
           3×3
         </span>
+      </div>
+    ),
+  },
+  {
+    id: 'block_blast',
+    playableId: 'block_blast',
+    title: 'Xếp khối',
+    playersText: 'Xếp khối, xóa hàng và phá kỷ lục của bạn.',
+    badge: 'MỚI • Cá Nhân',
+    bgGradient: 'from-cyan-100 via-sky-50 to-amber-100',
+    sceneRender: () => (
+      <div className="relative flex h-full w-full items-center justify-center">
+        <div className="grid grid-cols-3 gap-1 rounded-xl border-2 border-slate-700/20 bg-slate-800 p-1.5 shadow-sm">
+          <div className="h-4 w-4 rounded-[3px] bg-sky-400" />
+          <div className="h-4 w-4 rounded-[3px] bg-rose-400" />
+          <div className="h-4 w-4 rounded-[3px] bg-slate-700" />
+          <div className="h-4 w-4 rounded-[3px] bg-emerald-400" />
+          <div className="h-4 w-4 rounded-[3px] bg-amber-400" />
+          <div className="h-4 w-4 rounded-[3px] bg-violet-400" />
+        </div>
       </div>
     ),
   },
@@ -2888,7 +2909,9 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
         className={`relative flex w-full flex-col overflow-hidden rounded-3xl border border-teal-400/35 bg-[#041d24] text-slate-100 shadow-2xl transition-all ${
           activeView === 'puzzle'
             ? 'max-w-[96vw] md:max-w-4xl max-h-[92dvh]'
-            : 'max-w-[380px] sm:max-w-[400px] max-h-[92dvh]'
+            : activeView === 'block_blast'
+              ? 'max-w-[96vw] sm:max-w-[440px] max-h-[94dvh]'
+              : 'max-w-[380px] sm:max-w-[400px] max-h-[92dvh]'
         }`}
       >
         {/* Input file ảnh ẩn */}
@@ -3951,6 +3974,15 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
                 </div>
               </div>
             )}
+          </div>
+        )}
+        {/* ==================== GAME 5: XẾP KHỐI (BLOCK BLAST) ==================== */}
+        {activeView === 'block_blast' && (
+          <div className="flex-1 overflow-y-auto">
+            <BlockBlastGame
+              currentUserId={currentUserId}
+              soundEnabled={soundEnabled}
+            />
           </div>
         )}
       </div>
