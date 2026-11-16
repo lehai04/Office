@@ -69,6 +69,7 @@ interface StaticDatabaseSchema {
   activeMeetingChairs: Record<string, string>; // key = `${roomId}:${userId}` -> meetingChairId
   activeZenMembers?: Record<string, boolean>; // key = `${roomId}:${userId}` -> đang ở Phòng Tịnh Tâm
   messages: ChatMessage[];
+  chatClearedAtByRoom?: Record<string, string>;
   attendance: Record<string, AttendanceRecord>;
   diaryEntries: StoredDiaryEntry[];
   roomCats?: Record<string, Record<string, OfficeCatProfile>>;
@@ -236,6 +237,18 @@ function publishOverMqtt(data: Record<string, unknown>): void {
 }
 
 const PURGED_MEMBER_TAGS = new Set<string>(['#D0D4']);
+// Mốc xóa toàn bộ lịch sử chat từ đầu tới 2026-11-16T14:16+07:00
+const CHAT_RESET_CUTOFF_ISO = '2026-11-16T07:16:00.000Z';
+
+function purgeClearedMessages(db: StaticDatabaseSchema): void {
+  const clearedMap = db.chatClearedAtByRoom || {};
+  db.messages = (db.messages || []).filter((m) => {
+    if (m.createdAt <= CHAT_RESET_CUTOFF_ISO) return false;
+    const roomCutoff = clearedMap[m.roomId];
+    if (roomCutoff && m.createdAt <= roomCutoff) return false;
+    return true;
+  });
+}
 
 function purgeDeprecatedAccounts(db: StaticDatabaseSchema): void {
   const removedUserIds = new Set<string>();
@@ -484,7 +497,18 @@ function mergeRemoteDatabase(
     }
   }
 
+  if (remoteDb.chatClearedAtByRoom) {
+    if (!local.chatClearedAtByRoom) local.chatClearedAtByRoom = {};
+    for (const [rId, iso] of Object.entries(remoteDb.chatClearedAtByRoom)) {
+      if (!iso) continue;
+      if (!local.chatClearedAtByRoom[rId] || iso > local.chatClearedAtByRoom[rId]) {
+        local.chatClearedAtByRoom[rId] = iso;
+      }
+    }
+  }
+
   purgeDeprecatedAccounts(local);
+  purgeClearedMessages(local);
   saveStaticDb(local);
   return local;
 }
@@ -727,6 +751,7 @@ function loadStaticDb(): StaticDatabaseSchema {
       if (parsed && parsed.dbVersion === CURRENT_DB_VERSION && parsed.rooms && parsed.seats) {
         if (!parsed.activeMeetingChairs) parsed.activeMeetingChairs = {};
         purgeDeprecatedAccounts(parsed);
+        purgeClearedMessages(parsed);
         return parsed;
       }
     }
@@ -1568,6 +1593,21 @@ export async function handleStaticFallbackRequest<T>(
     });
 
     return { message: newMsg, deduplicated: false } as unknown as T;
+  }
+
+  if (subPath === 'messages' && method === 'DELETE') {
+    const clearedAt = new Date().toISOString();
+    if (!db.chatClearedAtByRoom) db.chatClearedAtByRoom = {};
+    db.chatClearedAtByRoom[room.id] = clearedAt;
+    db.messages = db.messages.filter((m) => m.roomId !== room.id);
+    saveStaticDb(db);
+
+    emitRealtimeEvent(db, room, {
+      type: 'chat_cleared',
+      clearedAt,
+    });
+
+    return { ok: true, clearedAt } as unknown as T;
   }
 
   if (subPath === 'attendance' && method === 'POST') {

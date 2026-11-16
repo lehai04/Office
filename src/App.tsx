@@ -919,6 +919,11 @@ export function App() {
         }
         if (Array.isArray(data.members)) setMembers(data.members as RoomMember[]);
         if (Array.isArray(data.seats)) setSeats(data.seats as WorkSeat[]);
+        if (Array.isArray(data.messages)) setMessages(data.messages as ChatMessage[]);
+      } else if (data.type === 'chat_cleared') {
+        setMessages([]);
+        setUnreadChatCount(0);
+        setChatAlertBanner(null);
       } else if (data.type === 'chat_message' && data.message) {
         const incoming = data.message as ChatMessage;
         let isNewMsg = false;
