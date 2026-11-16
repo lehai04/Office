@@ -109,6 +109,14 @@ export const AttendanceDrawer: React.FC<AttendanceDrawerProps> = ({
     return { full, half, off };
   }, [attendanceMap, viewYear, viewMonth]);
 
+  const viewMonthKey = `${viewYear}-${String(viewMonth).padStart(2, '0')}`;
+  const salaryInfo = useMemo(
+    () => calculateMonthSalaryVnd(attendanceMap, viewMonthKey),
+    [attendanceMap, viewMonthKey]
+  );
+  const todayStatus: AttendanceStatus = attendanceMap[nowVn.dateStr] ?? 'none';
+  const isTodayCheckedIn = todayStatus !== 'none';
+
   if (!isOpen) return null;
 
   const handlePrevMonth = () => {
@@ -128,14 +136,6 @@ export const AttendanceDrawer: React.FC<AttendanceDrawerProps> = ({
       setViewMonth((m) => m + 1);
     }
   };
-
-  const viewMonthKey = `${viewYear}-${String(viewMonth).padStart(2, '0')}`;
-  const salaryInfo = useMemo(
-    () => calculateMonthSalaryVnd(attendanceMap, viewMonthKey),
-    [attendanceMap, viewMonthKey]
-  );
-  const todayStatus: AttendanceStatus = attendanceMap[nowVn.dateStr] ?? 'none';
-  const isTodayCheckedIn = todayStatus !== 'none';
 
   return (
     <aside
