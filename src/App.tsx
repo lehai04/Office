@@ -73,6 +73,7 @@ import {
   officeApiUrl,
   sendChatMessage,
   setAccountPasswordApi,
+  setZenRoomPresenceApi,
   sitAtMeetingChair,
   subscribeStaticRealtime,
   transferRoomManager,
@@ -1210,14 +1211,50 @@ export function App() {
     ? MEETING_CHAIRS.find((c) => c.id === myMember.meetingChairId)
     : null;
 
+  const zenMembersCount = members.filter(
+    (m) => m.inZenRoom || (m.userId === session.userId && activePanel === 'zen')
+  ).length;
+
+  const enterZenRoom = async () => {
+    try {
+      const res = await setZenRoomPresenceApi(room.code, true, session.sessionToken);
+      setMembers(res.members);
+      setActivePanel('zen');
+    } catch (err) {
+      showToast(
+        err instanceof Error
+          ? err.message
+          : 'Phòng Tịnh Tâm đã đủ tối đa 10 người!'
+      );
+    }
+  };
+
+  const exitZenRoom = () => {
+    setAutoMo(false);
+    setActiveBlessing(null);
+    setActivePanel('none');
+    setZenRoomPresenceApi(room.code, false, session.sessionToken)
+      .then((res) => setMembers(res.members))
+      .catch(() => {});
+  };
+
   const togglePanel = (panel: ActivePanel) => {
-    setActivePanel((prev) => {
-      if (prev === 'zen' && panel !== 'zen') {
-        setAutoMo(false);
-        setActiveBlessing(null);
+    if (panel === 'zen') {
+      if (activePanel === 'zen') {
+        exitZenRoom();
+      } else {
+        void enterZenRoom();
       }
-      return prev === panel ? 'none' : panel;
-    });
+      return;
+    }
+    if (activePanel === 'zen') {
+      setAutoMo(false);
+      setActiveBlessing(null);
+      setZenRoomPresenceApi(room.code, false, session.sessionToken)
+        .then((res) => setMembers(res.members))
+        .catch(() => {});
+    }
+    setActivePanel((prev) => (prev === panel ? 'none' : panel));
   };
 
   return (
@@ -1233,7 +1270,9 @@ export function App() {
         claimingSeatId={claimingSeatId}
         cameraMode={cameraMode}
         inZenRoom={activePanel === 'zen'}
-        onEnterZenRoom={() => setActivePanel('zen')}
+        onEnterZenRoom={() => {
+          void enterZenRoom();
+        }}
         inGameRoom={activePanel === 'games'}
         onEnterGameRoom={() => setActivePanel('games')}
         selectedDeity={selectedDeity}
@@ -1487,6 +1526,18 @@ export function App() {
           </div>
 
           <div className="flex items-center gap-1 shrink-0">
+            {chatAlertBanner.content.includes('[RỦ THIỀN]') && activePanel !== 'zen' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setChatAlertBanner(null);
+                  void enterZenRoom();
+                }}
+                className="rounded-xl bg-amber-400 hover:bg-amber-300 px-2.5 py-1 text-[11px] font-black text-slate-950 cursor-pointer"
+              >
+                🪷 Vào Tịnh Tâm
+              </button>
+            )}
             <button
               type="button"
               onClick={() => {
@@ -1568,11 +1619,7 @@ export function App() {
 
       <ZenSanctuaryOverlay
         isOpen={activePanel === 'zen'}
-        onExitZenRoom={() => {
-          setAutoMo(false);
-          setActiveBlessing(null);
-          setActivePanel('none');
-        }}
+        onExitZenRoom={exitZenRoom}
         selectedDeity={selectedDeity}
         onSelectDeity={(d) => {
           setSelectedDeity(d);
@@ -1603,6 +1650,13 @@ export function App() {
         onLightIncense={() => setIncenseLit((v) => !v)}
         onToggleAutoMo={() => setAutoMo((v) => !v)}
         onToggleSound={() => setSoundEnabled((v) => !v)}
+        zenCount={zenMembersCount}
+        onInviteToZenRoom={() => {
+          handleSendMessage(
+            `🪷 [RỦ THIỀN] ${session.nickname} đang ngồi ở Phòng Tịnh Tâm (${zenMembersCount}/10 người) — Mọi người bấm vào Phòng Tịnh Tâm để vào ngồi chung nhé!`
+          ).catch(() => {});
+          showToast('📣 Đã gửi lời rủ mọi người vào Phòng Tịnh Tâm!');
+        }}
       />
 
       <EntertainmentRoomModal

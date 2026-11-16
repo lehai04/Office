@@ -62,6 +62,7 @@ interface StaticDatabaseSchema {
   roomMembers: StoredRoomMember[];
   seats: WorkSeat[];
   activeMeetingChairs: Record<string, string>; // key = `${roomId}:${userId}` -> meetingChairId
+  activeZenMembers?: Record<string, boolean>; // key = `${roomId}:${userId}` -> đang ở Phòng Tịnh Tâm
   messages: ChatMessage[];
   attendance: Record<string, AttendanceRecord>;
   diaryEntries: StoredDiaryEntry[];
@@ -338,6 +339,9 @@ function mergeRemoteDatabase(
       (m) => !(m.roomId === kickedRoomId && m.userId === kickedUserId)
     );
     delete local.activeMeetingChairs[`${kickedRoomId}:${kickedUserId}`];
+    if (local.activeZenMembers) {
+      delete local.activeZenMembers[`${kickedRoomId}:${kickedUserId}`];
+    }
   }
 
   // Merge seats
@@ -357,6 +361,15 @@ function mergeRemoteDatabase(
     local.activeMeetingChairs = {
       ...local.activeMeetingChairs,
       ...remoteDb.activeMeetingChairs,
+    };
+  }
+
+  // Merge activeZenMembers
+  if (!local.activeZenMembers) local.activeZenMembers = {};
+  if (remoteDb.activeZenMembers) {
+    local.activeZenMembers = {
+      ...local.activeZenMembers,
+      ...remoteDb.activeZenMembers,
     };
   }
 
@@ -730,6 +743,7 @@ function buildRoomStatePayload(db: StaticDatabaseSchema, room: RoomInfo) {
       memberTag: m.memberTag,
       seatId: mySeat ? mySeat.seatId : null,
       meetingChairId: currentMeetingChair,
+      inZenRoom: Boolean(db.activeZenMembers?.[`${room.id}:${m.userId}`]),
       isManager: room.managerUserId === m.userId,
       online: true,
       joinedAt: m.joinedAt,
@@ -1279,6 +1293,35 @@ export async function handleStaticFallbackRequest<T>(
     } as unknown as T;
   }
 
+  if (subPath === 'zen' && method === 'POST') {
+    const active = Boolean(body.active);
+    if (!db.activeZenMembers) db.activeZenMembers = {};
+
+    if (active) {
+      const currentInZenCount = db.roomMembers.filter(
+        (m) =>
+          m.roomId === room.id &&
+          m.userId !== account.userId &&
+          db.activeZenMembers?.[`${room.id}:${m.userId}`]
+      ).length;
+      if (currentInZenCount >= 10) {
+        throw createApiError(
+          409,
+          'ZEN_ROOM_FULL',
+          'Phòng Tịnh Tâm đã đủ tối đa 10 người đang ngồi thiền. Vui lòng đợi một bạn ra ngoài!'
+        );
+      }
+      db.activeZenMembers[`${room.id}:${account.userId}`] = true;
+    } else {
+      delete db.activeZenMembers[`${room.id}:${account.userId}`];
+    }
+
+    saveStaticDb(db);
+    const roomState = buildRoomStatePayload(db, room);
+    emitRealtimeEvent(db, room, { type: 'room_state', ...roomState });
+    return { ...roomState } as unknown as T;
+  }
+
   if (subPath === 'leave' && method === 'POST') {
     for (const s of db.seats) {
       if (s.roomId === room.id && s.occupiedByUserId === account.userId) {
@@ -1287,6 +1330,9 @@ export async function handleStaticFallbackRequest<T>(
       }
     }
     delete db.activeMeetingChairs[`${room.id}:${account.userId}`];
+    if (db.activeZenMembers) {
+      delete db.activeZenMembers[`${room.id}:${account.userId}`];
+    }
     db.roomMembers = db.roomMembers.filter(
       (m) => !(m.roomId === room.id && m.userId === account.userId)
     );

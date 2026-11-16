@@ -223,6 +223,25 @@ export async function kickRoomMember(
   );
 }
 
+export async function setZenRoomPresenceApi(
+  roomCode: string,
+  active: boolean,
+  sessionToken: string
+): Promise<{
+  room: RoomInfo;
+  members: RoomMember[];
+  seats: WorkSeat[];
+}> {
+  return apiFetch(
+    `/api/rooms/${encodeURIComponent(roomCode)}/zen`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ active }),
+    },
+    sessionToken
+  );
+}
+
 export async function leaveRoomApi(
   roomCode: string,
   sessionToken: string

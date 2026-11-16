@@ -102,6 +102,8 @@ interface ZenSanctuaryOverlayProps {
   onLightIncense: () => void;
   onToggleAutoMo: () => void;
   onToggleSound: () => void;
+  zenCount?: number;
+  onInviteToZenRoom?: () => void;
 }
 
 export const ZenSanctuaryOverlay: React.FC<ZenSanctuaryOverlayProps> = ({
@@ -127,6 +129,8 @@ export const ZenSanctuaryOverlay: React.FC<ZenSanctuaryOverlayProps> = ({
   onLightIncense,
   onToggleAutoMo,
   onToggleSound,
+  zenCount = 1,
+  onInviteToZenRoom,
 }) => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -159,7 +163,11 @@ export const ZenSanctuaryOverlay: React.FC<ZenSanctuaryOverlayProps> = ({
           </span>
           <span className="text-amber-500/60">•</span>
           <span data-testid="zen-merit-counter" className="text-amber-300">
-            ✨ Tịnh tâm: {meritCount}
+            ✨ Công đức: {meritCount}
+          </span>
+          <span className="text-amber-500/60">•</span>
+          <span data-testid="zen-member-count" className="text-emerald-300">
+            🧘 {zenCount}/10
           </span>
         </div>
 
@@ -366,7 +374,20 @@ export const ZenSanctuaryOverlay: React.FC<ZenSanctuaryOverlayProps> = ({
             <span>{soundEnabled ? 'Âm thanh: Bật' : 'Âm thanh: Tắt'}</span>
           </button>
 
-          {/* 9. Về bàn làm việc */}
+          {/* 9. Rủ bạn bè vào ngồi chung Phòng Tịnh Tâm */}
+          {onInviteToZenRoom && (
+            <button
+              type="button"
+              data-testid="zen-invite-friends-btn"
+              onClick={onInviteToZenRoom}
+              className={`${pillBaseClass} border-emerald-400/50 bg-emerald-950/85 hover:bg-emerald-900/90 text-emerald-200`}
+            >
+              <span className="text-base leading-none">📣</span>
+              <span>Rủ vào Tịnh Tâm</span>
+            </button>
+          )}
+
+          {/* 10. Về bàn làm việc */}
           <button
             type="button"
             data-testid="exit-zen-room-btn"

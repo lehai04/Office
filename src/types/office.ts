@@ -17,6 +17,7 @@ export interface RoomMember {
   memberTag: string; // e.g., "#A1B2" used to disambiguate duplicate nicknames
   seatId: string | null;
   meetingChairId?: string | null;
+  inZenRoom?: boolean;
   isManager?: boolean;
   online: boolean;
   joinedAt: string;

@@ -602,26 +602,36 @@ const ZenSanctuaryRoom3D: React.FC<{
 
       {/* Sàn gỗ trầm hương Phòng Tịnh Tâm */}
       <mesh position={[0, -0.05, 0]} receiveShadow>
-        <boxGeometry args={[7.4, 0.14, 6.2]} />
+        <boxGeometry args={[8.2, 0.14, 6.4]} />
         <meshStandardMaterial color="#451a03" roughness={0.75} />
       </mesh>
       {/* Thảm sen giữa phòng */}
-      <mesh position={[0, 0.03, 0.4]} receiveShadow>
-        <boxGeometry args={[3.6, 0.02, 3.4]} />
+      <mesh position={[0, 0.03, 0.6]} receiveShadow>
+        <boxGeometry args={[5.8, 0.02, 3.4]} />
         <meshStandardMaterial color="#7c2d12" roughness={0.85} />
       </mesh>
 
+      {/* 10 ĐỆM BỒ ĐOÀN (2 hàng x 5 chỗ) để tối đa 10 người cùng ngồi thiền chung */}
+      {[-2.2, -1.1, 0, 1.1, 2.2].map((cx) =>
+        [1.0, 2.05].map((cz) => (
+          <mesh key={`zen-pad-${cx}-${cz}`} position={[cx, 0.06, cz]} receiveShadow>
+            <cylinderGeometry args={[0.38, 0.42, 0.08, 16]} />
+            <meshStandardMaterial color="#b45309" roughness={0.8} />
+          </mesh>
+        ))
+      )}
+
       {/* Vách hậu cung & Vách hai bên */}
       <mesh position={[0, 1.6, -2.95]} receiveShadow castShadow>
-        <boxGeometry args={[7.4, 3.2, 0.18]} />
+        <boxGeometry args={[8.2, 3.2, 0.18]} />
         <meshStandardMaterial color="#78350f" roughness={0.7} />
       </mesh>
-      <mesh position={[-3.65, 1.6, 0]} receiveShadow castShadow>
-        <boxGeometry args={[0.18, 3.2, 6.2]} />
+      <mesh position={[-4.05, 1.6, 0]} receiveShadow castShadow>
+        <boxGeometry args={[0.18, 3.2, 6.4]} />
         <meshStandardMaterial color="#78350f" roughness={0.7} />
       </mesh>
-      <mesh position={[3.65, 1.6, 0]} receiveShadow castShadow>
-        <boxGeometry args={[0.18, 3.2, 6.2]} />
+      <mesh position={[4.05, 1.6, 0]} receiveShadow castShadow>
+        <boxGeometry args={[0.18, 3.2, 6.4]} />
         <meshStandardMaterial color="#78350f" roughness={0.7} />
       </mesh>
 
@@ -1689,16 +1699,35 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
     }
 
     const standingMembers = members
-      .filter((m) => !m.seatId && !m.meetingChairId)
+      .filter((m) => !m.seatId && !m.meetingChairId && !m.inZenRoom)
+      .sort((a, b) => a.userId.localeCompare(b.userId));
+
+    // Tối đa 10 chỗ ngồi Bồ đoàn trong Phòng Tịnh Tâm (2 hàng x 5 chỗ)
+    const zenCushionSlots: [number, number, number][] = [
+      [0, 0.08, -9.2],
+      [-1.1, 0.08, -9.2],
+      [1.1, 0.08, -9.2],
+      [-2.2, 0.08, -9.2],
+      [2.2, 0.08, -9.2],
+      [0, 0.08, -8.15],
+      [-1.1, 0.08, -8.15],
+      [1.1, 0.08, -8.15],
+      [-2.2, 0.08, -8.15],
+      [2.2, 0.08, -8.15],
+    ];
+    const zenMembers = members
+      .filter((m) => m.inZenRoom || (m.userId === currentUserId && inZenRoom))
       .sort((a, b) => a.userId.localeCompare(b.userId));
 
     return members.map((member) => {
-      // Nếu là người dùng hiện tại đang ở trong Phòng Tịnh Tâm -> đặt ngồi trên đệm Bồ đoàn đối diện bàn thờ
-      if (member.userId === currentUserId && inZenRoom) {
+      // Nếu thành viên đang ở trong Phòng Tịnh Tâm -> đặt ngồi trên 1 trong 10 đệm Bồ đoàn để mọi người nhìn thấy nhau
+      const zenIdx = zenMembers.findIndex((zm) => zm.userId === member.userId);
+      if (zenIdx !== -1) {
+        const slot = zenCushionSlots[zenIdx % zenCushionSlots.length];
         return {
           member,
           isSeated: true,
-          position: [0, 0.08, -8.95] as [number, number, number],
+          position: slot,
           rotationY: Math.PI, // Nhìn thẳng về phía bàn thờ Phật / Ông Địa / Thần Tài (-Z)
         };
       }
