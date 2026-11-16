@@ -456,13 +456,15 @@ function ensureMqttBridge(): void {
 
           if (msg.type === 'peer_sync' && msg.db) {
             const evObj = msg.event as StaticRealtimeEvent | undefined;
-            const kickedUserId =
+            const removedUserId =
               evObj?.payload?.type === 'member_kicked'
                 ? String(evObj.payload.kickedUserId || '')
-                : undefined;
+                : evObj?.payload?.type === 'member_left'
+                  ? String(evObj.payload.leftUserId || '')
+                  : undefined;
             const merged = mergeRemoteDatabase(
               msg.db as StaticDatabaseSchema,
-              kickedUserId,
+              removedUserId,
               evObj?.roomId
             );
             if (msg.event) {
@@ -1078,6 +1080,37 @@ export async function handleStaticFallbackRequest<T>(
     return {
       kickedUserId: targetUserId,
       kickedNickname: targetMember.nickname,
+      ...roomState,
+    } as unknown as T;
+  }
+
+  if (subPath === 'leave' && method === 'POST') {
+    for (const s of db.seats) {
+      if (s.roomId === room.id && s.occupiedByUserId === account.userId) {
+        s.occupiedByUserId = null;
+        s.claimedAt = null;
+      }
+    }
+    delete db.activeMeetingChairs[`${room.id}:${account.userId}`];
+    db.roomMembers = db.roomMembers.filter(
+      (m) => !(m.roomId === room.id && m.userId === account.userId)
+    );
+    if (room.managerUserId === account.userId) {
+      const nextMgr = db.roomMembers.find((m) => m.roomId === room.id);
+      room.managerUserId = nextMgr ? nextMgr.userId : null;
+    }
+    saveStaticDb(db);
+
+    const roomState = buildRoomStatePayload(db, room);
+    emitRealtimeEvent(db, room, {
+      type: 'member_left',
+      leftUserId: account.userId,
+      leftNickname: account.nickname,
+      ...roomState,
+    });
+
+    return {
+      leftUserId: account.userId,
       ...roomState,
     } as unknown as T;
   }

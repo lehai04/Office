@@ -181,6 +181,25 @@ export async function kickRoomMember(
   );
 }
 
+export async function leaveRoomApi(
+  roomCode: string,
+  sessionToken: string
+): Promise<{
+  leftUserId: string;
+  room: RoomInfo;
+  members: RoomMember[];
+  seats: WorkSeat[];
+}> {
+  return apiFetch(
+    `/api/rooms/${encodeURIComponent(roomCode)}/leave`,
+    {
+      method: 'POST',
+      body: JSON.stringify({}),
+    },
+    sessionToken
+  );
+}
+
 async function apiFetch<T>(
   path: string,
   options: RequestInit = {},

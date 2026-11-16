@@ -67,6 +67,7 @@ import {
   isUsingStaticFallback,
   joinOrRestoreRoom,
   kickRoomMember,
+  leaveRoomApi,
   leaveWorkSeatToStand,
   loadSavedSession,
   officeApiUrl,
@@ -671,6 +672,34 @@ export function App() {
         return;
       }
 
+      if (data.type === 'member_left') {
+        const leftId = String(data.leftUserId || '');
+        const leftName = String(data.leftNickname || 'Thành viên');
+        if (data.room && typeof data.room === 'object') {
+          setRoom(data.room as RoomInfo);
+        }
+        if (Array.isArray(data.members)) {
+          setMembers(data.members as RoomMember[]);
+        } else if (leftId) {
+          setMembers((prev) => prev.filter((m) => m.userId !== leftId));
+        }
+        if (Array.isArray(data.seats)) {
+          setSeats(data.seats as WorkSeat[]);
+        } else if (leftId) {
+          setSeats((prev) =>
+            prev.map((s) =>
+              s.occupiedByUserId === leftId
+                ? { ...s, occupiedByUserId: null, occupiedByNickname: null, occupiedByTag: null }
+                : s
+            )
+          );
+        }
+        if (leftId && leftId !== session.userId) {
+          showToast(`${leftName} đã rời khỏi phòng.`);
+        }
+        return;
+      }
+
       if (data.roomCats && typeof data.roomCats === 'object') {
         const incomingCats = data.roomCats as Record<string, OfficeCatProfile>;
         setRoomCats((prev) => {
@@ -1092,10 +1121,19 @@ export function App() {
     }
   };
 
-  const handleLogoutOrSwitch = () => {
+  const handleLogoutOrSwitch = async () => {
+    if (session && room) {
+      try {
+        await leaveRoomApi(room.code, session.sessionToken);
+      } catch {
+        // ignore network error on leave
+      }
+    }
     clearSavedSession();
     setSession(null);
     setRoom(null);
+    setMembers([]);
+    setSeats([]);
     setActivePanel('none');
   };
 
