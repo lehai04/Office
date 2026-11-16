@@ -9,6 +9,11 @@ import {
   ChevronUp,
 } from 'lucide-react';
 import { ZEN_MUSIC_TRACKS, type ZenTrackId } from '../utils/zenSound';
+import {
+  calculateDonationMerit,
+  formatVnd,
+  type RoomDonationBoxState,
+} from '../utils/officeEconomyData';
 
 export type DeityType = 'buddha' | 'ong_dia' | 'than_tai';
 
@@ -104,6 +109,16 @@ interface ZenSanctuaryOverlayProps {
   onToggleSound: () => void;
   zenCount?: number;
   onInviteToZenRoom?: () => void;
+  walletBalanceVnd: number;
+  donationBox: RoomDonationBoxState;
+  isDonationModalOpen: boolean;
+  onOpenDonationModal: () => void;
+  onCloseDonationModal: () => void;
+  onDonateToBox: (amountVnd: number) => {
+    ok: boolean;
+    error?: string;
+    meritAwarded?: number;
+  };
 }
 
 export const ZenSanctuaryOverlay: React.FC<ZenSanctuaryOverlayProps> = ({
@@ -131,10 +146,21 @@ export const ZenSanctuaryOverlay: React.FC<ZenSanctuaryOverlayProps> = ({
   onToggleSound,
   zenCount = 1,
   onInviteToZenRoom,
+  walletBalanceVnd,
+  donationBox,
+  isDonationModalOpen,
+  onOpenDonationModal,
+  onCloseDonationModal,
+  onDonateToBox,
 }) => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [showMusicMenu, setShowMusicMenu] = useState(false);
+  const [donationAmountDraft, setDonationAmountDraft] = useState<string>('50000');
+  const [donationNotice, setDonationNotice] = useState<{
+    type: 'ok' | 'err';
+    text: string;
+  } | null>(null);
 
   if (!isOpen) return null;
 
@@ -374,7 +400,21 @@ export const ZenSanctuaryOverlay: React.FC<ZenSanctuaryOverlayProps> = ({
             <span>{soundEnabled ? 'Âm thanh: Bật' : 'Âm thanh: Tắt'}</span>
           </button>
 
-          {/* 9. Rủ bạn bè vào ngồi chung Phòng Tịnh Tâm */}
+          {/* 9. Hòm Công Đức (Bàn Trụ trì Thanh Ngọc) */}
+          <button
+            type="button"
+            data-testid="zen-donation-box-btn"
+            onClick={() => {
+              setDonationNotice(null);
+              onOpenDonationModal();
+            }}
+            className={`${pillBaseClass} border-amber-300/60 bg-amber-950/90 hover:bg-amber-900/95 text-amber-200`}
+          >
+            <span className="text-base leading-none">🪙</span>
+            <span>Hòm Công Đức</span>
+          </button>
+
+          {/* 10. Rủ bạn bè vào ngồi chung Phòng Tịnh Tâm */}
           {onInviteToZenRoom && (
             <button
               type="button"
@@ -422,6 +462,140 @@ export const ZenSanctuaryOverlay: React.FC<ZenSanctuaryOverlayProps> = ({
           )}
         </button>
       </div>
+
+      {/* MODAL HÒM CÔNG ĐỨC (Đặt trên bàn góc trái Trụ trì Thanh Ngọc) */}
+      {isDonationModalOpen && (
+        <div className="pointer-events-auto fixed inset-0 z-40 flex items-center justify-center bg-slate-950/75 p-3 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-3xl border-2 border-amber-400/50 bg-[#1e130c] p-4 text-amber-50 shadow-2xl space-y-3">
+            <div className="flex items-center justify-between border-b border-amber-500/20 pb-2.5">
+              <div>
+                <h3 className="text-sm font-black text-amber-300">
+                  🪙 Hòm Công Đức — Bàn Trụ Trì Thanh Ngọc
+                </h3>
+                <p className="text-[11px] text-amber-200/75">
+                  Bỏ tiền tùy ý • Mỗi lần bỏ được tặng tối thiểu <strong>+10 Công đức</strong>
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={onCloseDonationModal}
+                className="rounded-xl bg-white/10 hover:bg-white/20 px-2.5 py-1 text-xs font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="rounded-2xl border border-amber-500/25 bg-black/30 p-2.5">
+                <div className="text-[10px] text-amber-200/70">Tổng Hòm Công Đức</div>
+                <div className="text-sm font-black text-amber-300 mt-0.5">
+                  {formatVnd(donationBox.totalVnd)}
+                </div>
+              </div>
+              <div className="rounded-2xl border border-emerald-500/25 bg-black/30 p-2.5">
+                <div className="text-[10px] text-emerald-200/70">Ví tiền của bạn</div>
+                <div className="text-sm font-black text-emerald-300 mt-0.5">
+                  {formatVnd(walletBalanceVnd)}
+                </div>
+              </div>
+            </div>
+
+            {donationNotice && (
+              <div
+                className={`rounded-xl border px-3 py-2 text-xs font-bold ${
+                  donationNotice.type === 'ok'
+                    ? 'border-emerald-400/50 bg-emerald-500/15 text-emerald-200'
+                    : 'border-rose-400/50 bg-rose-500/15 text-rose-200'
+                }`}
+              >
+                {donationNotice.text}
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <div className="text-[11px] font-bold text-amber-200/85">
+                Chọn nhanh hoặc nhập số tiền tùy ý:
+              </div>
+              <div className="grid grid-cols-4 gap-1.5">
+                {[10_000, 50_000, 100_000, 500_000].map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => setDonationAmountDraft(String(preset))}
+                    className={`rounded-xl border py-1.5 text-[11px] font-black transition cursor-pointer ${
+                      Number(donationAmountDraft) === preset
+                        ? 'border-amber-300 bg-amber-400 text-slate-950'
+                        : 'border-amber-500/30 bg-white/5 text-amber-100 hover:bg-white/10'
+                    }`}
+                  >
+                    {preset / 1000}k
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={1000}
+                  step={1000}
+                  value={donationAmountDraft}
+                  onChange={(e) => setDonationAmountDraft(e.target.value)}
+                  className="flex-1 rounded-xl border border-amber-500/35 bg-black/40 px-3 py-2 text-xs font-bold text-amber-100 outline-none focus:border-amber-300"
+                  placeholder="Nhập số tiền (VNĐ)..."
+                />
+                <span className="rounded-xl bg-amber-500/20 border border-amber-400/30 px-2.5 py-2 text-[11px] font-black text-amber-300 whitespace-nowrap">
+                  +{calculateDonationMerit(Number(donationAmountDraft) || 0)} Công đức
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const amt = Math.round(Number(donationAmountDraft) || 0);
+                  const res = onDonateToBox(amt);
+                  if (res.ok) {
+                    setDonationNotice({
+                      type: 'ok',
+                      text: `🙏 Đã bỏ ${formatVnd(amt)} vào Hòm Công Đức! Bạn được tặng +${res.meritAwarded} Công đức.`,
+                    });
+                  } else {
+                    setDonationNotice({
+                      type: 'err',
+                      text: res.error || 'Không thể bỏ tiền vào hòm lúc này.',
+                    });
+                  }
+                }}
+                className="w-full rounded-2xl bg-gradient-to-r from-amber-400 to-yellow-500 py-2.5 text-xs font-black text-slate-950 shadow-lg hover:brightness-105 active:scale-95 cursor-pointer"
+              >
+                🙏 Bỏ tiền vào Hòm Công Đức
+              </button>
+            </div>
+
+            {donationBox.donations.length > 0 && (
+              <div className="space-y-1.5 border-t border-amber-500/20 pt-2">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-amber-200/70">
+                  Công đức gần đây
+                </div>
+                <div className="max-h-28 overflow-y-auto space-y-1 pr-1">
+                  {donationBox.donations.slice(0, 10).map((d) => (
+                    <div
+                      key={d.id}
+                      className="flex items-center justify-between rounded-xl bg-white/5 px-2.5 py-1 text-[11px]"
+                    >
+                      <span className="font-bold text-amber-100 truncate">
+                        {d.donorNickname}
+                      </span>
+                      <span className="text-amber-300 font-black shrink-0">
+                        {formatVnd(d.amountVnd)} (+{d.meritAwarded} CĐ)
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

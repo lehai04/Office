@@ -54,6 +54,20 @@ import {
   type RoomPuzzleState,
 } from './utils/officePuzzleData';
 import {
+  calculateDonationMerit,
+  createDefaultDonationBoxState,
+  createDefaultWalletState,
+  formatVnd,
+  loadRoomDonationBoxState,
+  loadUserWalletState,
+  saveRoomDonationBoxState,
+  saveUserWalletState,
+  settlePastMonthsSalary,
+  type RoomDonationBoxState,
+  type UserWalletState,
+} from './utils/officeEconomyData';
+import { getNowInHoChiMinh } from './utils/dateVn';
+import {
   playCatMeowSound,
   playChatNotificationSound,
   playWoodenFishSound,
@@ -64,6 +78,8 @@ import {
 } from './utils/zenSound';
 import {
   broadcastCatSyncEvent,
+  broadcastDonationBoxSyncEvent,
+  broadcastAttendanceReminderEvent,
   broadcastPuzzleSyncEvent,
   changeRoomCodeApi,
   clearSavedSession,
@@ -166,6 +182,27 @@ export function App() {
   const [roomPuzzleState, setRoomPuzzleState] = useState<RoomPuzzleState>(() =>
     createDefaultPuzzleState()
   );
+
+  // State Ví tiền (5 triệu mặc định), Hòm Công Đức & Thông báo ngoài màn hình
+  const [userWallet, setUserWallet] = useState<UserWalletState>(() =>
+    createDefaultWalletState()
+  );
+  const [roomDonationBox, setRoomDonationBox] = useState<RoomDonationBoxState>(() =>
+    createDefaultDonationBoxState()
+  );
+  const [isDonationModalOpen, setIsDonationModalOpen] = useState<boolean>(false);
+  const [notificationPermission, setNotificationPermission] = useState<
+    NotificationPermission | 'unsupported'
+  >(() => {
+    if (typeof window === 'undefined' || !('Notification' in window)) {
+      return 'unsupported';
+    }
+    return window.Notification.permission;
+  });
+  const [updateAvailableBanner, setUpdateAvailableBanner] = useState<boolean>(false);
+  const [attendanceReminderBanner, setAttendanceReminderBanner] = useState<string | null>(null);
+  const [diaryAlertBanner, setDiaryAlertBanner] = useState<string | null>(null);
+  const initialScriptSrcRef = useRef<string | null>(null);
 
   // State đóng/mở menu gọn trên màn hình (Click để xổ chức năng, click để đóng menu)
   const [topMenuOpen, setTopMenuOpen] = useState<boolean>(false);
@@ -355,6 +392,8 @@ export function App() {
     setMyCatInventory(loadMyCatInventory(session.userId));
     setGiftRequests(loadedGifts);
     setRoomPuzzleState(loadRoomPuzzleState(room.code));
+    setUserWallet(loadUserWalletState(room.code, session.userId));
+    setRoomDonationBox(loadRoomDonationBoxState(room.code));
 
     // Tự động phát đồng bộ mèo, quà & tranh ghép lên phòng sau 1.8s
     const syncTimer = window.setTimeout(() => {
@@ -387,6 +426,8 @@ export function App() {
       setMyCatInventory(loadMyCatInventory(session.userId));
       setGiftRequests(loadRoomGiftRequests(room.code));
       setRoomPuzzleState(loadRoomPuzzleState(room.code));
+    setUserWallet(loadUserWalletState(room.code, session.userId));
+    setRoomDonationBox(loadRoomDonationBoxState(room.code));
     };
     window.addEventListener('storage', onStorageChange);
     return () => {
@@ -422,6 +463,202 @@ export function App() {
     return () => window.clearInterval(timer);
   }, [session, room, Boolean(session && roomCats[session.userId])]);
 
+  const sendDesktopNotification = useCallback(
+    (params: { title: string; body: string; tag?: string; onClick?: () => void }) => {
+      if (typeof window === 'undefined' || !('Notification' in window)) return;
+      if (window.Notification.permission !== 'granted') return;
+      try {
+        const notif = new window.Notification(params.title, {
+          body: params.body,
+          tag: params.tag,
+        });
+        notif.onclick = () => {
+          window.focus();
+          params.onClick?.();
+          notif.close();
+        };
+      } catch {
+        // ignore notification errors on restricted environments
+      }
+    },
+    []
+  );
+
+  const requestDesktopNotificationPermission = useCallback(async () => {
+    if (typeof window === 'undefined' || !('Notification' in window)) {
+      setNotificationPermission('unsupported');
+      return;
+    }
+    try {
+      const perm = await window.Notification.requestPermission();
+      setNotificationPermission(perm);
+      if (perm === 'granted') {
+        showToast('🔔 Đã bật thông báo ngoài màn hình (khi ở tab/app khác vẫn thấy)!');
+      }
+    } catch {
+      // ignore
+    }
+  }, [showToast]);
+
+  // Tự động kết toán lương các tháng trước đã chấm công vào ví (8h/ngày × 100k/giờ)
+  useEffect(() => {
+    if (!session || !room) return;
+    const nowVn = getNowInHoChiMinh();
+    const currentYearMonth = nowVn.dateStr.slice(0, 7);
+    setUserWallet((prev) => {
+      const { wallet: settledWallet, newlySettledMonths, addedVnd } =
+        settlePastMonthsSalary(prev, attendanceMap, currentYearMonth);
+      if (newlySettledMonths.length > 0 || settledWallet !== prev) {
+        saveUserWalletState(room.code, session.userId, settledWallet);
+        if (addedVnd > 0) {
+          showToast(
+            `💵 Đã trả lương tháng ${newlySettledMonths.join(', ')}: +${formatVnd(addedVnd)} vào ví!`
+          );
+        }
+        return settledWallet;
+      }
+      return prev;
+    });
+  }, [session, room, attendanceMap, showToast]);
+
+  // Nhắc nhở chấm công khi vào phòng & định kỳ mỗi 45 phút nếu hôm nay chưa chấm công
+  useEffect(() => {
+    if (!session || !room) return;
+    const checkAttendanceReminder = () => {
+      const todayStr = getNowInHoChiMinh().dateStr;
+      const st = attendanceMap[todayStr] ?? 'none';
+      if (st === 'none') {
+        const msg = `⏰ Nhắc nhở: Bạn chưa chấm công hôm nay (${todayStr}) — 8h × 100k = 800.000đ!`;
+        setAttendanceReminderBanner(msg);
+        sendDesktopNotification({
+          title: '⏰ Nhắc nhở chấm công hôm nay',
+          body: `Hôm nay (${todayStr}) bạn chưa chấm công. Mỗi ngày chỉ chấm 1 lần!`,
+          tag: `attendance-reminder-${todayStr}`,
+          onClick: () => setActivePanel('attendance'),
+        });
+      }
+    };
+    const initialTimer = window.setTimeout(checkAttendanceReminder, 5000);
+    const intervalTimer = window.setInterval(checkAttendanceReminder, 45 * 60 * 1000);
+    return () => {
+      window.clearTimeout(initialTimer);
+      window.clearInterval(intervalTimer);
+    };
+  }, [session, room, attendanceMap, sendDesktopNotification]);
+
+  // Kiểm tra phiên bản / chỉnh sửa mới mỗi 60s để nhắc Refresh tự động
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const currentScript = document.querySelector('script[type="module"][src]');
+    initialScriptSrcRef.current = currentScript?.getAttribute('src') || null;
+    if (!initialScriptSrcRef.current) return;
+
+    const checkForUpdates = async () => {
+      try {
+        const res = await fetch(`${window.location.pathname}?_v=${Date.now()}`, {
+          cache: 'no-store',
+        });
+        if (!res.ok) return;
+        const html = await res.text();
+        const match = html.match(/<script[^>]+type="module"[^>]+src="([^"]+)"/);
+        const latestSrc = match?.[1] || null;
+        if (
+          latestSrc &&
+          initialScriptSrcRef.current &&
+          latestSrc !== initialScriptSrcRef.current
+        ) {
+          setUpdateAvailableBanner(true);
+          sendDesktopNotification({
+            title: '🔄 Văn phòng vừa có bản chỉnh sửa mới!',
+            body: 'Bấm vào đây để làm mới (Refresh) cập nhật tính năng mới nhất.',
+            tag: 'office-app-update',
+            onClick: () => window.location.reload(),
+          });
+        }
+      } catch {
+        // ignore network errors
+      }
+    };
+
+    const timer = window.setInterval(() => {
+      void checkForUpdates();
+    }, 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, [sendDesktopNotification]);
+
+  const handleDonateToBox = useCallback(
+    (
+      amountVnd: number
+    ): { ok: boolean; error?: string; meritAwarded?: number } => {
+      if (!session || !room) {
+        return { ok: false, error: 'Chưa kết nối phòng.' };
+      }
+      if (!Number.isFinite(amountVnd) || amountVnd < 1000) {
+        return { ok: false, error: 'Vui lòng nhập số tiền tối thiểu 1.000đ.' };
+      }
+      if (userWallet.balanceVnd < amountVnd) {
+        return {
+          ok: false,
+          error: `Số dư ví không đủ (hiện có ${formatVnd(userWallet.balanceVnd)}).`,
+        };
+      }
+
+      const meritAwarded = calculateDonationMerit(amountVnd);
+      const nextWallet: UserWalletState = {
+        ...userWallet,
+        balanceVnd: userWallet.balanceVnd - amountVnd,
+        totalDonatedVnd: userWallet.totalDonatedVnd + amountVnd,
+        updatedAt: Date.now(),
+      };
+      setUserWallet(nextWallet);
+      saveUserWalletState(room.code, session.userId, nextWallet);
+
+      // Cộng tối thiểu 10 công đức trở lên
+      setMeritCount((prev) => {
+        const next = prev + meritAwarded;
+        try {
+          window.localStorage.setItem(
+            `van_phong_ao_zen_merit:${room.code}:${session.userId}`,
+            String(next)
+          );
+        } catch {
+          // ignore
+        }
+        return next;
+      });
+
+      const nextBox: RoomDonationBoxState = {
+        totalVnd: roomDonationBox.totalVnd + amountVnd,
+        donations: [
+          {
+            id: `don-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            donorUserId: session.userId,
+            donorNickname: session.nickname,
+            amountVnd,
+            meritAwarded,
+            createdAt: Date.now(),
+          },
+          ...roomDonationBox.donations,
+        ].slice(0, 50),
+        updatedAt: Date.now(),
+      };
+      setRoomDonationBox(nextBox);
+      saveRoomDonationBoxState(room.code, nextBox);
+      broadcastDonationBoxSyncEvent({ roomCode: room.code, donationBox: nextBox });
+
+      playTempleBellSound();
+      setFloatingMeritText(`+${meritAwarded} Công đức • Cảm ơn ${session.nickname}!`);
+      if (meritTimerRef.current) {
+        window.clearTimeout(meritTimerRef.current);
+      }
+      meritTimerRef.current = window.setTimeout(() => {
+        setFloatingMeritText(null);
+      }, 2200);
+      return { ok: true, meritAwarded };
+    },
+    [session, room, userWallet, roomDonationBox]
+  );
+
   const triggerGlobalChatAlert = useCallback(
     (incoming: ChatMessage) => {
       playChatNotificationSound();
@@ -442,23 +679,17 @@ export function App() {
         setUnreadChatCount((c) => c + 1);
       }
 
-      // Thông báo hệ thống trình duyệt nếu đang ở tab/ứng dụng khác
-      if (
-        typeof window !== 'undefined' &&
-        'Notification' in window &&
-        window.Notification.permission === 'granted' &&
-        document.hidden
-      ) {
-        try {
-          new window.Notification(`💬 ${incoming.nickname} nhắn tin trong phòng`, {
-            body: previewText,
-          });
-        } catch {
-          // ignore
-        }
+      // Thông báo hệ thống trình duyệt (hiện kể cả khi người dùng không ở màn hình game)
+      if (document.hidden || !document.hasFocus()) {
+        sendDesktopNotification({
+          title: `💬 ${incoming.nickname} nhắn tin trong phòng`,
+          body: previewText,
+          tag: `chat-${incoming.id}`,
+          onClick: () => setActivePanel('chat'),
+        });
       }
     },
-    []
+    [sendDesktopNotification]
   );
 
   const handleAdoptOrUpdateMyCat = useCallback(
@@ -954,11 +1185,51 @@ export function App() {
         ) {
           setActiveChallengeBanner(incoming.content);
         }
+      } else if (data.type === 'donation_box_sync' && data.donationBox) {
+        const incomingBox = data.donationBox as RoomDonationBoxState;
+        setRoomDonationBox((prev) => {
+          const donMap = new Map(prev.donations.map((d) => [d.id, d]));
+          for (const d of incomingBox.donations || []) {
+            donMap.set(d.id, d);
+          }
+          const mergedDonations = Array.from(donMap.values())
+            .sort((a, b) => b.createdAt - a.createdAt)
+            .slice(0, 50);
+          const sumDonations = mergedDonations.reduce((acc, d) => acc + d.amountVnd, 0);
+          const merged: RoomDonationBoxState = {
+            totalVnd: Math.max(prev.totalVnd, incomingBox.totalVnd, sumDonations),
+            donations: mergedDonations,
+            updatedAt: Math.max(prev.updatedAt, incomingBox.updatedAt),
+          };
+          saveRoomDonationBoxState(room.code, merged);
+          return merged;
+        });
+      } else if (data.type === 'attendance_reminder') {
+        const sender = String(data.senderNickname || 'Phòng');
+        const msg = `📣 ${sender} nhắc cả phòng nhớ chấm công hôm nay (1 lần/ngày • 800.000đ)!`;
+        setAttendanceReminderBanner(msg);
+        playChatNotificationSound();
+        sendDesktopNotification({
+          title: '⏰ Nhắc nhở chấm công từ văn phòng',
+          body: msg,
+          tag: 'office-attendance-reminder',
+          onClick: () => setActivePanel('attendance'),
+        });
       } else if (data.type === 'diary_sync') {
         fetchDiaryLists(room.code, session.sessionToken)
           .then(({ feed, mine }) => {
             setDiaryFeed(feed);
             setMyDiary(mine);
+            const newest = feed[0];
+            if (newest && !mine.some((m) => m.id === newest.id)) {
+              setDiaryAlertBanner('📔 Có bài nhật ký mới vừa được chia sẻ trong phòng!');
+              sendDesktopNotification({
+                title: '📔 Nhật ký mới trong văn phòng',
+                body: 'Một đồng nghiệp vừa chia sẻ nhật ký mới. Bấm để xem.',
+                tag: `diary-${newest.id}`,
+                onClick: () => setActivePanel('diary'),
+              });
+            }
           })
           .catch((err) => console.error('Failed to sync diary:', err));
       }
@@ -1211,7 +1482,11 @@ export function App() {
   const handleCycleAttendanceDay = async (dateStr: string) => {
     if (!session || !room) return;
     const currentStatus: AttendanceStatus = attendanceMap[dateStr] ?? 'none';
-    const nextStatus = getNextAttendanceStatus(currentStatus);
+    if (currentStatus !== 'none') {
+      showToast('⚠️ Mỗi ngày chỉ được chấm công 1 lần!');
+      return;
+    }
+    const nextStatus: AttendanceStatus = 'full';
     const nextSeq = attendanceSeqRef.current++;
 
     setAttendanceError(null);
@@ -1445,6 +1720,10 @@ export function App() {
         floatingMeritText={floatingMeritText}
         onStrikeMo={handleStrikeMo}
         onRingBell={handleRingBell}
+        onOpenDonationBox={() => {
+          void enterZenRoom();
+          setIsDonationModalOpen(true);
+        }}
         roomCats={roomCats}
         onPetCatIn3D={handlePetCatIn3D}
       />
@@ -1475,6 +1754,22 @@ export function App() {
               </>
             )}
           </button>
+          <span
+            className="hidden sm:inline-flex items-center rounded-full bg-emerald-500/20 border border-emerald-400/35 px-2 py-0.5 text-[10px] font-black text-emerald-300"
+            title="Ví tiền hiện tại (mặc định 5 triệu • nhận lương cuối tháng)"
+          >
+            💰 {formatVnd(userWallet.balanceVnd)}
+          </span>
+          {notificationPermission === 'default' && (
+            <button
+              type="button"
+              onClick={() => void requestDesktopNotificationPermission()}
+              className="rounded-full bg-amber-400 hover:bg-amber-300 px-2 py-0.5 text-[10px] font-black text-slate-950 cursor-pointer shrink-0"
+              title="Bật thông báo ngoài màn hình (hiện ngay cả khi không mở tab game)"
+            >
+              🔔 Bật thông báo
+            </button>
+          )}
         </div>
 
         {/* Cụm phải: Góc nhìn & Nút xổ Menu cá nhân (Click để mở, click để đóng) */}
@@ -1662,6 +1957,67 @@ export function App() {
         </div>
       )}
 
+      {/* THÔNG BÁO CÓ BẢN CẬP NHẬT MỚI (Nhắc Refresh ngay khi có chỉnh sửa) */}
+      {updateAvailableBanner && (
+        <div className="fixed top-12 left-1/2 -translate-x-1/2 z-[105] flex items-center justify-between gap-2.5 w-[calc(100vw-24px)] max-w-md rounded-2xl border-2 border-sky-400 bg-slate-950/95 px-3.5 py-2.5 text-xs text-white shadow-2xl backdrop-blur-xl">
+          <span className="font-bold text-sky-200">
+            🔄 Văn phòng vừa có bản chỉnh sửa mới!
+          </span>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="rounded-xl bg-sky-400 hover:bg-sky-300 px-2.5 py-1 text-[11px] font-black text-slate-950 cursor-pointer"
+            >
+              Làm mới ngay
+            </button>
+            <button
+              type="button"
+              onClick={() => setUpdateAvailableBanner(false)}
+              className="rounded-lg p-1 text-slate-400 hover:text-white cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* THÔNG BÁO NHẮC CHẤM CÔNG / NHẬT KÝ MỚI */}
+      {(attendanceReminderBanner || diaryAlertBanner) && !chatAlertBanner && !updateAvailableBanner && (
+        <div className="fixed top-12 left-1/2 -translate-x-1/2 z-[95] flex items-center justify-between gap-2.5 w-[calc(100vw-24px)] max-w-md rounded-2xl border-2 border-amber-400 bg-slate-950/95 px-3.5 py-2.5 text-xs text-white shadow-2xl backdrop-blur-xl">
+          <span className="font-bold text-amber-200 truncate">
+            {attendanceReminderBanner || diaryAlertBanner}
+          </span>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                if (attendanceReminderBanner) {
+                  setAttendanceReminderBanner(null);
+                  setActivePanel('attendance');
+                } else {
+                  setDiaryAlertBanner(null);
+                  setActivePanel('diary');
+                }
+              }}
+              className="rounded-xl bg-amber-400 hover:bg-amber-300 px-2.5 py-1 text-[11px] font-black text-slate-950 cursor-pointer"
+            >
+              {attendanceReminderBanner ? 'Chấm công' : 'Xem nhật ký'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAttendanceReminderBanner(null);
+                setDiaryAlertBanner(null);
+              }}
+              className="rounded-lg p-1 text-slate-400 hover:text-white cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* THÔNG BÁO TIN NHẮN NỔI TOÀN CỤC (Hiện trên cùng mọi phòng/game/bảng khi có tin nhắn mới) */}
       {chatAlertBanner && (
         <div
@@ -1766,6 +2122,14 @@ export function App() {
         onRetryFailedDay={handleRetryFailedAttendance}
         failedDate={failedAttendanceDate}
         attendanceError={attendanceError}
+        walletBalanceVnd={userWallet.balanceVnd}
+        onBroadcastReminder={() => {
+          broadcastAttendanceReminderEvent({
+            roomCode: room.code,
+            senderNickname: session.nickname,
+          });
+          showToast('📣 Đã gửi nhắc nhở chấm công tới cả phòng!');
+        }}
       />
 
       <DiaryDrawer
@@ -1820,6 +2184,12 @@ export function App() {
           ).catch(() => {});
           showToast('📣 Đã gửi lời rủ mọi người vào Phòng Tịnh Tâm!');
         }}
+        walletBalanceVnd={userWallet.balanceVnd}
+        donationBox={roomDonationBox}
+        isDonationModalOpen={isDonationModalOpen}
+        onOpenDonationModal={() => setIsDonationModalOpen(true)}
+        onCloseDonationModal={() => setIsDonationModalOpen(false)}
+        onDonateToBox={handleDonateToBox}
       />
 
       <EntertainmentRoomModal

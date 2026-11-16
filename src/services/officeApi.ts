@@ -13,6 +13,8 @@ import type {
 import {
   broadcastCatSyncEvent,
   broadcastPuzzleSyncEvent,
+  broadcastDonationBoxSyncEvent,
+  broadcastAttendanceReminderEvent,
   handleStaticFallbackRequest,
   subscribeStaticRealtime,
   type StaticRealtimeEvent,
@@ -21,6 +23,8 @@ import {
 export {
   broadcastCatSyncEvent,
   broadcastPuzzleSyncEvent,
+  broadcastDonationBoxSyncEvent,
+  broadcastAttendanceReminderEvent,
   subscribeStaticRealtime,
   type StaticRealtimeEvent,
 };

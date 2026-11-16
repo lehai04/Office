@@ -28,6 +28,10 @@ import {
   saveRoomPuzzleState,
   type RoomPuzzleState,
 } from '../utils/officePuzzleData';
+import {
+  saveRoomDonationBoxState,
+  type RoomDonationBoxState,
+} from '../utils/officeEconomyData';
 
 interface StoredAccount {
   userId: string;
@@ -75,6 +79,7 @@ interface StaticDatabaseSchema {
   roomCats?: Record<string, Record<string, OfficeCatProfile>>;
   roomGiftRequests?: Record<string, CatGiftRequest[]>;
   roomPuzzles?: Record<string, RoomPuzzleState>;
+  roomDonationBoxes?: Record<string, RoomDonationBoxState>;
 }
 
 const STATIC_DB_KEY = 'van_phong_ao_static_db_v3';
@@ -497,6 +502,32 @@ function mergeRemoteDatabase(
     }
   }
 
+  if (remoteDb.roomDonationBoxes) {
+    if (!local.roomDonationBoxes) local.roomDonationBoxes = {};
+    for (const [rCode, remoteBox] of Object.entries(remoteDb.roomDonationBoxes)) {
+      if (!remoteBox) continue;
+      const localBox = local.roomDonationBoxes[rCode];
+      if (!localBox) {
+        local.roomDonationBoxes[rCode] = remoteBox;
+      } else {
+        const donMap = new Map(localBox.donations.map((d) => [d.id, d]));
+        for (const d of remoteBox.donations || []) {
+          donMap.set(d.id, d);
+        }
+        const mergedDonations = Array.from(donMap.values())
+          .sort((a, b) => b.createdAt - a.createdAt)
+          .slice(0, 50);
+        const sumDonations = mergedDonations.reduce((acc, d) => acc + d.amountVnd, 0);
+        local.roomDonationBoxes[rCode] = {
+          totalVnd: Math.max(localBox.totalVnd, remoteBox.totalVnd, sumDonations),
+          donations: mergedDonations,
+          updatedAt: Math.max(localBox.updatedAt, remoteBox.updatedAt),
+        };
+      }
+      saveRoomDonationBoxState(rCode, local.roomDonationBoxes[rCode]);
+    }
+  }
+
   if (remoteDb.chatClearedAtByRoom) {
     if (!local.chatClearedAtByRoom) local.chatClearedAtByRoom = {};
     for (const [rId, iso] of Object.entries(remoteDb.chatClearedAtByRoom)) {
@@ -891,6 +922,51 @@ export function broadcastPuzzleSyncEvent(params: {
     emitRealtimeEvent(db, room, {
       type: 'puzzle_state_sync',
       puzzleState: params.puzzleState,
+    });
+  }
+}
+
+/**
+ * Phát sự kiện đồng bộ Hòm Công Đức Phòng Tịnh Tâm qua MQTT + BroadcastChannel
+ */
+export function broadcastDonationBoxSyncEvent(params: {
+  roomCode: string;
+  donationBox: RoomDonationBoxState;
+}): void {
+  const db = loadStaticDb();
+  const room =
+    db.rooms[params.roomCode] ||
+    Object.values(db.rooms).find((r) => r.code === params.roomCode);
+  if (!db.roomDonationBoxes) db.roomDonationBoxes = {};
+
+  db.roomDonationBoxes[params.roomCode] = params.donationBox;
+  saveRoomDonationBoxState(params.roomCode, params.donationBox);
+  saveStaticDb(db);
+
+  if (room) {
+    emitRealtimeEvent(db, room, {
+      type: 'donation_box_sync',
+      donationBox: params.donationBox,
+    });
+  }
+}
+
+/**
+ * Phát sự kiện nhắc nhở cả phòng chấm công
+ */
+export function broadcastAttendanceReminderEvent(params: {
+  roomCode: string;
+  senderNickname: string;
+}): void {
+  const db = loadStaticDb();
+  const room =
+    db.rooms[params.roomCode] ||
+    Object.values(db.rooms).find((r) => r.code === params.roomCode);
+  if (room) {
+    emitRealtimeEvent(db, room, {
+      type: 'attendance_reminder',
+      senderNickname: params.senderNickname,
+      sentAt: Date.now(),
     });
   }
 }

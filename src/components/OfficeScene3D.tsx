@@ -45,6 +45,7 @@ interface OfficeScene3DProps {
   floatingMeritText: string | null;
   onStrikeMo: () => void;
   onRingBell: () => void;
+  onOpenDonationBox?: () => void;
   // Hệ thống Mèo Văn Phòng ở khu vực bên ngoài văn phòng
   roomCats?: Record<string, OfficeCatProfile>;
   onPetCatIn3D?: (cat: OfficeCatProfile) => void;
@@ -558,6 +559,7 @@ const ZenSanctuaryRoom3D: React.FC<{
   floatingMeritText: string | null;
   onStrikeMo: () => void;
   onRingBell: () => void;
+  onOpenDonationBox?: () => void;
 }> = ({
   selectedDeity,
   incenseLit,
@@ -565,6 +567,7 @@ const ZenSanctuaryRoom3D: React.FC<{
   floatingMeritText,
   onStrikeMo,
   onRingBell,
+  onOpenDonationBox,
 }) => {
   const haloRef = useRef<THREE.Mesh>(null);
   const moGroupRef = useRef<THREE.Group>(null);
@@ -645,6 +648,89 @@ const ZenSanctuaryRoom3D: React.FC<{
           <cylinderGeometry args={[0.46, 0.52, 0.04, 24]} />
           <meshStandardMaterial color="#f59e0b" roughness={0.7} />
         </mesh>
+      </group>
+
+      {/* BÀN GÓC TRÁI MẶC ĐỊNH CHO TRỤ TRÌ THANH NGỌC + HÒM CÔNG ĐỨC NHỎ */}
+      <group position={[-3.22, 0, -0.15]}>
+        {/* Mặt bàn gỗ góc trái */}
+        <mesh position={[0, 0.72, 0]} castShadow receiveShadow>
+          <boxGeometry args={[0.78, 0.08, 1.55]} />
+          <meshStandardMaterial color="#5c280e" roughness={0.55} />
+        </mesh>
+        {/* 4 chân bàn */}
+        {[
+          [-0.3, -0.64],
+          [0.3, -0.64],
+          [-0.3, 0.64],
+          [0.3, 0.64],
+        ].map(([lx, lz], idx) => (
+          <mesh key={idx} position={[lx, 0.36, lz]} castShadow>
+            <boxGeometry args={[0.08, 0.72, 0.08]} />
+            <meshStandardMaterial color="#3f1a08" />
+          </mesh>
+        ))}
+
+        {/* Ghế / Đệm ngồi của Trụ trì Thanh Ngọc bên trái bàn, quay mặt vào bàn */}
+        <group position={[-0.54, 0, 0]}>
+          <mesh position={[0, 0.24, 0]} castShadow receiveShadow>
+            <cylinderGeometry args={[0.26, 0.28, 0.08, 16]} />
+            <meshStandardMaterial color="#b45309" roughness={0.75} />
+          </mesh>
+          <mesh position={[-0.22, 0.45, 0]} castShadow>
+            <boxGeometry args={[0.06, 0.44, 0.42]} />
+            <meshStandardMaterial color="#7c2d12" />
+          </mesh>
+        </group>
+
+        {/* Bảng tên nhỏ trên bàn */}
+        <Html position={[0, 1.06, -0.45]} center distanceFactor={8} style={{ pointerEvents: 'none' }}>
+          <div className="whitespace-nowrap rounded-full border border-amber-300/60 bg-[#2b1708]/90 px-2 py-0.5 text-[10px] font-bold text-amber-200 shadow">
+            🪷 Trụ trì Thanh Ngọc
+          </div>
+        </Html>
+
+        {/* HÒM CÔNG ĐỨC NHỎ TRÊN BÀN (Bấm để bỏ tiền công đức) */}
+        <group
+          position={[0.05, 0.88, 0.3]}
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenDonationBox?.();
+          }}
+          onPointerOver={() => {
+            document.body.style.cursor = 'pointer';
+          }}
+          onPointerOut={() => {
+            document.body.style.cursor = 'auto';
+          }}
+        >
+          {/* Thân hòm gỗ sơn son */}
+          <mesh castShadow receiveShadow>
+            <boxGeometry args={[0.36, 0.24, 0.28]} />
+            <meshStandardMaterial color="#991b1b" roughness={0.45} />
+          </mesh>
+          {/* Viền vàng trên nắp hòm */}
+          <mesh position={[0, 0.13, 0]}>
+            <boxGeometry args={[0.38, 0.03, 0.3]} />
+            <meshStandardMaterial color="#fbbf24" metalness={0.55} roughness={0.3} />
+          </mesh>
+          {/* Khe bỏ tiền công đức */}
+          <mesh position={[0, 0.15, 0]}>
+            <boxGeometry args={[0.16, 0.012, 0.025]} />
+            <meshStandardMaterial color="#1f2937" />
+          </mesh>
+          <Html position={[0, 0.32, 0]} center distanceFactor={8}>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenDonationBox?.();
+              }}
+              className="whitespace-nowrap rounded-full border border-amber-300 bg-amber-400 hover:bg-amber-300 px-2 py-0.5 text-[10px] font-black text-slate-950 shadow-lg cursor-pointer"
+            >
+              🪙 Hòm Công Đức
+            </button>
+          </Html>
+        </group>
       </group>
 
       {/* BÀN THỜ GỖ CHẠM KHẮC TRANG NGHIÊM */}
@@ -1675,6 +1761,7 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
   floatingMeritText,
   onStrikeMo,
   onRingBell,
+  onOpenDonationBox,
   roomCats,
   onPetCatIn3D,
 }) => {
@@ -1720,9 +1807,21 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
       .sort((a, b) => a.userId.localeCompare(b.userId));
 
     return members.map((member) => {
-      // Nếu thành viên đang ở trong Phòng Tịnh Tâm -> đặt ngồi trên 1 trong 10 đệm Bồ đoàn để mọi người nhìn thấy nhau
+      // Nếu thành viên đang ở trong Phòng Tịnh Tâm -> đặt ngồi trên 1 trong 10 đệm Bồ đoàn (hoặc bàn góc trái cho Trụ trì Thanh Ngọc)
       const zenIdx = zenMembers.findIndex((zm) => zm.userId === member.userId);
       if (zenIdx !== -1) {
+        const normalizedNick = member.nickname
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .toLowerCase();
+        if (normalizedNick.includes('thanh ngoc')) {
+          return {
+            member,
+            isSeated: true,
+            position: [-3.76, 0.12, -10.35] as [number, number, number],
+            rotationY: Math.PI / 2, // Ngồi ở bàn góc trái quay mặt sang phải
+          };
+        }
         const slot = zenCushionSlots[zenIdx % zenCushionSlots.length];
         return {
           member,
@@ -1895,6 +1994,7 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
             floatingMeritText={floatingMeritText}
             onStrikeMo={onStrikeMo}
             onRingBell={onRingBell}
+            onOpenDonationBox={onOpenDonationBox}
           />
 
           {/* GIAN PHÒNG GIẢI TRÍ 3D (Bia Phóng Phi Tiêu 3D • Máy Arcade • Đấu Solo) */}

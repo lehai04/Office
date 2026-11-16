@@ -2,6 +2,10 @@ import React, { useMemo, useState } from 'react';
 import { Calendar, ChevronLeft, ChevronRight, X, ChevronDown, AlertCircle, RotateCcw } from 'lucide-react';
 import type { AttendanceStatus } from '../types/office';
 import { buildMonthCalendarGrid, getNowInHoChiMinh } from '../utils/dateVn';
+import {
+  calculateMonthSalaryVnd,
+  formatVnd,
+} from '../utils/officeEconomyData';
 
 interface AttendanceDrawerProps {
   isOpen: boolean;
@@ -11,6 +15,8 @@ interface AttendanceDrawerProps {
   onRetryFailedDay: (dateStr: string) => Promise<void>;
   failedDate: string | null;
   attendanceError: string | null;
+  walletBalanceVnd: number;
+  onBroadcastReminder?: () => void;
 }
 
 export const ATTENDANCE_CYCLE: AttendanceStatus[] = ['none', 'full', 'half', 'off'];
@@ -75,6 +81,8 @@ export const AttendanceDrawer: React.FC<AttendanceDrawerProps> = ({
   onRetryFailedDay,
   failedDate,
   attendanceError,
+  walletBalanceVnd,
+  onBroadcastReminder,
 }) => {
   const nowVn = useMemo(() => getNowInHoChiMinh(), []);
   const [viewYear, setViewYear] = useState(nowVn.year);
@@ -121,6 +129,14 @@ export const AttendanceDrawer: React.FC<AttendanceDrawerProps> = ({
     }
   };
 
+  const viewMonthKey = `${viewYear}-${String(viewMonth).padStart(2, '0')}`;
+  const salaryInfo = useMemo(
+    () => calculateMonthSalaryVnd(attendanceMap, viewMonthKey),
+    [attendanceMap, viewMonthKey]
+  );
+  const todayStatus: AttendanceStatus = attendanceMap[nowVn.dateStr] ?? 'none';
+  const isTodayCheckedIn = todayStatus !== 'none';
+
   return (
     <aside
       data-testid="attendance-drawer"
@@ -153,6 +169,54 @@ export const AttendanceDrawer: React.FC<AttendanceDrawerProps> = ({
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-3.5">
+        {/* Ví tiền & Lương tháng (8h/ngày × 100k/giờ = 800k/ngày) */}
+        <div className="grid grid-cols-2 gap-2">
+          <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2">
+            <div className="text-[10px] font-semibold text-emerald-300/80">
+              💰 Ví tiền hiện tại
+            </div>
+            <div className="text-sm font-black text-emerald-300 mt-0.5">
+              {formatVnd(walletBalanceVnd)}
+            </div>
+          </div>
+          <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+            <div className="text-[10px] font-semibold text-amber-300/80">
+              💵 Lương T{viewMonth}/{viewYear} (8h×100k)
+            </div>
+            <div className="text-sm font-black text-amber-300 mt-0.5">
+              {formatVnd(salaryInfo.totalVnd)}
+            </div>
+          </div>
+        </div>
+
+        {/* Nút chấm công hôm nay (1 lần/ngày) & Nhắc cả phòng */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            disabled={isTodayCheckedIn}
+            onClick={() => onCycleDay(nowVn.dateStr)}
+            className={`flex-1 rounded-2xl py-2 px-3 text-xs font-black transition cursor-pointer ${
+              isTodayCheckedIn
+                ? 'bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 cursor-default'
+                : 'bg-gradient-to-r from-emerald-400 to-teal-400 text-slate-950 shadow hover:brightness-105 active:scale-95'
+            }`}
+          >
+            {isTodayCheckedIn
+              ? '✓ Đã chấm công hôm nay (1 lần/ngày)'
+              : '✓ Chấm công hôm nay (+800.000đ)'}
+          </button>
+          {onBroadcastReminder && (
+            <button
+              type="button"
+              onClick={onBroadcastReminder}
+              className="rounded-2xl border border-amber-400/40 bg-amber-500/15 hover:bg-amber-500/25 px-3 py-2 text-xs font-bold text-amber-200 cursor-pointer shrink-0"
+              title="Gửi thông báo nhắc cả phòng chấm công"
+            >
+              📣 Nhắc phòng
+            </button>
+          )}
+        </div>
+
         {/* Điều hướng tháng */}
         <div className="flex items-center justify-between rounded-2xl bg-slate-800/80 px-3 py-2 border border-white/10">
           <button
@@ -217,7 +281,15 @@ export const AttendanceDrawer: React.FC<AttendanceDrawerProps> = ({
               const meta = ATTENDANCE_META[status];
               const isToday = cell.dateStr === nowVn.dateStr;
 
-              return (
+              const viewMonthKey = `${viewYear}-${String(viewMonth).padStart(2, '0')}`;
+  const salaryInfo = useMemo(
+    () => calculateMonthSalaryVnd(attendanceMap, viewMonthKey),
+    [attendanceMap, viewMonthKey]
+  );
+  const todayStatus: AttendanceStatus = attendanceMap[nowVn.dateStr] ?? 'none';
+  const isTodayCheckedIn = todayStatus !== 'none';
+
+  return (
                 <button
                   key={cell.dateStr}
                   type="button"
@@ -248,7 +320,15 @@ export const AttendanceDrawer: React.FC<AttendanceDrawerProps> = ({
           <div className="grid grid-cols-2 gap-2 text-xs">
             {ATTENDANCE_CYCLE.map((st) => {
               const meta = ATTENDANCE_META[st];
-              return (
+              const viewMonthKey = `${viewYear}-${String(viewMonth).padStart(2, '0')}`;
+  const salaryInfo = useMemo(
+    () => calculateMonthSalaryVnd(attendanceMap, viewMonthKey),
+    [attendanceMap, viewMonthKey]
+  );
+  const todayStatus: AttendanceStatus = attendanceMap[nowVn.dateStr] ?? 'none';
+  const isTodayCheckedIn = todayStatus !== 'none';
+
+  return (
                 <div
                   key={st}
                   className="flex items-center gap-2 rounded-xl bg-slate-900/60 px-2.5 py-1.5"
