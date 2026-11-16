@@ -40,6 +40,7 @@ import {
   loadMyPetCollection,
   loadRoomCats,
   loadRoomGiftRequests,
+  relinkRoomCatsToOwners,
   saveMyCatInventory,
   saveMyPetCollection,
   saveRoomCats,
@@ -396,8 +397,16 @@ export function App() {
   // Tải dữ liệu Mèo trong phòng, Túi đồ cá nhân & Yêu cầu Quà tặng khi vào phòng
   useEffect(() => {
     if (!session || !room) return;
-    const loadedCats = loadRoomCats(room.code);
-    delete loadedCats.colleague_demo_linh;
+    const rawLoadedCats = loadRoomCats(room.code);
+    const { catsMap: loadedCats, changed: relinkedOnLoad } = relinkRoomCatsToOwners(
+      rawLoadedCats,
+      members,
+      session.userId,
+      session.nickname
+    );
+    if (relinkedOnLoad) {
+      saveRoomCats(room.code, loadedCats);
+    }
     const loadedGifts = loadRoomGiftRequests(room.code);
     setRoomCats(loadedCats);
     setMyCatInventory(loadMyCatInventory(session.userId));

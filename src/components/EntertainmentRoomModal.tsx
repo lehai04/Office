@@ -445,7 +445,13 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
   const [activeView, setActiveView] = useState<'lobby' | PlayableGameId>('lobby');
 
   // ==================== STATE CHO GAME 1: NUÔI MÈO VĂN PHÒNG ====================
-  const myCat: OfficeCatProfile | undefined = roomCats[currentUserId];
+  const myCat: OfficeCatProfile | undefined =
+    roomCats[currentUserId] ||
+    Object.values(roomCats).find(
+      (c) =>
+        c.ownerUserId === currentUserId ||
+        c.ownerNickname.trim().toLowerCase() === currentNickname.trim().toLowerCase()
+    );
   const [catSubTab, setCatSubTab] = useState<'my_cat' | 'shop' | 'gifts' | 'bag'>('my_cat');
   const [adoptBreed, setAdoptBreed] = useState<CatBreedId>('orange');
   const [adoptNameDraft, setAdoptNameDraft] = useState<string>('Miu Cam');

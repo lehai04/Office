@@ -1817,19 +1817,26 @@ const OutdoorCatCourtyard3D: React.FC<{
   currentUserId: string;
   onPetCatIn3D?: (cat: OfficeCatProfile) => void;
   onOpenCatGame?: () => void;
-}> = ({ roomCats = {}, onPetCatIn3D }) => {
+}> = ({ roomCats = {}, members = [], currentUserId, onPetCatIn3D }) => {
   const [selectedCatOwnerId, setSelectedCatOwnerId] = useState<string | null>(null);
 
-  // Chỉ hiển thị các bé mèo THẬT mà người chơi trong phòng đã nhận nuôi & đồng bộ
+  // Chỉ hiển thị các bé thú cưng THẬT gắn với thành viên trong phòng
   const displayCats = useMemo(() => {
+    const validOwnerIds = new Set(members.map((m) => m.userId));
+    if (currentUserId) validOwnerIds.add(currentUserId);
     const mapByOwner = new Map<string, OfficeCatProfile>();
     for (const c of Object.values(roomCats)) {
-      if (c && c.ownerUserId && c.ownerUserId !== 'colleague_demo_linh') {
+      if (
+        c &&
+        c.ownerUserId &&
+        c.ownerUserId !== 'colleague_demo_linh' &&
+        (validOwnerIds.size === 0 || validOwnerIds.has(c.ownerUserId))
+      ) {
         mapByOwner.set(c.ownerUserId, c);
       }
     }
     return Array.from(mapByOwner.values());
-  }, [roomCats]);
+  }, [roomCats, members, currentUserId]);
 
   const placedItems = useMemo(() => {
     const set = new Set<string>(['yarn_ball', 'daisy_bed']);

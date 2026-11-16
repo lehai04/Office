@@ -375,6 +375,50 @@ export function saveRoomCats(
   }
 }
 
+/**
+ * Tự động liên kết lại thú cưng bị lệch ownerUserId cũ sang đúng userId hiện tại của chủ nhân (theo nickname)
+ */
+export function relinkRoomCatsToOwners(
+  catsMap: Record<string, OfficeCatProfile>,
+  members: Array<{ userId: string; nickname: string }>,
+  currentUserId?: string,
+  currentNickname?: string
+): { catsMap: Record<string, OfficeCatProfile>; changed: boolean } {
+  const next: Record<string, OfficeCatProfile> = { ...catsMap };
+  delete next.colleague_demo_linh;
+  let changed = next.colleague_demo_linh !== catsMap.colleague_demo_linh;
+
+  const memberIds = new Set(members.map((m) => m.userId));
+  const nickToUserId = new Map<string, string>();
+  for (const m of members) {
+    nickToUserId.set(m.nickname.trim().toLowerCase(), m.userId);
+  }
+  if (currentUserId && currentNickname) {
+    nickToUserId.set(currentNickname.trim().toLowerCase(), currentUserId);
+    memberIds.add(currentUserId);
+  }
+
+  for (const [key, pet] of Object.entries(catsMap)) {
+    if (!pet || key === 'colleague_demo_linh') continue;
+    const ownerNickKey = (pet.ownerNickname || '').trim().toLowerCase();
+    const targetUserId = nickToUserId.get(ownerNickKey);
+    if (
+      targetUserId &&
+      (!memberIds.has(pet.ownerUserId) || key !== targetUserId) &&
+      !next[targetUserId]
+    ) {
+      delete next[key];
+      next[targetUserId] = {
+        ...pet,
+        ownerUserId: targetUserId,
+      };
+      changed = true;
+    }
+  }
+
+  return { catsMap: next, changed };
+}
+
 export function loadMyCatInventory(userId: string): Record<string, number> {
   try {
     const raw = window.localStorage.getItem(`${STORAGE_MY_INVENTORY_PREFIX}${userId}`);
