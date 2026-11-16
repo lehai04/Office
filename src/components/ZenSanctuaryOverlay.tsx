@@ -201,11 +201,10 @@ export const ZenSanctuaryOverlay: React.FC<ZenSanctuaryOverlayProps> = ({
                     type="button"
                     data-testid={`zen-music-${track.id}`}
                     onClick={() => onSelectTrack(track.id)}
-                    className={`flex items-center justify-between rounded-xl px-2.5 py-1.5 text-left text-xs font-medium transition-all cursor-pointer ${
-                      isSelected
+                    className={`flex items-center justify-between rounded-xl px-2.5 py-1.5 text-left text-xs font-medium transition-all cursor-pointer ${isSelected
                         ? 'bg-amber-400 text-slate-950 font-bold shadow-sm'
                         : 'bg-white/5 text-amber-100/90 hover:bg-white/10 border border-amber-500/20'
-                    }`}
+                      }`}
                     title={track.description}
                   >
                     <span>{track.name}</span>
@@ -218,11 +217,10 @@ export const ZenSanctuaryOverlay: React.FC<ZenSanctuaryOverlayProps> = ({
                 type="button"
                 data-testid="zen-upload-mp3-btn"
                 onClick={() => fileInputRef.current?.click()}
-                className={`flex items-center justify-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
-                  selectedTrackId === 'custom_mp3'
+                className={`flex items-center justify-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-semibold transition-all cursor-pointer ${selectedTrackId === 'custom_mp3'
                     ? 'bg-emerald-400 text-slate-950 font-bold shadow-sm'
                     : 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 border border-emerald-400/30'
-                }`}
+                  }`}
               >
                 <Upload className="h-3.5 w-3.5 shrink-0" />
                 <span className="truncate">
@@ -249,9 +247,8 @@ export const ZenSanctuaryOverlay: React.FC<ZenSanctuaryOverlayProps> = ({
 
         {/* Danh sách các nút dọc bên phải (Có thanh cuộn nhẹ nếu màn hình điện thoại thấp) */}
         <div
-          className={`flex flex-col items-end gap-1.5 overflow-y-auto no-scrollbar max-h-[calc(100dvh-160px)] pr-0.5 transition-all ${
-            isCollapsed ? 'hidden' : 'flex'
-          }`}
+          className={`flex flex-col items-end gap-1.5 overflow-y-auto no-scrollbar max-h-[calc(100dvh-160px)] pr-0.5 transition-all ${isCollapsed ? 'hidden' : 'flex'
+            }`}
         >
           {/* Cụm chuyển đổi 3 bàn thờ: Phật • Ông Địa • Thần Tài */}
           <div className="flex items-center gap-1 rounded-2xl border border-amber-500/35 bg-[#211811]/90 p-1 shadow-lg backdrop-blur-md w-[142px] sm:w-[158px]">
@@ -264,11 +261,10 @@ export const ZenSanctuaryOverlay: React.FC<ZenSanctuaryOverlayProps> = ({
                   data-testid={`deity-select-${key}`}
                   onClick={() => onSelectDeity(key)}
                   title={DEITY_OPTIONS[key].title}
-                  className={`flex-1 rounded-xl py-1 text-[11px] font-bold transition-all cursor-pointer ${
-                    active
+                  className={`flex-1 rounded-xl py-1 text-[11px] font-bold transition-all cursor-pointer ${active
                       ? 'bg-amber-400 text-slate-950 shadow-sm'
                       : 'text-amber-100/80 hover:bg-white/10'
-                  }`}
+                    }`}
                 >
                   {key === 'buddha' ? '🪷 Phật' : key === 'ong_dia' ? '🪭 Địa' : '🪙 Tài'}
                 </button>
@@ -349,9 +345,8 @@ export const ZenSanctuaryOverlay: React.FC<ZenSanctuaryOverlayProps> = ({
             type="button"
             data-testid="zen-toggle-fpv-btn"
             onClick={onToggleCameraMode}
-            className={`${pillBaseClass} ${
-              cameraMode === 'first_person' ? pillActiveStyle : pillDefaultStyle
-            }`}
+            className={`${pillBaseClass} ${cameraMode === 'first_person' ? pillActiveStyle : pillDefaultStyle
+              }`}
           >
             <span className="text-base leading-none">🎥</span>
             <span>{cameraMode === 'first_person' ? 'Góc nhìn thứ 1' : 'Góc nhìn 3D'}</span>

@@ -1548,60 +1548,19 @@ const OutdoorCatCourtyard3D: React.FC<{
   currentUserId: string;
   onPetCatIn3D?: (cat: OfficeCatProfile) => void;
   onOpenCatGame?: () => void;
-}> = ({ roomCats = {}, members = [], currentUserId, onPetCatIn3D }) => {
+}> = ({ roomCats = {}, onPetCatIn3D }) => {
   const [selectedCatOwnerId, setSelectedCatOwnerId] = useState<string | null>(null);
 
+  // Chỉ hiển thị các bé mèo THẬT mà người chơi trong phòng đã nhận nuôi & đồng bộ
   const displayCats = useMemo(() => {
     const mapByOwner = new Map<string, OfficeCatProfile>();
-
-    // 1. Lấy toàn bộ các bé mèo đã được người chơi nhận nuôi & đồng bộ trong phòng
     for (const c of Object.values(roomCats)) {
-      if (c && c.ownerUserId) {
+      if (c && c.ownerUserId && c.ownerUserId !== 'colleague_demo_linh') {
         mapByOwner.set(c.ownerUserId, c);
       }
     }
-
-    // 2. Đảm bảo mỗi thành viên đang có mặt trong phòng đều có bé mèo đi dạo cùng nhau
-    const breedPool = CAT_BREEDS.map((b) => b.id);
-    const actPool: ('walking' | 'playing' | 'sleeping')[] = ['walking', 'playing', 'sleeping'];
-    members.forEach((m, idx) => {
-      if (!mapByOwner.has(m.userId)) {
-        // Nếu là đồng nghiệp khác trong phòng chưa kịp đặt tên mèo riêng, tạo sẵn bé mèo đồng hành theo tên đồng nghiệp
-        if (m.userId !== currentUserId) {
-          mapByOwner.set(m.userId, {
-            ownerUserId: m.userId,
-            ownerNickname: m.nickname,
-            catName: `Miu ${m.nickname}`,
-            breedId: breedPool[(idx + 1) % breedPool.length],
-            activity: actPool[idx % actPool.length],
-            fullness: 85,
-            happiness: 90,
-            petCount: 2,
-            placedYardItems: [],
-            updatedAt: 1,
-          });
-        }
-      }
-    });
-
-    const list = Array.from(mapByOwner.values());
-    const hasColleagueCat = list.some((c) => c.ownerUserId !== currentUserId);
-    if (!hasColleagueCat) {
-      list.push({
-        ownerUserId: 'colleague_demo_linh',
-        ownerNickname: 'Linh Đan',
-        catName: 'Bông Gòn',
-        breedId: 'white',
-        activity: 'playing',
-        fullness: 90,
-        happiness: 95,
-        petCount: 5,
-        placedYardItems: ['yarn_ball', 'daisy_bed'],
-        updatedAt: 1,
-      });
-    }
-    return list;
-  }, [roomCats, members, currentUserId]);
+    return Array.from(mapByOwner.values());
+  }, [roomCats]);
 
   const placedItems = useMemo(() => {
     const set = new Set<string>(['yarn_ball', 'daisy_bed']);

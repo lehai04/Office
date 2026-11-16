@@ -425,9 +425,25 @@ function ensureMqttBridge(): void {
           if (!msg || msg.senderPeerId === PEER_NODE_ID) return;
 
           if (msg.type === 'peer_hello') {
+            const currentDb = loadStaticDb();
+            if (!currentDb.roomCats) currentDb.roomCats = {};
+            if (!currentDb.roomGiftRequests) currentDb.roomGiftRequests = {};
+            for (const r of Object.values(currentDb.rooms || {})) {
+              const localCats = loadRoomCats(r.code);
+              if (Object.keys(localCats).length > 0) {
+                currentDb.roomCats[r.code] = {
+                  ...localCats,
+                  ...(currentDb.roomCats[r.code] || {}),
+                };
+              }
+              const localGifts = loadRoomGiftRequests(r.code);
+              if (localGifts.length > 0 && (!currentDb.roomGiftRequests[r.code] || currentDb.roomGiftRequests[r.code].length === 0)) {
+                currentDb.roomGiftRequests[r.code] = localGifts;
+              }
+            }
             publishOverMqtt({
               type: 'peer_sync',
-              db: loadStaticDb(),
+              db: currentDb,
             });
             return;
           }

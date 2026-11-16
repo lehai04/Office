@@ -324,17 +324,39 @@ export function App() {
   // Tải dữ liệu Mèo trong phòng, Túi đồ cá nhân & Yêu cầu Quà tặng khi vào phòng
   useEffect(() => {
     if (!session || !room) return;
-    setRoomCats(loadRoomCats(room.code));
+    const loadedCats = loadRoomCats(room.code);
+    delete loadedCats.colleague_demo_linh;
+    const loadedGifts = loadRoomGiftRequests(room.code);
+    setRoomCats(loadedCats);
     setMyCatInventory(loadMyCatInventory(session.userId));
-    setGiftRequests(loadRoomGiftRequests(room.code));
+    setGiftRequests(loadedGifts);
+
+    // Tự động phát đồng bộ mèo & quà của mình lên phòng sau 1.8s để mọi người khác nhìn thấy ngay
+    const syncTimer = window.setTimeout(() => {
+      const latestCats = loadRoomCats(room.code);
+      delete latestCats.colleague_demo_linh;
+      const latestGifts = loadRoomGiftRequests(room.code);
+      if (Object.keys(latestCats).length > 0 || latestGifts.length > 0) {
+        broadcastCatSyncEvent({
+          roomCode: room.code,
+          roomCats: latestCats,
+          giftRequests: latestGifts,
+        });
+      }
+    }, 1800);
 
     const onStorageChange = () => {
-      setRoomCats(loadRoomCats(room.code));
+      const updatedCats = loadRoomCats(room.code);
+      delete updatedCats.colleague_demo_linh;
+      setRoomCats(updatedCats);
       setMyCatInventory(loadMyCatInventory(session.userId));
       setGiftRequests(loadRoomGiftRequests(room.code));
     };
     window.addEventListener('storage', onStorageChange);
-    return () => window.removeEventListener('storage', onStorageChange);
+    return () => {
+      window.clearTimeout(syncTimer);
+      window.removeEventListener('storage', onStorageChange);
+    };
   }, [session, room]);
 
   // Nếu bạn bận, mèo vẫn tự đi dạo hoặc nghỉ ngơi theo nhịp tự nhiên
