@@ -527,6 +527,8 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
   const [catBounceKey, setCatBounceKey] = useState<number>(0);
   const [dogNameDraft, setDogNameDraft] = useState<string>('');
   const [previewShopPetId, setPreviewShopPetId] = useState<CatBreedId>('monkey');
+  const [editingPetName, setEditingPetName] = useState<boolean>(false);
+  const [petNameDraft, setPetNameDraft] = useState<string>('');
 
   // Phát nhạc nền nhẹ nhàng vui tươi trong game Nuôi Mèo khi bật âm thanh
   useEffect(() => {
@@ -2256,16 +2258,70 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
                         />
                       </div>
 
-                      {/* Tên bé mèo & Gợi ý chạm */}
-                      <div className="z-10">
-                        <h3
-                          data-testid="my-cat-name-heading"
-                          className="text-base font-black text-[#3d2b1f]"
-                        >
-                          {myCat.catName}
-                        </h3>
-                        <p className="text-[10px] font-bold text-[#7c6855]">
-                          Chạm vào mèo để nghe tiếng kêu • Đã vuốt ve {myCat.petCount} lần
+                      {/* Tên thú cưng (có nút đổi tên) & Gợi ý chạm */}
+                      <div className="z-10" onClick={(e) => e.stopPropagation()}>
+                        {editingPetName ? (
+                          <form
+                            onSubmit={(e) => {
+                              e.preventDefault();
+                              const trimmed = petNameDraft.trim();
+                              if (!trimmed) return;
+                              onAdoptOrUpdateMyCat({
+                                ...myCat,
+                                catName: trimmed,
+                                updatedAt: Date.now(),
+                              });
+                              setEditingPetName(false);
+                              setCatNotice(`✏️ Đã đổi tên thú cưng thành "${trimmed}"!`);
+                            }}
+                            className="flex items-center justify-center gap-1.5"
+                          >
+                            <input
+                              type="text"
+                              maxLength={20}
+                              autoFocus
+                              value={petNameDraft}
+                              onChange={(e) => setPetNameDraft(e.target.value)}
+                              className="w-36 rounded-xl border-2 border-amber-400 bg-white px-2.5 py-1 text-xs font-black text-[#3d2b1f] outline-none"
+                              placeholder="Tên mới..."
+                            />
+                            <button
+                              type="submit"
+                              className="rounded-xl bg-emerald-500 hover:bg-emerald-400 px-2.5 py-1 text-[11px] font-black text-white cursor-pointer"
+                            >
+                              Lưu
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingPetName(false)}
+                              className="rounded-xl bg-white/90 border border-[#d8cbb8] px-2 py-1 text-[11px] font-bold text-[#5c4938] cursor-pointer"
+                            >
+                              Hủy
+                            </button>
+                          </form>
+                        ) : (
+                          <div className="flex items-center justify-center gap-1.5">
+                            <h3
+                              data-testid="my-cat-name-heading"
+                              className="text-base font-black text-[#3d2b1f]"
+                            >
+                              {myCat.catName}
+                            </h3>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPetNameDraft(myCat.catName);
+                                setEditingPetName(true);
+                              }}
+                              className="rounded-full bg-white/90 hover:bg-amber-100 border border-[#d8cbb8] px-2 py-0.5 text-[10px] font-black text-[#5c4938] shadow-sm cursor-pointer"
+                              title="Đổi tên thú cưng"
+                            >
+                              ✏️ Đổi tên
+                            </button>
+                          </div>
+                        )}
+                        <p className="text-[10px] font-bold text-[#7c6855] mt-0.5">
+                          Chạm vào thú cưng để nghe tiếng kêu • Đã vuốt ve {myCat.petCount} lần
                         </p>
                       </div>
                     </div>
