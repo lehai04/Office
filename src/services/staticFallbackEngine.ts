@@ -15,6 +15,14 @@ import type {
   PublicDiaryEntry,
   MyDiaryEntry,
 } from '../types/office';
+import {
+  loadRoomCats,
+  saveRoomCats,
+  loadRoomGiftRequests,
+  saveRoomGiftRequests,
+  type OfficeCatProfile,
+  type CatGiftRequest,
+} from '../utils/officeCatsData';
 
 interface StoredAccount {
   userId: string;
@@ -56,6 +64,8 @@ interface StaticDatabaseSchema {
   messages: ChatMessage[];
   attendance: Record<string, AttendanceRecord>;
   diaryEntries: StoredDiaryEntry[];
+  roomCats?: Record<string, Record<string, OfficeCatProfile>>;
+  roomGiftRequests?: Record<string, CatGiftRequest[]>;
 }
 
 const STATIC_DB_KEY = 'van_phong_ao_static_db_v3';
@@ -301,6 +311,46 @@ function mergeRemoteDatabase(
       local.diaryEntries.push(entry);
     } else if (entry.updatedAt >= local.diaryEntries[idx].updatedAt) {
       local.diaryEntries[idx] = entry;
+    }
+  }
+
+  // Merge roomCats across devices
+  if (!local.roomCats) local.roomCats = {};
+  if (remoteDb.roomCats) {
+    for (const [rCode, catsMap] of Object.entries(remoteDb.roomCats)) {
+      if (!local.roomCats[rCode]) {
+        local.roomCats[rCode] = loadRoomCats(rCode);
+      }
+      for (const [uid, remoteCat] of Object.entries(catsMap || {})) {
+        const curCat = local.roomCats[rCode][uid];
+        if (!curCat || (remoteCat.updatedAt || 0) >= (curCat.updatedAt || 0)) {
+          local.roomCats[rCode][uid] = remoteCat;
+        }
+      }
+      saveRoomCats(rCode, local.roomCats[rCode]);
+    }
+  }
+
+  // Merge roomGiftRequests across devices
+  if (!local.roomGiftRequests) local.roomGiftRequests = {};
+  if (remoteDb.roomGiftRequests) {
+    for (const [rCode, reqList] of Object.entries(remoteDb.roomGiftRequests)) {
+      const currentList = local.roomGiftRequests[rCode] || loadRoomGiftRequests(rCode);
+      const mapById = new Map<string, CatGiftRequest>();
+      for (const item of currentList) {
+        mapById.set(item.id, item);
+      }
+      for (const rItem of reqList || []) {
+        const existing = mapById.get(rItem.id);
+        if (!existing || rItem.status === 'fulfilled') {
+          mapById.set(rItem.id, rItem);
+        }
+      }
+      const mergedList = Array.from(mapById.values()).sort(
+        (a, b) => b.createdAt - a.createdAt
+      );
+      local.roomGiftRequests[rCode] = mergedList;
+      saveRoomGiftRequests(rCode, mergedList);
     }
   }
 
@@ -590,11 +640,58 @@ function buildRoomStatePayload(db: StaticDatabaseSchema, room: RoomInfo) {
     };
   });
 
+  const roomCatsMap = {
+    ...loadRoomCats(room.code),
+    ...((db.roomCats && db.roomCats[room.code]) || {}),
+  };
+  const roomGiftsList =
+    (db.roomGiftRequests && db.roomGiftRequests[room.code]) ||
+    loadRoomGiftRequests(room.code);
+
   return {
     room,
     members,
     seats: enrichedSeats,
+    roomCats: roomCatsMap,
+    giftRequests: roomGiftsList,
   };
+}
+
+/**
+ * Phát sự kiện đồng bộ Mèo Văn Phòng & Quà Tặng qua MQTT + BroadcastChannel + LocalStorage
+ */
+export function broadcastCatSyncEvent(params: {
+  roomCode: string;
+  roomCats: Record<string, OfficeCatProfile>;
+  giftRequests: CatGiftRequest[];
+  giftTransfer?: {
+    reqId: string;
+    receiverUserId: string;
+    itemId: string;
+    giverNickname: string;
+  };
+}): void {
+  const db = loadStaticDb();
+  const room =
+    db.rooms[params.roomCode] ||
+    Object.values(db.rooms).find((r) => r.code === params.roomCode);
+  if (!db.roomCats) db.roomCats = {};
+  if (!db.roomGiftRequests) db.roomGiftRequests = {};
+
+  db.roomCats[params.roomCode] = params.roomCats;
+  db.roomGiftRequests[params.roomCode] = params.giftRequests;
+  saveRoomCats(params.roomCode, params.roomCats);
+  saveRoomGiftRequests(params.roomCode, params.giftRequests);
+  saveStaticDb(db);
+
+  if (room) {
+    emitRealtimeEvent(db, room, {
+      type: 'cat_state_sync',
+      roomCats: params.roomCats,
+      giftRequests: params.giftRequests,
+      giftTransfer: params.giftTransfer,
+    });
+  }
 }
 
 function sanitizeDiaryEntryForPublic(entry: StoredDiaryEntry): PublicDiaryEntry {

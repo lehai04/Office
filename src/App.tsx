@@ -46,6 +46,7 @@ import {
 } from './utils/officeCatsData';
 import {
   playCatMeowSound,
+  playChatNotificationSound,
   playWoodenFishSound,
   playTempleBellSound,
   startZenBackgroundMusic,
@@ -53,6 +54,7 @@ import {
   type ZenTrackId,
 } from './utils/zenSound';
 import {
+  broadcastCatSyncEvent,
   changeRoomCodeApi,
   clearSavedSession,
   claimWorkSeat,
@@ -150,6 +152,22 @@ export function App() {
   // State đóng/mở menu gọn trên màn hình (Click để xổ chức năng, click để đóng menu)
   const [topMenuOpen, setTopMenuOpen] = useState<boolean>(false);
   const [dockCollapsed, setDockCollapsed] = useState<boolean>(false);
+
+  // Thông báo tin nhắn nổi toàn cục (hiện dù đang ở bất kỳ phòng/game/tab nào)
+  const [chatAlertBanner, setChatAlertBanner] = useState<{
+    id: string;
+    senderNickname: string;
+    content: string;
+  } | null>(null);
+  const [unreadChatCount, setUnreadChatCount] = useState<number>(0);
+  const chatAlertTimerRef = useRef<number | null>(null);
+  const activePanelRef = useRef<ActivePanel>(activePanel);
+  useEffect(() => {
+    activePanelRef.current = activePanel;
+    if (activePanel === 'chat') {
+      setUnreadChatCount(0);
+    }
+  }, [activePanel]);
 
   // Bong bóng chat 5 giây trên đầu nhân vật
   const [activeBubbles, setActiveBubbles] = useState<Record<string, ActiveSpeechBubble>>({});
@@ -346,6 +364,44 @@ export function App() {
     return () => window.clearInterval(timer);
   }, [session, room, Boolean(session && roomCats[session.userId])]);
 
+  const triggerGlobalChatAlert = useCallback(
+    (incoming: ChatMessage) => {
+      playChatNotificationSound();
+      setChatAlertBanner({
+        id: incoming.id,
+        senderNickname: incoming.nickname,
+        content: incoming.content,
+      });
+      if (chatAlertTimerRef.current) {
+        window.clearTimeout(chatAlertTimerRef.current);
+      }
+      chatAlertTimerRef.current = window.setTimeout(() => {
+        setChatAlertBanner((prev) => (prev?.id === incoming.id ? null : prev));
+      }, 6500);
+
+      if (activePanelRef.current !== 'chat') {
+        setUnreadChatCount((c) => c + 1);
+      }
+
+      // Thông báo hệ thống trình duyệt nếu đang ở tab/ứng dụng khác
+      if (
+        typeof window !== 'undefined' &&
+        'Notification' in window &&
+        window.Notification.permission === 'granted' &&
+        document.hidden
+      ) {
+        try {
+          new window.Notification(`💬 ${incoming.nickname} nhắn tin trong phòng`, {
+            body: incoming.content,
+          });
+        } catch {
+          // ignore
+        }
+      }
+    },
+    []
+  );
+
   const handleAdoptOrUpdateMyCat = useCallback(
     (catProfile: OfficeCatProfile, broadcastMsg?: string) => {
       if (!room) return;
@@ -355,6 +411,11 @@ export function App() {
           [catProfile.ownerUserId]: catProfile,
         };
         saveRoomCats(room.code, nextMap);
+        broadcastCatSyncEvent({
+          roomCode: room.code,
+          roomCats: nextMap,
+          giftRequests,
+        });
         return nextMap;
       });
       if (broadcastMsg && session) {
@@ -366,7 +427,7 @@ export function App() {
         ).catch(() => {});
       }
     },
-    [room, session]
+    [room, session, giftRequests]
   );
 
   const handleUpdateMyCatInventory = useCallback(
@@ -384,6 +445,11 @@ export function App() {
       setGiftRequests((prev) => {
         const nextList = [req, ...prev];
         saveRoomGiftRequests(room.code, nextList);
+        broadcastCatSyncEvent({
+          roomCode: room.code,
+          roomCats,
+          giftRequests: nextList,
+        });
         return nextList;
       });
       const item = CAT_SHOP_ITEMS.find((i) => i.id === req.itemId);
@@ -399,7 +465,7 @@ export function App() {
         session.sessionToken
       ).catch(() => {});
     },
-    [room, session]
+    [room, session, roomCats]
   );
 
   const handleFulfillGiftRequest = useCallback(
@@ -430,7 +496,7 @@ export function App() {
         saveMyCatInventory(targetReq.requesterUserId, receiverInv);
       }
 
-      // 3. Tự động đóng yêu cầu (status = 'fulfilled')
+      // 3. Tự động đóng yêu cầu (status = 'fulfilled') & đồng bộ đa thiết bị
       setGiftRequests((prev) => {
         const nextList = prev.map((r) =>
           r.id === reqId
@@ -442,6 +508,17 @@ export function App() {
             : r
         );
         saveRoomGiftRequests(room.code, nextList);
+        broadcastCatSyncEvent({
+          roomCode: room.code,
+          roomCats,
+          giftRequests: nextList,
+          giftTransfer: {
+            reqId,
+            receiverUserId: targetReq.requesterUserId,
+            itemId: targetReq.itemId,
+            giverNickname: session.nickname,
+          },
+        });
         return nextList;
       });
 
@@ -455,7 +532,7 @@ export function App() {
         session.sessionToken
       ).catch(() => {});
     },
-    [room, session, giftRequests, myCatInventory]
+    [room, session, giftRequests, myCatInventory, roomCats]
   );
 
   const handlePetCatIn3D = useCallback(
@@ -471,13 +548,18 @@ export function App() {
       setRoomCats((prev) => {
         const nextMap = { ...prev, [cat.ownerUserId]: updated };
         saveRoomCats(room.code, nextMap);
+        broadcastCatSyncEvent({
+          roomCode: room.code,
+          roomCats: nextMap,
+          giftRequests,
+        });
         return nextMap;
       });
       showToast(
         `🤚 Meow~ Bạn vừa vuốt ve bé "${cat.catName}" (${cat.ownerNickname})! 💕`
       );
     },
-    [room, showToast]
+    [room, showToast, giftRequests]
   );
 
   const hydrateRoomData = useCallback(
@@ -565,6 +647,46 @@ export function App() {
         return;
       }
 
+      if (data.roomCats && typeof data.roomCats === 'object') {
+        const incomingCats = data.roomCats as Record<string, OfficeCatProfile>;
+        setRoomCats((prev) => {
+          const merged = { ...prev, ...incomingCats };
+          saveRoomCats(room.code, merged);
+          return merged;
+        });
+      }
+
+      if (Array.isArray(data.giftRequests)) {
+        const incomingGifts = data.giftRequests as CatGiftRequest[];
+        setGiftRequests(incomingGifts);
+        saveRoomGiftRequests(room.code, incomingGifts);
+      }
+
+      if (data.type === 'cat_state_sync') {
+        if (data.giftTransfer && typeof data.giftTransfer === 'object') {
+          const gt = data.giftTransfer as {
+            reqId: string;
+            receiverUserId: string;
+            itemId: string;
+            giverNickname: string;
+          };
+          if (gt.receiverUserId === session.userId) {
+            const curInv = loadMyCatInventory(session.userId);
+            const nextInv = { ...curInv, [gt.itemId]: (curInv[gt.itemId] || 0) + 1 };
+            setMyCatInventory(nextInv);
+            saveMyCatInventory(session.userId, nextInv);
+            const giftedItem = CAT_SHOP_ITEMS.find((i) => i.id === gt.itemId);
+            playCatMeowSound('adopt');
+            showToast(
+              `🎁 ${gt.giverNickname} vừa tặng bạn 1x ${
+                giftedItem ? `${giftedItem.icon} ${giftedItem.name}` : gt.itemId
+              }! Đã thêm vào Túi đồ.`
+            );
+          }
+        }
+        return;
+      }
+
       if (data.type === 'connected' || data.type === 'room_state') {
         if (data.room && typeof data.room === 'object') {
           setRoom(data.room as RoomInfo);
@@ -573,6 +695,7 @@ export function App() {
         if (Array.isArray(data.seats)) setSeats(data.seats as WorkSeat[]);
       } else if (data.type === 'chat_message' && data.message) {
         const incoming = data.message as ChatMessage;
+        let isNewMsg = false;
         setMessages((prev) => {
           const exists = prev.some(
             (m) =>
@@ -584,15 +707,21 @@ export function App() {
               m.clientMsgId === incoming.clientMsgId ? { ...incoming, status: 'sent' } : m
             );
           }
+          isNewMsg = true;
           return [...prev, { ...incoming, status: 'sent' }];
         });
         triggerSpeechBubble(incoming.userId, incoming.content);
+
+        // Hiện thông báo tin nhắn nổi toàn cục cho người chơi dù đang ở bất kỳ màn hình nào
+        if (incoming.userId !== session.userId || isNewMsg || activePanelRef.current !== 'chat') {
+          triggerGlobalChatAlert(incoming);
+        }
+
         if (
           incoming.content.startsWith('🎯 [THÁCH ĐẤU PHI TIÊU]') &&
           incoming.userId !== session.userId
         ) {
           setActiveChallengeBanner(incoming.content);
-          showToast(`${incoming.nickname} vừa thách đấu Phóng Phi Tiêu trong 🎮 Phòng Giải Trí!`);
         }
       } else if (data.type === 'diary_sync') {
         fetchDiaryLists(room.code, session.sessionToken)
@@ -789,6 +918,14 @@ export function App() {
       return [...prev, optimisticMsg];
     });
 
+    if (
+      typeof window !== 'undefined' &&
+      'Notification' in window &&
+      window.Notification.permission === 'default'
+    ) {
+      window.Notification.requestPermission().catch(() => {});
+    }
+
     try {
       const { message } = await sendChatMessage(
         room.code,
@@ -802,6 +939,7 @@ export function App() {
         )
       );
       triggerSpeechBubble(session.userId, message.content);
+      triggerGlobalChatAlert(message);
     } catch {
       setMessages((prev) =>
         prev.map((m) =>
@@ -1167,11 +1305,60 @@ export function App() {
         </div>
       </header>
 
+      {/* THÔNG BÁO TIN NHẮN NỔI TOÀN CỤC (Hiện trên cùng mọi phòng/game/bảng khi có tin nhắn mới) */}
+      {chatAlertBanner && (
+        <div
+          data-testid="global-chat-alert-banner"
+          className="fixed top-12 left-1/2 -translate-x-1/2 z-[100] flex items-center justify-between gap-2.5 w-[calc(100vw-24px)] max-w-md rounded-2xl border-2 border-emerald-400 bg-slate-950/95 px-3.5 py-2.5 text-xs text-white shadow-2xl backdrop-blur-xl"
+        >
+          <div
+            onClick={() => {
+              setChatAlertBanner(null);
+              setActivePanel('chat');
+            }}
+            className="flex flex-1 items-center gap-2 min-w-0 cursor-pointer"
+          >
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-slate-950 font-black">
+              💬
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="font-black text-emerald-300 truncate">
+                {chatAlertBanner.senderNickname} vừa nhắn tin:
+              </div>
+              <div className="text-slate-100 truncate font-medium">
+                {chatAlertBanner.content}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                setChatAlertBanner(null);
+                setActivePanel('chat');
+              }}
+              className="rounded-xl bg-emerald-500 hover:bg-emerald-400 px-2.5 py-1 text-[11px] font-black text-slate-950 cursor-pointer"
+            >
+              Xem
+            </button>
+            <button
+              type="button"
+              onClick={() => setChatAlertBanner(null)}
+              className="rounded-lg p-1 text-slate-400 hover:text-white cursor-pointer"
+              title="Đóng thông báo"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* THÔNG BÁO NHANH (TOAST) */}
       {toastMessage && (
         <div
           data-testid="toast-banner"
-          className="fixed top-16 left-1/2 -translate-x-1/2 z-40 rounded-2xl border border-emerald-400/40 bg-slate-900/95 px-4 py-2.5 text-xs sm:text-sm font-medium text-emerald-200 shadow-2xl backdrop-blur-md"
+          className="fixed top-16 left-1/2 -translate-x-1/2 z-[90] rounded-2xl border border-emerald-400/40 bg-slate-900/95 px-4 py-2 text-xs font-medium text-emerald-200 shadow-2xl backdrop-blur-md"
         >
           {toastMessage}
         </div>
@@ -1296,6 +1483,11 @@ export function App() {
         >
           <ChevronUp className="h-4 w-4" />
           <span>Menu</span>
+          {unreadChatCount > 0 && (
+            <span className="rounded-full bg-rose-500 px-1.5 py-0.2 text-[10px] font-black text-white animate-bounce">
+              {unreadChatCount}
+            </span>
+          )}
         </button>
       ) : (
         <nav
@@ -1328,10 +1520,16 @@ export function App() {
           >
             <MessageSquare className="h-3.5 w-3.5 shrink-0" />
             <span>Chat</span>
-            {messages.length > 0 && (
-              <span className="rounded-full bg-white/20 px-1 text-[9px] hidden sm:inline">
-                {messages.length}
+            {unreadChatCount > 0 ? (
+              <span className="rounded-full bg-rose-500 px-1.5 py-0.2 text-[9px] font-black text-white animate-bounce">
+                {unreadChatCount}
               </span>
+            ) : (
+              messages.length > 0 && (
+                <span className="rounded-full bg-white/20 px-1 text-[9px] hidden sm:inline">
+                  {messages.length}
+                </span>
+              )
             )}
           </button>
 

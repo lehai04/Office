@@ -549,3 +549,30 @@ export function stopCatGameMusic(): void {
   }
 }
 
+/**
+ * Phát âm báo tin nhắn mới ("Ting-tong~" nhẹ nhàng, rõ ràng) khi có người nhắn tin trong phòng
+ */
+export function playChatNotificationSound(): void {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+
+  const notes = [587.33, 880]; // D5 -> A5
+  notes.forEach((freq, idx) => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    const t0 = now + idx * 0.09;
+    osc.frequency.setValueAtTime(freq, t0);
+
+    gain.gain.setValueAtTime(0.001, t0);
+    gain.gain.linearRampToValueAtTime(0.22, t0 + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0008, t0 + 0.35);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(t0);
+    osc.stop(t0 + 0.38);
+  });
+}
+

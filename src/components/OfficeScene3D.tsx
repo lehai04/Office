@@ -1544,14 +1544,47 @@ const LowPolyCat3D: React.FC<{
  */
 const OutdoorCatCourtyard3D: React.FC<{
   roomCats?: Record<string, OfficeCatProfile>;
+  members?: RoomMember[];
   currentUserId: string;
   onPetCatIn3D?: (cat: OfficeCatProfile) => void;
   onOpenCatGame?: () => void;
-}> = ({ roomCats = {}, currentUserId, onPetCatIn3D }) => {
+}> = ({ roomCats = {}, members = [], currentUserId, onPetCatIn3D }) => {
   const [selectedCatOwnerId, setSelectedCatOwnerId] = useState<string | null>(null);
 
   const displayCats = useMemo(() => {
-    const list = Object.values(roomCats);
+    const mapByOwner = new Map<string, OfficeCatProfile>();
+
+    // 1. Lấy toàn bộ các bé mèo đã được người chơi nhận nuôi & đồng bộ trong phòng
+    for (const c of Object.values(roomCats)) {
+      if (c && c.ownerUserId) {
+        mapByOwner.set(c.ownerUserId, c);
+      }
+    }
+
+    // 2. Đảm bảo mỗi thành viên đang có mặt trong phòng đều có bé mèo đi dạo cùng nhau
+    const breedPool = CAT_BREEDS.map((b) => b.id);
+    const actPool: ('walking' | 'playing' | 'sleeping')[] = ['walking', 'playing', 'sleeping'];
+    members.forEach((m, idx) => {
+      if (!mapByOwner.has(m.userId)) {
+        // Nếu là đồng nghiệp khác trong phòng chưa kịp đặt tên mèo riêng, tạo sẵn bé mèo đồng hành theo tên đồng nghiệp
+        if (m.userId !== currentUserId) {
+          mapByOwner.set(m.userId, {
+            ownerUserId: m.userId,
+            ownerNickname: m.nickname,
+            catName: `Miu ${m.nickname}`,
+            breedId: breedPool[(idx + 1) % breedPool.length],
+            activity: actPool[idx % actPool.length],
+            fullness: 85,
+            happiness: 90,
+            petCount: 2,
+            placedYardItems: [],
+            updatedAt: 1,
+          });
+        }
+      }
+    });
+
+    const list = Array.from(mapByOwner.values());
     const hasColleagueCat = list.some((c) => c.ownerUserId !== currentUserId);
     if (!hasColleagueCat) {
       list.push({
@@ -1564,11 +1597,11 @@ const OutdoorCatCourtyard3D: React.FC<{
         happiness: 95,
         petCount: 5,
         placedYardItems: ['yarn_ball', 'daisy_bed'],
-        updatedAt: Date.now(),
+        updatedAt: 1,
       });
     }
     return list;
-  }, [roomCats, currentUserId]);
+  }, [roomCats, members, currentUserId]);
 
   const placedItems = useMemo(() => {
     const set = new Set<string>(['yarn_ball', 'daisy_bed']);
@@ -1882,6 +1915,7 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
           {/* KHU VỰC BÊN NGOÀI VĂN PHÒNG (Sân Vườn Mèo 3D: Gặp mèo của mình & mèo của đồng nghiệp) */}
           <OutdoorCatCourtyard3D
             roomCats={roomCats}
+            members={members}
             currentUserId={currentUserId}
             onPetCatIn3D={onPetCatIn3D}
             onOpenCatGame={onEnterGameRoom}

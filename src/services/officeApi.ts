@@ -11,12 +11,13 @@ import type {
   WorkSeat,
 } from '../types/office';
 import {
+  broadcastCatSyncEvent,
   handleStaticFallbackRequest,
   subscribeStaticRealtime,
   type StaticRealtimeEvent,
 } from './staticFallbackEngine';
 
-export { subscribeStaticRealtime, type StaticRealtimeEvent };
+export { broadcastCatSyncEvent, subscribeStaticRealtime, type StaticRealtimeEvent };
 
 const STORAGE_PREFIX = 'van_phong_ao_session_v2';
 const API_ORIGIN_STORAGE_KEY = 'van_phong_ao_api_origin';
