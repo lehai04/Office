@@ -1038,21 +1038,13 @@ export function App() {
           showToast('Chào mừng bạn! Hãy bấm vào một ghế trống trong phòng để chọn chỗ ngồi cố định.');
         }
       } else {
-        // F5: trở về đúng vị trí đang ở trước khi refresh
-        try {
-          const savedPanel = window.sessionStorage.getItem('van_phong_ao_active_panel_v1') as ActivePanel | null;
-          const myId = loadSavedSession()?.userId;
-          const meMember = fullState.members.find((m) => m.userId === myId);
-          if (meMember?.inZenRoom) {
-            setActivePanel('zen');
-          } else if (savedPanel && savedPanel !== 'zen') {
-            setActivePanel(savedPanel);
-          } else {
-            setActivePanel('none');
-          }
-        } catch {
-          // ignore
+        // F5: luôn thoát phòng thờ (nếu đang ở) để về lại chỗ ngồi ngoài văn phòng chính
+        const myId = loadSavedSession()?.userId;
+        const meMember = fullState.members.find((m) => m.userId === myId);
+        if (meMember?.inZenRoom) {
+          setZenRoomPresenceApi(roomCode, false, sessionToken).catch(() => {});
         }
+        setActivePanel('none');
       }
     },
     [showToast]
