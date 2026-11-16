@@ -21,6 +21,7 @@ export interface DonationRecord {
   donorNickname: string;
   amountVnd: number;
   meritAwarded: number;
+  kind?: 'donate' | 'rob';
   createdAt: number;
 }
 

@@ -289,6 +289,28 @@ function purgeDeprecatedAccounts(db: StaticDatabaseSchema): void {
         }
       }
     }
+
+    // Chỉ giữ lại duy nhất 1 tài khoản Trụ trì Thanh Ngọc trong mỗi phòng
+    const abbotMembers = (db.roomMembers || []).filter(
+      (m) =>
+        m.roomId === room.id &&
+        !removedUserIds.has(m.userId) &&
+        m.nickname
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .toLowerCase()
+          .includes('thanh ngoc')
+    );
+    if (abbotMembers.length > 1) {
+      const keepAbbot =
+        abbotMembers.find((m) => m.userId === room.managerUserId) ||
+        abbotMembers[0];
+      for (const m of abbotMembers) {
+        if (m.userId !== keepAbbot.userId) {
+          removedUserIds.add(m.userId);
+        }
+      }
+    }
   }
 
   // Dọn thêm trong db.accounts các tài khoản LeLe dư thừa không phải Trưởng phòng nào
@@ -517,9 +539,12 @@ function mergeRemoteDatabase(
         const mergedDonations = Array.from(donMap.values())
           .sort((a, b) => b.createdAt - a.createdAt)
           .slice(0, 50);
-        const sumDonations = mergedDonations.reduce((acc, d) => acc + d.amountVnd, 0);
+        const latestTotal =
+          remoteBox.updatedAt >= localBox.updatedAt
+            ? remoteBox.totalVnd
+            : localBox.totalVnd;
         local.roomDonationBoxes[rCode] = {
-          totalVnd: Math.max(localBox.totalVnd, remoteBox.totalVnd, sumDonations),
+          totalVnd: Math.max(0, latestTotal),
           donations: mergedDonations,
           updatedAt: Math.max(localBox.updatedAt, remoteBox.updatedAt),
         };

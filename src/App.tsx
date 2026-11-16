@@ -191,6 +191,7 @@ export function App() {
     createDefaultDonationBoxState()
   );
   const [isDonationModalOpen, setIsDonationModalOpen] = useState<boolean>(false);
+  const [abbotAtDonationDesk, setAbbotAtDonationDesk] = useState<boolean>(true);
   const [notificationPermission, setNotificationPermission] = useState<
     NotificationPermission | 'unsupported'
   >(() => {
@@ -636,6 +637,7 @@ export function App() {
             donorNickname: session.nickname,
             amountVnd,
             meritAwarded,
+            kind: 'donate' as const,
             createdAt: Date.now(),
           },
           ...roomDonationBox.donations,
@@ -657,6 +659,69 @@ export function App() {
       return { ok: true, meritAwarded };
     },
     [session, room, userWallet, roomDonationBox]
+  );
+
+  const handleRobDonationBox = useCallback(
+    (
+      requestedVnd: number
+    ): { ok: boolean; error?: string; robbedVnd?: number } => {
+      if (!session || !room) {
+        return { ok: false, error: 'Chưa kết nối phòng.' };
+      }
+      if (roomDonationBox.totalVnd <= 0) {
+        return { ok: false, error: 'Hòm công đức đang trống trơn!' };
+      }
+      const robAmount = Math.min(
+        roomDonationBox.totalVnd,
+        Math.max(1000, Math.round(requestedVnd) || roomDonationBox.totalVnd)
+      );
+
+      const nextWallet: UserWalletState = {
+        ...userWallet,
+        balanceVnd: userWallet.balanceVnd + robAmount,
+        updatedAt: Date.now(),
+      };
+      setUserWallet(nextWallet);
+      saveUserWalletState(room.code, session.userId, nextWallet);
+
+      setMeritCount((prev) => {
+        const next = Math.max(0, prev - 5);
+        try {
+          window.localStorage.setItem(
+            `van_phong_ao_zen_merit:${room.code}:${session.userId}`,
+            String(next)
+          );
+        } catch {
+          // ignore
+        }
+        return next;
+      });
+
+      const nextBox: RoomDonationBoxState = {
+        totalVnd: Math.max(0, roomDonationBox.totalVnd - robAmount),
+        donations: [
+          {
+            id: `rob-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            donorUserId: session.userId,
+            donorNickname: session.nickname,
+            amountVnd: robAmount,
+            meritAwarded: -5,
+            kind: 'rob' as const,
+            createdAt: Date.now(),
+          },
+          ...roomDonationBox.donations,
+        ].slice(0, 50),
+        updatedAt: Date.now(),
+      };
+      setRoomDonationBox(nextBox);
+      saveRoomDonationBoxState(room.code, nextBox);
+      broadcastDonationBoxSyncEvent({ roomCode: room.code, donationBox: nextBox });
+
+      playChatNotificationSound();
+      showToast(`🥷 ${session.nickname} vừa cướp ${formatVnd(robAmount)} từ Hòm Công Đức!`);
+      return { ok: true, robbedVnd: robAmount };
+    },
+    [session, room, userWallet, roomDonationBox, showToast]
   );
 
   const triggerGlobalChatAlert = useCallback(
@@ -1220,9 +1285,12 @@ export function App() {
           const mergedDonations = Array.from(donMap.values())
             .sort((a, b) => b.createdAt - a.createdAt)
             .slice(0, 50);
-          const sumDonations = mergedDonations.reduce((acc, d) => acc + d.amountVnd, 0);
+          const latestTotal =
+            incomingBox.updatedAt >= prev.updatedAt
+              ? incomingBox.totalVnd
+              : prev.totalVnd;
           const merged: RoomDonationBoxState = {
-            totalVnd: Math.max(prev.totalVnd, incomingBox.totalVnd, sumDonations),
+            totalVnd: Math.max(0, latestTotal),
             donations: mergedDonations,
             updatedAt: Math.max(prev.updatedAt, incomingBox.updatedAt),
           };
@@ -1758,6 +1826,8 @@ export function App() {
           void enterZenRoom();
           setIsDonationModalOpen(true);
         }}
+        donationTotalVnd={roomDonationBox.totalVnd}
+        abbotAtDonationDesk={abbotAtDonationDesk}
         roomCats={roomCats}
         onPetCatIn3D={handlePetCatIn3D}
       />
@@ -2224,6 +2294,14 @@ export function App() {
         onOpenDonationModal={() => setIsDonationModalOpen(true)}
         onCloseDonationModal={() => setIsDonationModalOpen(false)}
         onDonateToBox={handleDonateToBox}
+        onRobDonationBox={handleRobDonationBox}
+        isAbbotUser={session.nickname
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .toLowerCase()
+          .includes('thanh ngoc')}
+        abbotAtDonationDesk={abbotAtDonationDesk}
+        onToggleAbbotDesk={() => setAbbotAtDonationDesk((v) => !v)}
       />
 
       <EntertainmentRoomModal

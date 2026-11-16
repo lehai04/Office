@@ -46,6 +46,8 @@ interface OfficeScene3DProps {
   onStrikeMo: () => void;
   onRingBell: () => void;
   onOpenDonationBox?: () => void;
+  donationTotalVnd?: number;
+  abbotAtDonationDesk?: boolean;
   // Hệ thống Mèo Văn Phòng ở khu vực bên ngoài văn phòng
   roomCats?: Record<string, OfficeCatProfile>;
   onPetCatIn3D?: (cat: OfficeCatProfile) => void;
@@ -294,11 +296,18 @@ const RadiantHaloAura3D: React.FC = () => {
       ctx.fillStyle = radial;
       ctx.fillRect(0, 0, size, size);
 
-      // 2. Các tia sáng tỏa ra xung quanh (24 tia)
-      const numRays = 24;
+      // 2. Các tia sáng đa sắc vàng-trắng-xanh-cam tỏa ra xung quanh (28 tia như ảnh mẫu)
+      const rayPalettes = [
+        ['rgba(255, 252, 220, 0.96)', 'rgba(253, 224, 71, 0.72)'],
+        ['rgba(224, 242, 254, 0.9)', 'rgba(125, 211, 252, 0.55)'],
+        ['rgba(255, 237, 213, 0.92)', 'rgba(251, 146, 60, 0.62)'],
+        ['rgba(255, 255, 255, 0.95)', 'rgba(254, 240, 138, 0.65)'],
+      ];
+      const numRays = 28;
       for (let i = 0; i < numRays; i++) {
         const angle = (i / numRays) * Math.PI * 2;
-        const spread = 0.085;
+        const spread = 0.075;
+        const [c0, c1] = rayPalettes[i % rayPalettes.length];
         ctx.save();
         ctx.beginPath();
         ctx.moveTo(cx, cy);
@@ -306,15 +315,25 @@ const RadiantHaloAura3D: React.FC = () => {
         ctx.lineTo(cx + Math.cos(angle + spread) * 126, cy + Math.sin(angle + spread) * 126);
         ctx.closePath();
         const rayGrad = ctx.createRadialGradient(cx, cy, 34, cx, cy, 126);
-        rayGrad.addColorStop(0, 'rgba(255, 252, 220, 0.95)');
-        rayGrad.addColorStop(0.45, 'rgba(253, 224, 71, 0.65)');
+        rayGrad.addColorStop(0, c0);
+        rayGrad.addColorStop(0.5, c1);
         rayGrad.addColorStop(1, 'rgba(251, 191, 36, 0)');
         ctx.fillStyle = rayGrad;
         ctx.fill();
         ctx.restore();
       }
 
-      // 3. Vòng hào quang sáng chói quanh đầu
+      // 3. Các đốm sáng lấp lánh quanh vòng hào quang
+      for (let i = 0; i < 14; i++) {
+        const a = (i / 14) * Math.PI * 2 + 0.2;
+        const r = 56 + (i % 3) * 10;
+        ctx.beginPath();
+        ctx.arc(cx + Math.cos(a) * r, cy + Math.sin(a) * r, i % 2 === 0 ? 3 : 2, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+        ctx.fill();
+      }
+
+      // 4. Vòng hào quang sáng chói quanh đầu
       ctx.beginPath();
       ctx.arc(cx, cy, 46, 0, Math.PI * 2);
       ctx.lineWidth = 10;
@@ -439,29 +458,49 @@ const LowPolyCharacter: React.FC<{
     <group position={position} rotation={[0, rotationY, 0]}>
       {!hideMeshInFpv && (
         <>
-          {/* Đài sen dưới chân Trụ trì Thanh Ngọc */}
+          {/* Đài sen hồng 2 tầng cánh nở dưới chân Trụ trì Thanh Ngọc */}
           {isAbbotThanhNgoc && (
             <group position={[0, 0.02, 0]}>
               <mesh position={[0, 0.03, 0]} castShadow receiveShadow>
-                <cylinderGeometry args={[0.42, 0.48, 0.06, 20]} />
+                <cylinderGeometry args={[0.38, 0.44, 0.06, 20]} />
                 <meshStandardMaterial color="#f59e0b" metalness={0.35} roughness={0.4} />
               </mesh>
               <mesh position={[0, 0.07, 0]} receiveShadow>
-                <cylinderGeometry args={[0.32, 0.38, 0.04, 20]} />
-                <meshStandardMaterial color="#f472b6" roughness={0.5} />
+                <cylinderGeometry args={[0.34, 0.36, 0.05, 20]} />
+                <meshStandardMaterial color="#ec4899" roughness={0.45} />
               </mesh>
+              {/* Tầng cánh sen ngoài (10 cánh lớn) */}
               {Array.from({ length: 10 }, (_, idx) => {
                 const angle = (idx / 10) * Math.PI * 2;
                 return (
-                  <mesh
-                    key={idx}
-                    position={[Math.cos(angle) * 0.38, 0.08, Math.sin(angle) * 0.38]}
-                    rotation={[Math.sin(angle) * 0.45, -angle, -Math.cos(angle) * 0.45]}
-                    castShadow
-                  >
-                    <boxGeometry args={[0.14, 0.12, 0.05]} />
-                    <meshStandardMaterial color="#f9a8d4" roughness={0.45} />
-                  </mesh>
+                  <group key={`outer-${idx}`} rotation={[0, -angle, 0]}>
+                    <mesh
+                      position={[0.42, 0.12, 0]}
+                      rotation={[0, 0, -0.82]}
+                      scale={[0.55, 1.1, 0.36]}
+                      castShadow
+                    >
+                      <sphereGeometry args={[0.2, 12, 10]} />
+                      <meshStandardMaterial color="#f472b6" roughness={0.4} />
+                    </mesh>
+                  </group>
+                );
+              })}
+              {/* Tầng cánh sen trong (8 cánh so le) */}
+              {Array.from({ length: 8 }, (_, idx) => {
+                const angle = (idx / 8) * Math.PI * 2 + 0.35;
+                return (
+                  <group key={`inner-${idx}`} rotation={[0, -angle, 0]}>
+                    <mesh
+                      position={[0.3, 0.16, 0]}
+                      rotation={[0, 0, -0.52]}
+                      scale={[0.5, 0.95, 0.34]}
+                      castShadow
+                    >
+                      <sphereGeometry args={[0.18, 12, 10]} />
+                      <meshStandardMaterial color="#f9a8d4" roughness={0.38} />
+                    </mesh>
+                  </group>
                 );
               })}
             </group>
@@ -676,6 +715,7 @@ const ZenSanctuaryRoom3D: React.FC<{
   onStrikeMo: () => void;
   onRingBell: () => void;
   onOpenDonationBox?: () => void;
+  donationTotalVnd?: number;
 }> = ({
   selectedDeity,
   incenseLit,
@@ -684,6 +724,7 @@ const ZenSanctuaryRoom3D: React.FC<{
   onStrikeMo,
   onRingBell,
   onOpenDonationBox,
+  donationTotalVnd = 0,
 }) => {
   const haloRef = useRef<THREE.Mesh>(null);
   const moGroupRef = useRef<THREE.Group>(null);
@@ -836,7 +877,7 @@ const ZenSanctuaryRoom3D: React.FC<{
               }}
               className="whitespace-nowrap rounded-full border border-amber-300 bg-amber-400 hover:bg-amber-300 px-2 py-0.5 text-[10px] font-black text-slate-950 shadow-lg cursor-pointer"
             >
-              🪙 Hòm Công Đức
+              🪙 Hòm Công Đức: {donationTotalVnd.toLocaleString('vi-VN')}đ
             </button>
           </Html>
         </group>
@@ -1871,6 +1912,8 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
   onStrikeMo,
   onRingBell,
   onOpenDonationBox,
+  donationTotalVnd = 0,
+  abbotAtDonationDesk = true,
   roomCats,
   onPetCatIn3D,
 }) => {
@@ -1923,12 +1966,12 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
           .normalize('NFD')
           .replace(/[\u0300-\u036f]/g, '')
           .toLowerCase();
-        if (normalizedNick.includes('thanh ngoc')) {
+        if (normalizedNick.includes('thanh ngoc') && abbotAtDonationDesk) {
           return {
             member,
             isSeated: true,
             position: [-3.76, 0.12, -10.35] as [number, number, number],
-            rotationY: Math.PI / 2, // Ngồi ở bàn góc trái quay mặt sang phải
+            rotationY: Math.PI / 2, // Ngồi ở bàn công đức góc trái quay mặt sang phải
           };
         }
         const slot = zenCushionSlots[zenIdx % zenCushionSlots.length];
@@ -1987,7 +2030,7 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
         rotationY: slot.rotationY,
       };
     });
-  }, [members, currentUserId, inZenRoom, inGameRoom]);
+  }, [members, currentUserId, inZenRoom, inGameRoom, abbotAtDonationDesk]);
 
   const myPlacement = useMemo(() => {
     const found = characterPlacements.find((p) => p.member.userId === currentUserId);
@@ -2104,6 +2147,7 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
             onStrikeMo={onStrikeMo}
             onRingBell={onRingBell}
             onOpenDonationBox={onOpenDonationBox}
+            donationTotalVnd={donationTotalVnd}
           />
 
           {/* GIAN PHÒNG GIẢI TRÍ 3D (Bia Phóng Phi Tiêu 3D • Máy Arcade • Đấu Solo) */}
@@ -2375,15 +2419,13 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
             );
           })}
 
-          {/* Nhân vật mặc định Trụ trì Thanh Ngọc ngồi bàn góc trái Phòng Tịnh Tâm (với hào quang & đài sen) */}
-          {!members.some(
-            (m) =>
-              (m.inZenRoom || (m.userId === currentUserId && inZenRoom)) &&
-              m.nickname
-                .normalize('NFD')
-                .replace(/[\u0300-\u036f]/g, '')
-                .toLowerCase()
-                .includes('thanh ngoc')
+          {/* Nhân vật mặc định Trụ trì Thanh Ngọc ngồi bàn góc trái (chỉ hiện khi phòng chưa có tài khoản Thanh Ngọc nào) */}
+          {!members.some((m) =>
+            m.nickname
+              .normalize('NFD')
+              .replace(/[\u0300-\u036f]/g, '')
+              .toLowerCase()
+              .includes('thanh ngoc')
           ) && (
             <LowPolyCharacter
               gender="female"

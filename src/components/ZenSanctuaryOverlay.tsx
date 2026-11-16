@@ -119,6 +119,14 @@ interface ZenSanctuaryOverlayProps {
     error?: string;
     meritAwarded?: number;
   };
+  onRobDonationBox: (amountVnd: number) => {
+    ok: boolean;
+    error?: string;
+    robbedVnd?: number;
+  };
+  isAbbotUser?: boolean;
+  abbotAtDonationDesk?: boolean;
+  onToggleAbbotDesk?: () => void;
 }
 
 export const ZenSanctuaryOverlay: React.FC<ZenSanctuaryOverlayProps> = ({
@@ -152,6 +160,10 @@ export const ZenSanctuaryOverlay: React.FC<ZenSanctuaryOverlayProps> = ({
   onOpenDonationModal,
   onCloseDonationModal,
   onDonateToBox,
+  onRobDonationBox,
+  isAbbotUser = false,
+  abbotAtDonationDesk = true,
+  onToggleAbbotDesk,
 }) => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -400,7 +412,7 @@ export const ZenSanctuaryOverlay: React.FC<ZenSanctuaryOverlayProps> = ({
             <span>{soundEnabled ? 'Âm thanh: Bật' : 'Âm thanh: Tắt'}</span>
           </button>
 
-          {/* 9. Hòm Công Đức (Bàn Trụ trì Thanh Ngọc) */}
+          {/* 9. Hòm Công Đức (Mọi người đều thấy tiền & có thể bỏ hoặc cướp tiền) */}
           <button
             type="button"
             data-testid="zen-donation-box-btn"
@@ -408,11 +420,25 @@ export const ZenSanctuaryOverlay: React.FC<ZenSanctuaryOverlayProps> = ({
               setDonationNotice(null);
               onOpenDonationModal();
             }}
-            className={`${pillBaseClass} border-amber-300/60 bg-amber-950/90 hover:bg-amber-900/95 text-amber-200`}
+            className={`${pillBaseClass} border-amber-300/60 bg-amber-950/90 hover:bg-amber-900/95 text-amber-200 justify-between`}
           >
-            <span className="text-base leading-none">🪙</span>
-            <span>Hòm Công Đức</span>
+            <span className="flex items-center gap-1.5">
+              <span className="text-base leading-none">🪙</span>
+              <span>Hòm Công Đức</span>
+            </span>
           </button>
+
+          {/* Chức năng riêng của Trụ trì Thanh Ngọc: chọn ngồi Bàn Công Đức hoặc Bồ đoàn */}
+          {isAbbotUser && onToggleAbbotDesk && (
+            <button
+              type="button"
+              onClick={onToggleAbbotDesk}
+              className={`${pillBaseClass} ${abbotAtDonationDesk ? pillActiveStyle : pillDefaultStyle}`}
+            >
+              <span className="text-base leading-none">🪷</span>
+              <span>{abbotAtDonationDesk ? 'Đang ngồi Bàn CĐ' : 'Ngồi Bàn Công Đức'}</span>
+            </button>
+          )}
 
           {/* 10. Rủ bạn bè vào ngồi chung Phòng Tịnh Tâm */}
           {onInviteToZenRoom && (
@@ -548,33 +574,61 @@ export const ZenSanctuaryOverlay: React.FC<ZenSanctuaryOverlayProps> = ({
                 </span>
               </div>
 
-              <button
-                type="button"
-                onClick={() => {
-                  const amt = Math.round(Number(donationAmountDraft) || 0);
-                  const res = onDonateToBox(amt);
-                  if (res.ok) {
-                    setDonationNotice({
-                      type: 'ok',
-                      text: `🙏 Đã bỏ ${formatVnd(amt)} vào Hòm Công Đức! Bạn được tặng +${res.meritAwarded} Công đức.`,
-                    });
-                  } else {
-                    setDonationNotice({
-                      type: 'err',
-                      text: res.error || 'Không thể bỏ tiền vào hòm lúc này.',
-                    });
-                  }
-                }}
-                className="w-full rounded-2xl bg-gradient-to-r from-amber-400 to-yellow-500 py-2.5 text-xs font-black text-slate-950 shadow-lg hover:brightness-105 active:scale-95 cursor-pointer"
-              >
-                🙏 Bỏ tiền vào Hòm Công Đức
-              </button>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const amt = Math.round(Number(donationAmountDraft) || 0);
+                    const res = onDonateToBox(amt);
+                    if (res.ok) {
+                      setDonationNotice({
+                        type: 'ok',
+                        text: `🙏 Đã bỏ ${formatVnd(amt)} vào Hòm Công Đức! Bạn được tặng +${res.meritAwarded} Công đức.`,
+                      });
+                    } else {
+                      setDonationNotice({
+                        type: 'err',
+                        text: res.error || 'Không thể bỏ tiền vào hòm lúc này.',
+                      });
+                    }
+                  }}
+                  className="w-full rounded-2xl bg-gradient-to-r from-amber-400 to-yellow-500 py-2.5 px-2 text-xs font-black text-slate-950 shadow-lg hover:brightness-105 active:scale-95 cursor-pointer"
+                >
+                  🙏 Bỏ tiền Công Đức
+                </button>
+                <button
+                  type="button"
+                  disabled={donationBox.totalVnd <= 0}
+                  onClick={() => {
+                    const rawAmt = Math.round(Number(donationAmountDraft) || 0);
+                    const robAmt =
+                      rawAmt > 0
+                        ? Math.min(rawAmt, donationBox.totalVnd)
+                        : donationBox.totalVnd;
+                    const res = onRobDonationBox(robAmt);
+                    if (res.ok) {
+                      setDonationNotice({
+                        type: 'err',
+                        text: `🥷 Bạn vừa cướp ${formatVnd(res.robbedVnd || robAmt)} từ Hòm Công Đức vào ví! (-5 Công đức)`,
+                      });
+                    } else {
+                      setDonationNotice({
+                        type: 'err',
+                        text: res.error || 'Không thể cướp tiền lúc này.',
+                      });
+                    }
+                  }}
+                  className="w-full rounded-2xl border border-rose-400/50 bg-rose-600/85 hover:bg-rose-500 disabled:opacity-40 py-2.5 px-2 text-xs font-black text-white shadow-lg active:scale-95 cursor-pointer"
+                >
+                  🥷 Cướp tiền ({donationBox.totalVnd > 0 ? 'Trừ 5 CĐ' : 'Trống'})
+                </button>
+              </div>
             </div>
 
             {donationBox.donations.length > 0 && (
               <div className="space-y-1.5 border-t border-amber-500/20 pt-2">
                 <div className="text-[10px] font-bold uppercase tracking-wider text-amber-200/70">
-                  Công đức gần đây
+                  Biến động Hòm Công Đức
                 </div>
                 <div className="max-h-28 overflow-y-auto space-y-1 pr-1">
                   {donationBox.donations.slice(0, 10).map((d) => (
@@ -583,10 +637,16 @@ export const ZenSanctuaryOverlay: React.FC<ZenSanctuaryOverlayProps> = ({
                       className="flex items-center justify-between rounded-xl bg-white/5 px-2.5 py-1 text-[11px]"
                     >
                       <span className="font-bold text-amber-100 truncate">
-                        {d.donorNickname}
+                        {d.kind === 'rob' ? `🥷 ${d.donorNickname} (Cướp)` : `🙏 ${d.donorNickname}`}
                       </span>
-                      <span className="text-amber-300 font-black shrink-0">
-                        {formatVnd(d.amountVnd)} (+{d.meritAwarded} CĐ)
+                      <span
+                        className={`font-black shrink-0 ${
+                          d.kind === 'rob' ? 'text-rose-400' : 'text-amber-300'
+                        }`}
+                      >
+                        {d.kind === 'rob'
+                          ? `-${formatVnd(d.amountVnd)} (-5 CĐ)`
+                          : `+${formatVnd(d.amountVnd)} (+${d.meritAwarded} CĐ)`}
                       </span>
                     </div>
                   ))}
