@@ -271,6 +271,87 @@ const SceneCameraController: React.FC<{
 };
 
 /**
+ * Vầng hào quang phát sáng tia vàng rực phía sau đầu nhân vật Trụ trì Thanh Ngọc
+ */
+const RadiantHaloAura3D: React.FC = () => {
+  const auraPlaneRef = useRef<THREE.Mesh>(null);
+  const auraTexture = useMemo(() => {
+    const size = 256;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      const cx = size / 2;
+      const cy = size / 2;
+
+      // 1. Ánh hào quang tỏa sáng mềm từ tâm
+      const radial = ctx.createRadialGradient(cx, cy, 24, cx, cy, 126);
+      radial.addColorStop(0, 'rgba(255, 248, 200, 0.92)');
+      radial.addColorStop(0.32, 'rgba(253, 224, 71, 0.72)');
+      radial.addColorStop(0.6, 'rgba(251, 191, 36, 0.28)');
+      radial.addColorStop(1, 'rgba(251, 191, 36, 0)');
+      ctx.fillStyle = radial;
+      ctx.fillRect(0, 0, size, size);
+
+      // 2. Các tia sáng tỏa ra xung quanh (24 tia)
+      const numRays = 24;
+      for (let i = 0; i < numRays; i++) {
+        const angle = (i / numRays) * Math.PI * 2;
+        const spread = 0.085;
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + Math.cos(angle - spread) * 126, cy + Math.sin(angle - spread) * 126);
+        ctx.lineTo(cx + Math.cos(angle + spread) * 126, cy + Math.sin(angle + spread) * 126);
+        ctx.closePath();
+        const rayGrad = ctx.createRadialGradient(cx, cy, 34, cx, cy, 126);
+        rayGrad.addColorStop(0, 'rgba(255, 252, 220, 0.95)');
+        rayGrad.addColorStop(0.45, 'rgba(253, 224, 71, 0.65)');
+        rayGrad.addColorStop(1, 'rgba(251, 191, 36, 0)');
+        ctx.fillStyle = rayGrad;
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // 3. Vòng hào quang sáng chói quanh đầu
+      ctx.beginPath();
+      ctx.arc(cx, cy, 46, 0, Math.PI * 2);
+      ctx.lineWidth = 10;
+      ctx.strokeStyle = 'rgba(255, 252, 230, 0.95)';
+      ctx.shadowColor = '#fde047';
+      ctx.shadowBlur = 18;
+      ctx.stroke();
+    }
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.needsUpdate = true;
+    return tex;
+  }, []);
+
+  useFrame((_, delta) => {
+    if (auraPlaneRef.current) {
+      auraPlaneRef.current.rotation.z += delta * 0.35;
+    }
+  });
+
+  return (
+    <group position={[0, 0.72, -0.18]}>
+      <pointLight position={[0, 0.05, 0.25]} color="#fde047" intensity={1.35} distance={3.8} />
+      <mesh ref={auraPlaneRef}>
+        <planeGeometry args={[1.65, 1.65]} />
+        <meshBasicMaterial
+          map={auraTexture}
+          transparent
+          depthWrite={false}
+          blending={THREE.AdditiveBlending}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
+    </group>
+  );
+};
+
+/**
  * Mô hình nhân vật 3D Low-Poly nhẹ (Nam / Nữ)
  * Có tư thế ngồi/quỳ (isSeated=true), đứng (isSeated=false), và cúi lạy 3 lạy (isBowing=true)
  */
@@ -534,21 +615,8 @@ const LowPolyCharacter: React.FC<{
                 </group>
               )}
 
-              {/* Vầng hào quang trên đầu Trụ trì Thanh Ngọc */}
-              {isAbbotThanhNgoc && (
-                <group position={[0, 1.18, -0.04]}>
-                  <mesh>
-                    <torusGeometry args={[0.3, 0.028, 12, 32]} />
-                    <meshStandardMaterial
-                      color="#fde047"
-                      emissive="#fbbf24"
-                      emissiveIntensity={1.6}
-                      metalness={0.5}
-                      roughness={0.2}
-                    />
-                  </mesh>
-                </group>
-              )}
+              {/* Vầng hào quang phát sáng tia vàng sau đầu Trụ trì Thanh Ngọc */}
+              {isAbbotThanhNgoc && <RadiantHaloAura3D />}
             </group>
           </group>
         </>
