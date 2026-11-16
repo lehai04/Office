@@ -972,10 +972,35 @@ export function App() {
         if (!myCurrentSeat) {
           showToast('Chào mừng bạn! Hãy bấm vào một ghế trống trong phòng để chọn chỗ ngồi cố định.');
         }
+      } else {
+        // F5: trở về đúng vị trí đang ở trước khi refresh
+        try {
+          const savedPanel = window.sessionStorage.getItem('van_phong_ao_active_panel_v1') as ActivePanel | null;
+          const myId = loadSavedSession()?.userId;
+          const meMember = fullState.members.find((m) => m.userId === myId);
+          if (meMember?.inZenRoom) {
+            setActivePanel('zen');
+          } else if (savedPanel && savedPanel !== 'zen') {
+            setActivePanel(savedPanel);
+          } else {
+            setActivePanel('none');
+          }
+        } catch {
+          // ignore
+        }
       }
     },
     [showToast]
   );
+
+  useEffect(() => {
+    if (!session || !room) return;
+    try {
+      window.sessionStorage.setItem('van_phong_ao_active_panel_v1', activePanel);
+    } catch {
+      // ignore
+    }
+  }, [activePanel, session, room]);
 
   useEffect(() => {
     // Kết nối kênh đồng bộ ngay khi mở trang (kể cả ở màn hình đăng nhập) để nhận sẵn danh sách phòng & tài khoản qua MQTT
@@ -1286,6 +1311,15 @@ export function App() {
         createIfMissing: params.createIfMissing,
         rememberDevice: params.rememberDevice,
       });
+      // Đăng nhập lại: luôn đứng trước cửa để chọn chỗ ngồi, không mặc định vào phòng thờ
+      try {
+        window.sessionStorage.removeItem('van_phong_ao_active_panel_v1');
+      } catch {
+        // ignore
+      }
+      setActivePanel('none');
+      await setZenRoomPresenceApi(joined.room.code, false, joined.session.sessionToken).catch(() => {});
+      await leaveWorkSeatToStand(joined.room.code, joined.session.sessionToken).catch(() => {});
       setSession(joined.session);
       await hydrateRoomData(joined.room.code, joined.session.sessionToken, true);
     } catch (err) {

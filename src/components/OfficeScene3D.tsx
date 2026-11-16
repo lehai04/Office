@@ -344,6 +344,11 @@ const LowPolyCharacter: React.FC<{
 
   const normalizedNickname =
     nickname.trim() === 'Người Ngoài Phòng' ? 'Kẻ lạ' : nickname;
+  const isAbbotThanhNgoc = normalizedNickname
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .includes('thanh ngoc');
   const displayName =
     duplicateNicknameCount > 1
       ? `${normalizedNickname} (${memberTag})`
@@ -353,6 +358,33 @@ const LowPolyCharacter: React.FC<{
     <group position={position} rotation={[0, rotationY, 0]}>
       {!hideMeshInFpv && (
         <>
+          {/* Đài sen dưới chân Trụ trì Thanh Ngọc */}
+          {isAbbotThanhNgoc && (
+            <group position={[0, 0.02, 0]}>
+              <mesh position={[0, 0.03, 0]} castShadow receiveShadow>
+                <cylinderGeometry args={[0.42, 0.48, 0.06, 20]} />
+                <meshStandardMaterial color="#f59e0b" metalness={0.35} roughness={0.4} />
+              </mesh>
+              <mesh position={[0, 0.07, 0]} receiveShadow>
+                <cylinderGeometry args={[0.32, 0.38, 0.04, 20]} />
+                <meshStandardMaterial color="#f472b6" roughness={0.5} />
+              </mesh>
+              {Array.from({ length: 10 }, (_, idx) => {
+                const angle = (idx / 10) * Math.PI * 2;
+                return (
+                  <mesh
+                    key={idx}
+                    position={[Math.cos(angle) * 0.38, 0.08, Math.sin(angle) * 0.38]}
+                    rotation={[Math.sin(angle) * 0.45, -angle, -Math.cos(angle) * 0.45]}
+                    castShadow
+                  >
+                    <boxGeometry args={[0.14, 0.12, 0.05]} />
+                    <meshStandardMaterial color="#f9a8d4" roughness={0.45} />
+                  </mesh>
+                );
+              })}
+            </group>
+          )}
           {isCurrentUser && (
             <mesh position={[0, 0.03, 0]} rotation={[-Math.PI / 2, 0, 0]}>
               <ringGeometry args={[0.42, 0.54, 24]} />
@@ -498,6 +530,22 @@ const LowPolyCharacter: React.FC<{
                   <mesh position={[0, 0.05, 0.11]}>
                     <sphereGeometry args={[0.028, 8, 8]} />
                     <meshBasicMaterial color="#ef4444" />
+                  </mesh>
+                </group>
+              )}
+
+              {/* Vầng hào quang trên đầu Trụ trì Thanh Ngọc */}
+              {isAbbotThanhNgoc && (
+                <group position={[0, 1.18, -0.04]}>
+                  <mesh>
+                    <torusGeometry args={[0.3, 0.028, 12, 32]} />
+                    <meshStandardMaterial
+                      color="#fde047"
+                      emissive="#fbbf24"
+                      emissiveIntensity={1.6}
+                      metalness={0.5}
+                      roughness={0.2}
+                    />
                   </mesh>
                 </group>
               )}
@@ -681,13 +729,6 @@ const ZenSanctuaryRoom3D: React.FC<{
             <meshStandardMaterial color="#7c2d12" />
           </mesh>
         </group>
-
-        {/* Bảng tên nhỏ trên bàn */}
-        <Html position={[0, 1.06, -0.45]} center distanceFactor={8} style={{ pointerEvents: 'none' }}>
-          <div className="whitespace-nowrap rounded-full border border-amber-300/60 bg-[#2b1708]/90 px-2 py-0.5 text-[10px] font-bold text-amber-200 shadow">
-            🪷 Trụ trì Thanh Ngọc
-          </div>
-        </Html>
 
         {/* HÒM CÔNG ĐỨC NHỎ TRÊN BÀN (Bấm để bỏ tiền công đức) */}
         <group
@@ -2265,6 +2306,32 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
               />
             );
           })}
+
+          {/* Nhân vật mặc định Trụ trì Thanh Ngọc ngồi bàn góc trái Phòng Tịnh Tâm (với hào quang & đài sen) */}
+          {!members.some(
+            (m) =>
+              (m.inZenRoom || (m.userId === currentUserId && inZenRoom)) &&
+              m.nickname
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .toLowerCase()
+                .includes('thanh ngoc')
+          ) && (
+            <LowPolyCharacter
+              gender="female"
+              nickname="Trụ trì Thanh Ngọc"
+              memberTag="TRỤ TRÌ"
+              isCurrentUser={false}
+              isManager={false}
+              isOnline={true}
+              isSeated={true}
+              isBowing={false}
+              hideMeshInFpv={false}
+              position={[-3.76, 0.12, -10.35]}
+              rotationY={Math.PI / 2}
+              duplicateNicknameCount={1}
+            />
+          )}
 
           <ContactShadows
             position={[0, 0.01, 0]}
