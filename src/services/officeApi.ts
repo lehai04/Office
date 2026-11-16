@@ -12,12 +12,18 @@ import type {
 } from '../types/office';
 import {
   broadcastCatSyncEvent,
+  broadcastPuzzleSyncEvent,
   handleStaticFallbackRequest,
   subscribeStaticRealtime,
   type StaticRealtimeEvent,
 } from './staticFallbackEngine';
 
-export { broadcastCatSyncEvent, subscribeStaticRealtime, type StaticRealtimeEvent };
+export {
+  broadcastCatSyncEvent,
+  broadcastPuzzleSyncEvent,
+  subscribeStaticRealtime,
+  type StaticRealtimeEvent,
+};
 
 const STORAGE_PREFIX = 'van_phong_ao_session_v2';
 const API_ORIGIN_STORAGE_KEY = 'van_phong_ao_api_origin';

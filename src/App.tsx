@@ -45,6 +45,13 @@ import {
   type OfficeCatProfile,
 } from './utils/officeCatsData';
 import {
+  createDefaultPuzzleState,
+  loadRoomPuzzleState,
+  PUZZLE_ARTWORKS,
+  saveRoomPuzzleState,
+  type RoomPuzzleState,
+} from './utils/officePuzzleData';
+import {
   playCatMeowSound,
   playChatNotificationSound,
   playWoodenFishSound,
@@ -55,6 +62,7 @@ import {
 } from './utils/zenSound';
 import {
   broadcastCatSyncEvent,
+  broadcastPuzzleSyncEvent,
   changeRoomCodeApi,
   clearSavedSession,
   claimWorkSeat,
@@ -147,10 +155,15 @@ export function App() {
   const [activeChallengeBanner, setActiveChallengeBanner] = useState<string | null>(null);
   const meritTimerRef = useRef<number | null>(null);
 
-  // State cho Game "Nuôi Mèo Văn Phòng" (Mèo của tôi • Cửa hàng mèo • Quà tặng • Sân ngoài văn phòng)
+  // State cho Game "Nuôi Mèo Văn Phòng"
   const [roomCats, setRoomCats] = useState<Record<string, OfficeCatProfile>>({});
   const [myCatInventory, setMyCatInventory] = useState<Record<string, number>>({});
   const [giftRequests, setGiftRequests] = useState<CatGiftRequest[]>([]);
+
+  // State cho Game "Ghép Tranh Cùng Phòng"
+  const [roomPuzzleState, setRoomPuzzleState] = useState<RoomPuzzleState>(() =>
+    createDefaultPuzzleState()
+  );
 
   // State đóng/mở menu gọn trên màn hình (Click để xổ chức năng, click để đóng menu)
   const [topMenuOpen, setTopMenuOpen] = useState<boolean>(false);
@@ -339,8 +352,9 @@ export function App() {
     setRoomCats(loadedCats);
     setMyCatInventory(loadMyCatInventory(session.userId));
     setGiftRequests(loadedGifts);
+    setRoomPuzzleState(loadRoomPuzzleState(room.code));
 
-    // Tự động phát đồng bộ mèo & quà của mình lên phòng sau 1.8s để mọi người khác nhìn thấy ngay
+    // Tự động phát đồng bộ mèo, quà & tranh ghép lên phòng sau 1.8s
     const syncTimer = window.setTimeout(() => {
       const latestCats = loadRoomCats(room.code);
       delete latestCats.colleague_demo_linh;
@@ -352,6 +366,16 @@ export function App() {
           giftRequests: latestGifts,
         });
       }
+      const latestPuzzle = loadRoomPuzzleState(room.code);
+      if (
+        Object.keys(latestPuzzle.placedPieces).length > 0 ||
+        latestPuzzle.completedGallery.length > 0
+      ) {
+        broadcastPuzzleSyncEvent({
+          roomCode: room.code,
+          puzzleState: latestPuzzle,
+        });
+      }
     }, 1800);
 
     const onStorageChange = () => {
@@ -360,6 +384,7 @@ export function App() {
       setRoomCats(updatedCats);
       setMyCatInventory(loadMyCatInventory(session.userId));
       setGiftRequests(loadRoomGiftRequests(room.code));
+      setRoomPuzzleState(loadRoomPuzzleState(room.code));
     };
     window.addEventListener('storage', onStorageChange);
     return () => {
@@ -594,6 +619,86 @@ export function App() {
     [room, showToast, giftRequests]
   );
 
+  // ==================== GAME GHÉP TRANH CÙNG PHÒNG ====================
+  const handlePlacePuzzlePiece = useCallback(
+    (pieceIdx: number): { ok: boolean; alreadyTaken?: boolean; completedNow?: boolean } => {
+      if (!room || !session) return { ok: false };
+      let resultStatus: { ok: boolean; alreadyTaken?: boolean; completedNow?: boolean } = {
+        ok: true,
+      };
+      setRoomPuzzleState((prev) => {
+        if (prev.placedPieces[pieceIdx]) {
+          resultStatus = { ok: false, alreadyTaken: true };
+          return prev;
+        }
+        const artwork =
+          PUZZLE_ARTWORKS.find((a) => a.id === prev.artworkId) || PUZZLE_ARTWORKS[0];
+        const totalPieces = artwork.gridCols * artwork.gridRows;
+        const nextPlaced = {
+          ...prev.placedPieces,
+          [pieceIdx]: {
+            placedByNickname: session.nickname,
+            placedAt: Date.now(),
+          },
+        };
+        const isDone = Object.keys(nextPlaced).length >= totalPieces;
+        let nextGallery = prev.completedGallery;
+        if (isDone) {
+          const contributors = Array.from(
+            new Set(Object.values(nextPlaced).map((p) => p.placedByNickname))
+          );
+          const alreadyLogged = prev.completedGallery.some(
+            (g) =>
+              g.artworkId === artwork.id &&
+              Date.now() - g.completedAt < 5000
+          );
+          if (!alreadyLogged) {
+            nextGallery = [
+              {
+                id: `gal-${Date.now()}`,
+                artworkId: artwork.id,
+                title: artwork.title,
+                contributors,
+                completedAt: Date.now(),
+              },
+              ...prev.completedGallery,
+            ];
+            resultStatus.completedNow = true;
+          }
+        }
+        const nextState: RoomPuzzleState = {
+          ...prev,
+          placedPieces: nextPlaced,
+          completedGallery: nextGallery,
+          updatedAt: Date.now(),
+        };
+        saveRoomPuzzleState(room.code, nextState);
+        broadcastPuzzleSyncEvent({ roomCode: room.code, puzzleState: nextState });
+        return nextState;
+      });
+      return resultStatus;
+    },
+    [room, session]
+  );
+
+  const handleSelectNextPuzzle = useCallback(
+    (artworkId: string) => {
+      if (!room) return;
+      setRoomPuzzleState((prev) => {
+        const nextState: RoomPuzzleState = {
+          artworkId,
+          placedPieces: {},
+          completedGallery: prev.completedGallery,
+          updatedAt: Date.now(),
+        };
+        saveRoomPuzzleState(room.code, nextState);
+        broadcastPuzzleSyncEvent({ roomCode: room.code, puzzleState: nextState });
+        return nextState;
+      });
+    },
+    [room]
+  );
+
   const hydrateRoomData = useCallback(
     async (roomCode: string, sessionToken: string, isFirstJoin = false) => {
       const fullState = await fetchFullRoomState(roomCode, sessionToken);
@@ -728,6 +833,40 @@ export function App() {
         const incomingGifts = data.giftRequests as CatGiftRequest[];
         setGiftRequests(incomingGifts);
         saveRoomGiftRequests(room.code, incomingGifts);
+      }
+
+      if (data.type === 'puzzle_state_sync' && data.puzzleState) {
+        const incomingPuzzle = data.puzzleState as RoomPuzzleState;
+        setRoomPuzzleState((prev) => {
+          let merged: RoomPuzzleState;
+          if (incomingPuzzle.artworkId === prev.artworkId) {
+            const mergedPieces = { ...prev.placedPieces };
+            for (const [k, v] of Object.entries(incomingPuzzle.placedPieces || {})) {
+              const idx = Number(k);
+              const cur = mergedPieces[idx];
+              if (!cur || v.placedAt < cur.placedAt) {
+                mergedPieces[idx] = v;
+              }
+            }
+            const galMap = new Map(prev.completedGallery.map((g) => [g.id, g]));
+            for (const g of incomingPuzzle.completedGallery || []) {
+              galMap.set(g.id, g);
+            }
+            merged = {
+              artworkId: prev.artworkId,
+              placedPieces: mergedPieces,
+              completedGallery: Array.from(galMap.values()).sort(
+                (a, b) => b.completedAt - a.completedAt
+              ),
+              updatedAt: Math.max(prev.updatedAt, incomingPuzzle.updatedAt),
+            };
+          } else {
+            merged = incomingPuzzle;
+          }
+          saveRoomPuzzleState(room.code, merged);
+          return merged;
+        });
+        return;
       }
 
       if (data.type === 'cat_state_sync') {
@@ -1680,6 +1819,9 @@ export function App() {
         onUpdateMyCatInventory={handleUpdateMyCatInventory}
         onCreateGiftRequest={handleCreateGiftRequest}
         onFulfillGiftRequest={handleFulfillGiftRequest}
+        roomPuzzleState={roomPuzzleState}
+        onPlacePuzzlePiece={handlePlacePuzzlePiece}
+        onSelectNextPuzzle={handleSelectNextPuzzle}
       />
 
       {/* THANH ĐIỀU KHIỂN DƯỚI CÙNG (Có thể click thu gọn / mở rộng để không che màn hình) */}

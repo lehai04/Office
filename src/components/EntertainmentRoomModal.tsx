@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Users,
   Upload,
@@ -36,6 +36,10 @@ import {
   type CatShopItem,
   type OfficeCatProfile,
 } from '../utils/officeCatsData';
+import {
+  PUZZLE_ARTWORKS,
+  type RoomPuzzleState,
+} from '../utils/officePuzzleData';
 
 export interface KnifeStageConfig {
   stage: number;
@@ -97,7 +101,7 @@ export const KNIFE_STAGES: KnifeStageConfig[] = [
   },
 ];
 
-type PlayableGameId = 'office_cat' | 'knife_hit' | 'wheel';
+type PlayableGameId = 'office_cat' | 'puzzle' | 'knife_hit' | 'wheel';
 
 interface GameCatalogItem {
   id: string;
@@ -229,6 +233,31 @@ const GAME_CATALOG: GameCatalogItem[] = [
     ),
   },
   {
+    id: 'puzzle',
+    playableId: 'puzzle',
+    title: 'Ghép Tranh',
+    playersText: 'Từ 1 người · 10-20s',
+    badge: 'MỚI • Cả Phòng',
+    bgGradient: 'from-sky-100 via-indigo-50 to-emerald-100',
+    sceneRender: () => (
+      <div className="relative flex h-full w-full items-center justify-center">
+        <div className="grid grid-cols-3 gap-1 rounded-xl border-2 border-indigo-200 bg-white/90 p-1.5 shadow-sm">
+          <div className="h-5 w-5 rounded bg-gradient-to-br from-rose-300 to-amber-200" />
+          <div className="h-5 w-5 rounded bg-gradient-to-br from-sky-300 to-indigo-300" />
+          <div className="h-5 w-5 rounded border border-dashed border-indigo-300 bg-indigo-50/70 flex items-center justify-center text-[9px] text-indigo-400">
+            ?
+          </div>
+          <div className="h-5 w-5 rounded bg-gradient-to-br from-emerald-300 to-teal-200" />
+          <div className="h-5 w-5 rounded bg-gradient-to-br from-amber-300 to-orange-200" />
+          <div className="h-5 w-5 rounded bg-gradient-to-br from-violet-300 to-pink-200" />
+        </div>
+        <span className="absolute right-2.5 bottom-1.5 rounded-full bg-indigo-500 px-1.5 py-0.5 text-[9px] font-black text-white shadow">
+          3×3
+        </span>
+      </div>
+    ),
+  },
+  {
     id: 'knife_hit',
     playableId: 'knife_hit',
     title: 'Phóng Phi Tiêu',
@@ -334,6 +363,13 @@ interface EntertainmentRoomModalProps {
   onUpdateMyCatInventory: (nextInv: Record<string, number>) => void;
   onCreateGiftRequest: (req: CatGiftRequest) => void;
   onFulfillGiftRequest: (reqId: string) => void;
+  roomPuzzleState: RoomPuzzleState;
+  onPlacePuzzlePiece: (pieceIdx: number) => {
+    ok: boolean;
+    alreadyTaken?: boolean;
+    completedNow?: boolean;
+  };
+  onSelectNextPuzzle: (artworkId: string) => void;
 }
 
 const STORAGE_CUSTOM_PHOTO_KEY = 'van_phong_ao_dart_target_photo';
@@ -371,6 +407,9 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
   onUpdateMyCatInventory,
   onCreateGiftRequest,
   onFulfillGiftRequest,
+  roomPuzzleState,
+  onPlacePuzzlePiece,
+  onSelectNextPuzzle,
 }) => {
   // Mặc định khi bấm vào Phòng Giải Trí -> hiện Sảnh Danh Sách Game dễ thương (lobby)
   const [activeView, setActiveView] = useState<'lobby' | PlayableGameId>('lobby');
@@ -401,6 +440,129 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
       stopCatGameMusic();
     };
   }, [isOpen, activeView, soundEnabled]);
+
+  // ==================== STATE CHO GAME GHÉP TRANH CÙNG PHÒNG ====================
+  const [puzzleSubTab, setPuzzleSubTab] = useState<'board' | 'gallery'>('board');
+  const [selectedPuzzlePiece, setSelectedPuzzlePiece] = useState<number | null>(null);
+  const [draggedPuzzlePiece, setDraggedPuzzlePiece] = useState<number | null>(null);
+  const [puzzleFeedback, setPuzzleFeedback] = useState<{
+    type: 'ok' | 'warn' | 'err';
+    text: string;
+  } | null>(null);
+  const [wrongCellIdx, setWrongCellIdx] = useState<number | null>(null);
+
+  const currentPuzzleArtwork = useMemo(() => {
+    return (
+      PUZZLE_ARTWORKS.find((art) => art.id === roomPuzzleState.artworkId) ||
+      PUZZLE_ARTWORKS[0]
+    );
+  }, [roomPuzzleState.artworkId]);
+
+  const totalPuzzlePieces =
+    currentPuzzleArtwork.gridCols * currentPuzzleArtwork.gridRows;
+
+  // Xáo trộn cố định thứ tự mảnh trong khay theo artworkId để không bị nhảy thứ tự khi đồng bộ
+  const shuffledTrayPieceOrder = useMemo(() => {
+    const indices = Array.from({ length: totalPuzzlePieces }, (_, i) => i);
+    let seed = 0;
+    for (let i = 0; i < currentPuzzleArtwork.id.length; i++) {
+      seed = (seed * 31 + currentPuzzleArtwork.id.charCodeAt(i)) % 9973;
+    }
+    for (let i = indices.length - 1; i > 0; i--) {
+      seed = (seed * 73 + 17) % 9973;
+      const j = seed % (i + 1);
+      [indices[i], indices[j]] = [indices[j], indices[i]];
+    }
+    return indices;
+  }, [currentPuzzleArtwork.id, totalPuzzlePieces]);
+
+  const unplacedPuzzlePieces = useMemo(
+    () => shuffledTrayPieceOrder.filter((idx) => !roomPuzzleState.placedPieces[idx]),
+    [shuffledTrayPieceOrder, roomPuzzleState.placedPieces],
+  );
+
+  const placedCount = totalPuzzlePieces - unplacedPuzzlePieces.length;
+  const isCurrentPuzzleComplete = placedCount >= totalPuzzlePieces;
+
+  // Nếu mảnh đang chọn vừa được đồng nghiệp ghép trước -> tự bỏ chọn & thông báo nhẹ
+  useEffect(() => {
+    if (selectedPuzzlePiece !== null && roomPuzzleState.placedPieces[selectedPuzzlePiece]) {
+      const who = roomPuzzleState.placedPieces[selectedPuzzlePiece]?.placedByNickname || 'Đồng nghiệp';
+      setSelectedPuzzlePiece(null);
+      setPuzzleFeedback({
+        type: 'warn',
+        text: `${who} vừa ghép đúng mảnh #${selectedPuzzlePiece + 1} trước bạn! Hãy chọn mảnh khác nhé.`,
+      });
+    }
+  }, [roomPuzzleState.placedPieces, selectedPuzzlePiece]);
+
+  const handleAttemptPlacePiece = useCallback(
+    (pieceIdx: number | null, targetCellIdx: number) => {
+      if (pieceIdx === null || isCurrentPuzzleComplete) return;
+
+      // Ô đã có người đặt đúng trước đó
+      if (roomPuzzleState.placedPieces[targetCellIdx]) {
+        const who = roomPuzzleState.placedPieces[targetCellIdx]?.placedByNickname || 'Đồng nghiệp';
+        setPuzzleFeedback({
+          type: 'warn',
+          text: `Ô này đã được ${who} ghép rồi!`,
+        });
+        setSelectedPuzzlePiece(null);
+        return;
+      }
+
+      if (pieceIdx === targetCellIdx) {
+        const res = onPlacePuzzlePiece(pieceIdx);
+        setSelectedPuzzlePiece(null);
+        setDraggedPuzzlePiece(null);
+
+        if (res.alreadyTaken) {
+          if (soundEnabled) playKnifeClangSound();
+          setPuzzleFeedback({
+            type: 'warn',
+            text: 'Đồng nghiệp vừa nhanh tay ghép đúng mảnh này trước một nhịp! Chọn mảnh khác nhé.',
+          });
+          return;
+        }
+
+        if (res.ok) {
+          if (soundEnabled) {
+            if (res.completedNow) {
+              playCatMeowSound();
+            } else {
+              playDartHitSound();
+            }
+          }
+          setPuzzleFeedback({
+            type: 'ok',
+            text: res.completedNow
+              ? `Hoàn thành bức "${currentPuzzleArtwork.title}"! Đã lưu vào Bộ sưu tập của phòng.`
+              : 'Khớp chuẩn! Mảnh đã được giữ tại chỗ và đồng bộ cho cả phòng.',
+          });
+        }
+      } else {
+        // Đặt nhầm -> rung nhẹ ô báo sai, mảnh quay về khay
+        if (soundEnabled) playKnifeClangSound();
+        setWrongCellIdx(targetCellIdx);
+        setSelectedPuzzlePiece(null);
+        setDraggedPuzzlePiece(null);
+        setPuzzleFeedback({
+          type: 'err',
+          text: 'Chưa đúng vị trí rồi, mảnh đã quay về khay để bạn thử lại!',
+        });
+        window.setTimeout(() => {
+          setWrongCellIdx((prev) => (prev === targetCellIdx ? null : prev));
+        }, 550);
+      }
+    },
+    [
+      currentPuzzleArtwork.title,
+      isCurrentPuzzleComplete,
+      onPlacePuzzlePiece,
+      roomPuzzleState.placedPieces,
+      soundEnabled,
+    ],
+  );
 
   // ==================== STATE CHO GAME 2: PHÓNG PHI TIÊU (KNIFE HIT) ====================
   const [gameMode, setGameMode] = useState<'campaign' | 'pvp'>('campaign');
@@ -1576,9 +1738,9 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
             </div>
           </div>
 
-          {/* LƯỚI 3 GAME GỌN GÀNG, ÍT CHỮ, HÌNH ẢNH NỔI BẬT */}
+          {/* LƯỚI GAME GỌN GÀNG, ÍT CHỮ, HÌNH ẢNH NỔI BẬT */}
           <div className="flex-1 overflow-y-auto p-3 sm:p-5">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {GAME_CATALOG.map((game) => (
                 <button
                   key={game.id}
@@ -2826,6 +2988,374 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
               className="w-full rounded-xl border-2 border-[#e2d6c3] bg-white p-2.5 text-xs font-medium text-[#3d2b1f] outline-none focus:border-fuchsia-400"
               placeholder="Mỗi dòng 1 mục..."
             />
+          </div>
+        )}
+
+        {/* ==================== GAME 4: GHÉP TRANH CÙNG PHÒNG ==================== */}
+        {activeView === 'puzzle' && (
+          <div className="flex flex-col flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 bg-[#fdf8f0] text-[#3d2b1f]">
+            {/* Sub-tab điều hướng + tiến độ */}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 rounded-xl bg-[#efe6d5] p-1">
+                <button
+                  type="button"
+                  onClick={() => setPuzzleSubTab('board')}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-black transition cursor-pointer ${
+                    puzzleSubTab === 'board'
+                      ? 'bg-white text-indigo-700 shadow-sm'
+                      : 'text-[#6e5a49] hover:text-[#3d2b1f]'
+                  }`}
+                >
+                  🖼️ Ghép tranh ({placedCount}/{totalPuzzlePieces})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPuzzleSubTab('gallery')}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-black transition cursor-pointer ${
+                    puzzleSubTab === 'gallery'
+                      ? 'bg-white text-amber-700 shadow-sm'
+                      : 'text-[#6e5a49] hover:text-[#3d2b1f]'
+                  }`}
+                >
+                  🏆 Bộ sưu tập ({roomPuzzleState.completedGallery.length})
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2 text-[11px] font-bold text-[#6e5a49]">
+                <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-indigo-700">
+                  {currentPuzzleArtwork.title}
+                </span>
+                <span className="hidden sm:inline">• Tự lưu sau mỗi mảnh</span>
+              </div>
+            </div>
+
+            {puzzleSubTab === 'board' ? (
+              <div className="space-y-3">
+                {/* Thanh thông báo trạng thái đặt mảnh */}
+                {puzzleFeedback && (
+                  <div
+                    className={`rounded-xl border px-3 py-2 text-xs font-bold flex items-center justify-between gap-2 ${
+                      puzzleFeedback.type === 'ok'
+                        ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
+                        : puzzleFeedback.type === 'warn'
+                          ? 'border-amber-300 bg-amber-50 text-amber-900'
+                          : 'border-rose-300 bg-rose-50 text-rose-800'
+                    }`}
+                  >
+                    <span>{puzzleFeedback.text}</span>
+                    <button
+                      type="button"
+                      onClick={() => setPuzzleFeedback(null)}
+                      className="text-[10px] opacity-70 hover:opacity-100 cursor-pointer"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-[1fr_220px] gap-3 items-start">
+                  {/* Bảng ghép tranh 3x3 có bản phác mờ bên dưới */}
+                  <div className="flex flex-col items-center">
+                    <div className="relative w-full max-w-[300px] aspect-square rounded-2xl border-4 border-[#e5dccb] bg-white shadow-md overflow-hidden select-none">
+                      {/* Bản phác mờ giúp người chơi định vị mảnh */}
+                      <img
+                        src={currentPuzzleArtwork.imageUrl}
+                        alt={currentPuzzleArtwork.title}
+                        draggable={false}
+                        className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-25"
+                      />
+
+                      <div className="relative z-10 grid h-full w-full grid-cols-3 grid-rows-3">
+                        {Array.from({ length: totalPuzzlePieces }, (_, cellIdx) => {
+                          const placed = roomPuzzleState.placedPieces[cellIdx];
+                          const col = cellIdx % currentPuzzleArtwork.gridCols;
+                          const row = Math.floor(cellIdx / currentPuzzleArtwork.gridCols);
+                          const isWrong = wrongCellIdx === cellIdx;
+                          const canDropOrTap = !placed && selectedPuzzlePiece !== null;
+
+                          return (
+                            <button
+                              key={cellIdx}
+                              type="button"
+                              onClick={() => {
+                                if (!placed && selectedPuzzlePiece !== null) {
+                                  handleAttemptPlacePiece(selectedPuzzlePiece, cellIdx);
+                                }
+                              }}
+                              onDragOver={(e) => {
+                                if (!placed) e.preventDefault();
+                              }}
+                              onDrop={(e) => {
+                                e.preventDefault();
+                                const raw = e.dataTransfer.getData('text/plain');
+                                const pieceFromDrop =
+                                  draggedPuzzlePiece !== null
+                                    ? draggedPuzzlePiece
+                                    : raw !== ''
+                                      ? Number(raw)
+                                      : null;
+                                if (pieceFromDrop !== null && !Number.isNaN(pieceFromDrop)) {
+                                  handleAttemptPlacePiece(pieceFromDrop, cellIdx);
+                                }
+                              }}
+                              className={`group relative border border-white/60 transition-all overflow-hidden ${
+                                placed
+                                  ? 'cursor-default'
+                                  : canDropOrTap
+                                    ? 'cursor-pointer hover:bg-indigo-500/20 ring-inset hover:ring-2 hover:ring-indigo-400'
+                                    : 'cursor-default hover:bg-white/20'
+                              } ${isWrong ? 'bg-rose-500/35 ring-2 ring-inset ring-rose-500 animate-pulse' : ''}`}
+                            >
+                              {placed ? (
+                                <>
+                                  <div
+                                    className="h-full w-full"
+                                    style={{
+                                      backgroundImage: `url("${currentPuzzleArtwork.imageUrl}")`,
+                                      backgroundSize: '300% 300%',
+                                      backgroundPosition: `${col * 50}% ${row * 50}%`,
+                                    }}
+                                  />
+                                  <span
+                                    title={`Ghép bởi ${placed.placedByNickname}`}
+                                    className="pointer-events-none absolute bottom-1 left-1 max-w-[88%] truncate rounded-full bg-black/55 px-1.5 py-0.5 text-[8px] font-bold text-white opacity-0 transition-opacity group-hover:opacity-100"
+                                  >
+                                    {placed.placedByNickname}
+                                  </span>
+                                </>
+                              ) : (
+                                <span className="flex h-full w-full items-center justify-center text-[10px] font-black text-indigo-900/35">
+                                  {selectedPuzzlePiece !== null ? 'Đặt vào đây' : ''}
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <p className="mt-2 text-center text-[11px] font-semibold text-[#7a6452]">
+                      {isCurrentPuzzleComplete
+                        ? '🎉 Cả phòng đã hoàn thành bức tranh này!'
+                        : selectedPuzzlePiece !== null
+                          ? `Đang chọn mảnh #${selectedPuzzlePiece + 1} — chạm vào ô trống trên tranh để đặt`
+                          : 'Chạm mảnh ở khay rồi chạm vào ô, hoặc kéo thả trực tiếp vào tranh'}
+                    </p>
+                  </div>
+
+                  {/* Khay mảnh ghép hoặc Thẻ hoàn thành */}
+                  <div className="rounded-2xl border-2 border-[#e5dccb] bg-white p-3 shadow-sm">
+                    {isCurrentPuzzleComplete ? (
+                      <div className="space-y-2.5 text-center">
+                        <div className="text-2xl">🏆</div>
+                        <div className="text-sm font-black text-emerald-700">
+                          Hoàn thành bức tranh!
+                        </div>
+                        <p className="text-[11px] text-[#6e5a49]">
+                          Tranh đã được lưu vào <strong>Bộ sưu tập của phòng</strong>.
+                        </p>
+                        <div className="flex flex-wrap justify-center gap-1 pt-1">
+                          {Array.from(
+                            new Set(
+                              Object.values(roomPuzzleState.placedPieces).map(
+                                (p) => p.placedByNickname,
+                              ),
+                            ),
+                          ).map((name) => (
+                            <span
+                              key={name}
+                              className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800"
+                            >
+                              {name}
+                            </span>
+                          ))}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const currIdx = PUZZLE_ARTWORKS.findIndex(
+                              (a) => a.id === currentPuzzleArtwork.id,
+                            );
+                            const nextArt =
+                              PUZZLE_ARTWORKS[(currIdx + 1) % PUZZLE_ARTWORKS.length];
+                            onSelectNextPuzzle(nextArt.id);
+                            setSelectedPuzzlePiece(null);
+                            setPuzzleFeedback({
+                              type: 'ok',
+                              text: `Đã mở bức mới: "${nextArt.title}"!`,
+                            });
+                          }}
+                          className="mt-2 w-full rounded-xl bg-gradient-to-r from-indigo-500 to-sky-500 py-2 text-xs font-black text-white shadow hover:brightness-105 active:scale-95 cursor-pointer"
+                        >
+                          🖼️ Chọn bức tiếp theo
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-black text-[#3d2b1f]">
+                            Khay mảnh ({unplacedPuzzlePieces.length} còn lại)
+                          </span>
+                          {selectedPuzzlePiece !== null && (
+                            <button
+                              type="button"
+                              onClick={() => setSelectedPuzzlePiece(null)}
+                              className="text-[10px] font-bold text-rose-500 hover:underline cursor-pointer"
+                            >
+                              Bỏ chọn
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-2">
+                          {unplacedPuzzlePieces.map((pieceIdx) => {
+                            const col = pieceIdx % currentPuzzleArtwork.gridCols;
+                            const row = Math.floor(pieceIdx / currentPuzzleArtwork.gridCols);
+                            const isSelected = selectedPuzzlePiece === pieceIdx;
+
+                            return (
+                              <button
+                                key={pieceIdx}
+                                type="button"
+                                draggable
+                                onDragStart={(e) => {
+                                  setDraggedPuzzlePiece(pieceIdx);
+                                  setSelectedPuzzlePiece(pieceIdx);
+                                  e.dataTransfer.setData('text/plain', String(pieceIdx));
+                                }}
+                                onDragEnd={() => setDraggedPuzzlePiece(null)}
+                                onClick={() =>
+                                  setSelectedPuzzlePiece((prev) =>
+                                    prev === pieceIdx ? null : pieceIdx,
+                                  )
+                                }
+                                className={`relative aspect-square rounded-xl border-2 overflow-hidden transition-all cursor-grab active:cursor-grabbing ${
+                                  isSelected
+                                    ? 'border-indigo-500 ring-2 ring-indigo-300 scale-105 shadow-md'
+                                    : 'border-[#e5dccb] hover:border-indigo-300 hover:scale-[1.03]'
+                                }`}
+                                style={{
+                                  backgroundImage: `url("${currentPuzzleArtwork.imageUrl}")`,
+                                  backgroundSize: '300% 300%',
+                                  backgroundPosition: `${col * 50}% ${row * 50}%`,
+                                }}
+                                title={`Mảnh #${pieceIdx + 1} — chạm hoặc kéo vào tranh`}
+                              >
+                                <span className="absolute top-0.5 left-0.5 rounded bg-black/45 px-1 text-[8px] font-bold text-white">
+                                  #{pieceIdx + 1}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* TAB BỘ SƯU TẬP CỦA PHÒNG */
+              <div className="space-y-3">
+                <div>
+                  <h4 className="text-xs font-black uppercase tracking-wider text-[#6e5a49] mb-2">
+                    Tranh phòng đã hoàn thành ({roomPuzzleState.completedGallery.length})
+                  </h4>
+                  {roomPuzzleState.completedGallery.length === 0 ? (
+                    <div className="rounded-2xl border-2 border-dashed border-[#e5dccb] bg-white/70 p-6 text-center text-xs font-semibold text-[#7a6452]">
+                      Chưa có bức tranh nào hoàn thành. Cả phòng hãy cùng ghép xong bức đầu tiên nhé!
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      {roomPuzzleState.completedGallery.map((item) => {
+                        const art = PUZZLE_ARTWORKS.find((a) => a.id === item.artworkId);
+                        return (
+                          <div
+                            key={`${item.artworkId}-${item.completedAt}`}
+                            className="flex items-center gap-3 rounded-2xl border border-[#e5dccb] bg-white p-2.5 shadow-sm"
+                          >
+                            {art && (
+                              <img
+                                src={art.imageUrl}
+                                alt={item.title}
+                                className="h-16 w-16 shrink-0 rounded-xl object-cover border border-black/10"
+                              />
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate text-xs font-black text-[#3d2b1f]">
+                                {item.title}
+                              </div>
+                              <div className="text-[10px] text-[#7a6452] mt-0.5">
+                                {new Date(item.completedAt).toLocaleString('vi-VN', {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                  day: '2-digit',
+                                  month: '2-digit',
+                                })}
+                              </div>
+                              <div className="mt-1 flex flex-wrap gap-1">
+                                {item.contributors.map((name) => (
+                                  <span
+                                    key={name}
+                                    className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-800"
+                                  >
+                                    {name}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <h4 className="text-xs font-black uppercase tracking-wider text-[#6e5a49] mb-2">
+                    Chọn bức tranh tiếp theo cho phòng
+                  </h4>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {PUZZLE_ARTWORKS.map((art) => {
+                      const isCurrent = art.id === currentPuzzleArtwork.id;
+                      return (
+                        <button
+                          key={art.id}
+                          type="button"
+                          onClick={() => {
+                            onSelectNextPuzzle(art.id);
+                            setSelectedPuzzlePiece(null);
+                            setPuzzleSubTab('board');
+                            setPuzzleFeedback({
+                              type: 'ok',
+                              text: `Cả phòng chuyển sang ghép bức "${art.title}"!`,
+                            });
+                          }}
+                          className={`group flex flex-col overflow-hidden rounded-xl border-2 bg-white text-left transition cursor-pointer ${
+                            isCurrent
+                              ? 'border-indigo-500 ring-2 ring-indigo-200'
+                              : 'border-[#e5dccb] hover:border-indigo-300'
+                          }`}
+                        >
+                          <img
+                            src={art.imageUrl}
+                            alt={art.title}
+                            className="aspect-square w-full object-cover"
+                          />
+                          <div className="p-1.5">
+                            <div className="truncate text-[11px] font-black text-[#3d2b1f]">
+                              {art.title}
+                            </div>
+                            <div className="text-[9px] font-bold text-indigo-600">
+                              {isCurrent ? 'Đang ghép' : 'Chọn bức này'}
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

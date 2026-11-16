@@ -23,6 +23,11 @@ import {
   type OfficeCatProfile,
   type CatGiftRequest,
 } from '../utils/officeCatsData';
+import {
+  loadRoomPuzzleState,
+  saveRoomPuzzleState,
+  type RoomPuzzleState,
+} from '../utils/officePuzzleData';
 
 interface StoredAccount {
   userId: string;
@@ -68,6 +73,7 @@ interface StaticDatabaseSchema {
   diaryEntries: StoredDiaryEntry[];
   roomCats?: Record<string, Record<string, OfficeCatProfile>>;
   roomGiftRequests?: Record<string, CatGiftRequest[]>;
+  roomPuzzles?: Record<string, RoomPuzzleState>;
 }
 
 const STATIC_DB_KEY = 'van_phong_ao_static_db_v3';
@@ -444,6 +450,40 @@ function mergeRemoteDatabase(
     }
   }
 
+  // Merge roomPuzzles across devices (giữ lượt đặt mảnh đúng đầu tiên)
+  if (!local.roomPuzzles) local.roomPuzzles = {};
+  if (remoteDb.roomPuzzles) {
+    for (const [rCode, remotePuzzle] of Object.entries(remoteDb.roomPuzzles)) {
+      if (!remotePuzzle) continue;
+      const localPuzzle = local.roomPuzzles[rCode] || loadRoomPuzzleState(rCode);
+      if (remotePuzzle.artworkId === localPuzzle.artworkId) {
+        const mergedPieces = { ...localPuzzle.placedPieces };
+        for (const [idxStr, info] of Object.entries(remotePuzzle.placedPieces || {})) {
+          const idx = Number(idxStr);
+          const cur = mergedPieces[idx];
+          if (!cur || info.placedAt < cur.placedAt) {
+            mergedPieces[idx] = info;
+          }
+        }
+        const galMap = new Map(localPuzzle.completedGallery.map((g) => [g.id, g]));
+        for (const g of remotePuzzle.completedGallery || []) {
+          galMap.set(g.id, g);
+        }
+        local.roomPuzzles[rCode] = {
+          artworkId: localPuzzle.artworkId,
+          placedPieces: mergedPieces,
+          completedGallery: Array.from(galMap.values()).sort(
+            (a, b) => b.completedAt - a.completedAt
+          ),
+          updatedAt: Math.max(localPuzzle.updatedAt, remotePuzzle.updatedAt),
+        };
+      } else if (remotePuzzle.updatedAt > localPuzzle.updatedAt) {
+        local.roomPuzzles[rCode] = remotePuzzle;
+      }
+      saveRoomPuzzleState(rCode, local.roomPuzzles[rCode]);
+    }
+  }
+
   purgeDeprecatedAccounts(local);
   saveStaticDb(local);
   return local;
@@ -801,6 +841,31 @@ export function broadcastCatSyncEvent(params: {
       roomCats: params.roomCats,
       giftRequests: params.giftRequests,
       giftTransfer: params.giftTransfer,
+    });
+  }
+}
+
+/**
+ * Phát sự kiện đồng bộ Tranh Ghép Cùng Phòng qua MQTT + BroadcastChannel + LocalStorage
+ */
+export function broadcastPuzzleSyncEvent(params: {
+  roomCode: string;
+  puzzleState: RoomPuzzleState;
+}): void {
+  const db = loadStaticDb();
+  const room =
+    db.rooms[params.roomCode] ||
+    Object.values(db.rooms).find((r) => r.code === params.roomCode);
+  if (!db.roomPuzzles) db.roomPuzzles = {};
+
+  db.roomPuzzles[params.roomCode] = params.puzzleState;
+  saveRoomPuzzleState(params.roomCode, params.puzzleState);
+  saveStaticDb(db);
+
+  if (room) {
+    emitRealtimeEvent(db, room, {
+      type: 'puzzle_state_sync',
+      puzzleState: params.puzzleState,
     });
   }
 }
