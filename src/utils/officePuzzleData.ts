@@ -18,15 +18,47 @@ export interface CompletedPuzzleEntry {
   id: string;
   artworkId: string;
   title: string;
+  imageUrl?: string;
   contributors: string[];
   completedAt: number;
 }
 
 export interface RoomPuzzleState {
   artworkId: string;
+  gridCols?: number;
+  gridRows?: number;
+  customArtwork?: PuzzleArtwork | null;
   placedPieces: Record<number, PlacedPieceInfo>;
   completedGallery: CompletedPuzzleEntry[];
   updatedAt: number;
+}
+
+export const MAX_PUZZLE_PIECES = 100;
+
+export function clampPuzzleGrid(cols: number, rows: number): { gridCols: number; gridRows: number } {
+  const safeCols = Math.max(2, Math.min(10, Math.round(cols) || 3));
+  let safeRows = Math.max(2, Math.min(10, Math.round(rows) || 3));
+  while (safeCols * safeRows > MAX_PUZZLE_PIECES && safeRows > 2) {
+    safeRows -= 1;
+  }
+  return { gridCols: safeCols, gridRows: safeRows };
+}
+
+export function resolveActivePuzzleArtwork(state: RoomPuzzleState): PuzzleArtwork {
+  const baseArtwork =
+    state.customArtwork && state.customArtwork.id === state.artworkId
+      ? state.customArtwork
+      : PUZZLE_ARTWORKS.find((art) => art.id === state.artworkId) || PUZZLE_ARTWORKS[0];
+  const { gridCols, gridRows } = clampPuzzleGrid(
+    state.gridCols ?? baseArtwork.gridCols,
+    state.gridRows ?? baseArtwork.gridRows,
+  );
+  return {
+    ...baseArtwork,
+    gridCols,
+    gridRows,
+    subtitle: `${gridCols}×${gridRows} (${gridCols * gridRows} ô)`,
+  };
 }
 
 function svgToDataUri(svg: string): string {

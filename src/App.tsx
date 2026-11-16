@@ -45,10 +45,12 @@ import {
   type OfficeCatProfile,
 } from './utils/officeCatsData';
 import {
+  clampPuzzleGrid,
   createDefaultPuzzleState,
   loadRoomPuzzleState,
-  PUZZLE_ARTWORKS,
+  resolveActivePuzzleArtwork,
   saveRoomPuzzleState,
+  type PuzzleArtwork,
   type RoomPuzzleState,
 } from './utils/officePuzzleData';
 import {
@@ -631,8 +633,7 @@ export function App() {
           resultStatus = { ok: false, alreadyTaken: true };
           return prev;
         }
-        const artwork =
-          PUZZLE_ARTWORKS.find((a) => a.id === prev.artworkId) || PUZZLE_ARTWORKS[0];
+        const artwork = resolveActivePuzzleArtwork(prev);
         const totalPieces = artwork.gridCols * artwork.gridRows;
         const nextPlaced = {
           ...prev.placedPieces,
@@ -658,6 +659,7 @@ export function App() {
                 id: `gal-${Date.now()}`,
                 artworkId: artwork.id,
                 title: artwork.title,
+                imageUrl: artwork.imageUrl,
                 contributors,
                 completedAt: Date.now(),
               },
@@ -682,11 +684,25 @@ export function App() {
   );
 
   const handleSelectNextPuzzle = useCallback(
-    (artworkId: string) => {
+    (
+      artworkId: string,
+      options?: {
+        gridCols?: number;
+        gridRows?: number;
+        customArtwork?: PuzzleArtwork | null;
+      }
+    ) => {
       if (!room) return;
       setRoomPuzzleState((prev) => {
+        const clamped =
+          options?.gridCols || options?.gridRows
+            ? clampPuzzleGrid(options.gridCols ?? 3, options.gridRows ?? 3)
+            : null;
         const nextState: RoomPuzzleState = {
           artworkId,
+          gridCols: clamped?.gridCols ?? options?.customArtwork?.gridCols ?? 3,
+          gridRows: clamped?.gridRows ?? options?.customArtwork?.gridRows ?? 3,
+          customArtwork: options?.customArtwork ?? null,
           placedPieces: {},
           completedGallery: prev.completedGallery,
           updatedAt: Date.now(),
@@ -854,6 +870,9 @@ export function App() {
             }
             merged = {
               artworkId: prev.artworkId,
+              gridCols: incomingPuzzle.gridCols ?? prev.gridCols,
+              gridRows: incomingPuzzle.gridRows ?? prev.gridRows,
+              customArtwork: incomingPuzzle.customArtwork ?? prev.customArtwork,
               placedPieces: mergedPieces,
               completedGallery: Array.from(galMap.values()).sort(
                 (a, b) => b.completedAt - a.completedAt

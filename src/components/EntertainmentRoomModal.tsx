@@ -37,7 +37,11 @@ import {
   type OfficeCatProfile,
 } from '../utils/officeCatsData';
 import {
+  clampPuzzleGrid,
+  MAX_PUZZLE_PIECES,
   PUZZLE_ARTWORKS,
+  resolveActivePuzzleArtwork,
+  type PuzzleArtwork,
   type RoomPuzzleState,
 } from '../utils/officePuzzleData';
 
@@ -369,7 +373,14 @@ interface EntertainmentRoomModalProps {
     alreadyTaken?: boolean;
     completedNow?: boolean;
   };
-  onSelectNextPuzzle: (artworkId: string) => void;
+  onSelectNextPuzzle: (
+    artworkId: string,
+    options?: {
+      gridCols?: number;
+      gridRows?: number;
+      customArtwork?: PuzzleArtwork | null;
+    }
+  ) => void;
 }
 
 const STORAGE_CUSTOM_PHOTO_KEY = 'van_phong_ao_dart_target_photo';
@@ -442,7 +453,7 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
   }, [isOpen, activeView, soundEnabled]);
 
   // ==================== STATE CHO GAME GHÉP TRANH CÙNG PHÒNG ====================
-  const [puzzleSubTab, setPuzzleSubTab] = useState<'board' | 'gallery'>('board');
+  const [puzzleSubTab, setPuzzleSubTab] = useState<'board' | 'gallery' | 'custom'>('board');
   const [selectedPuzzlePiece, setSelectedPuzzlePiece] = useState<number | null>(null);
   const [draggedPuzzlePiece, setDraggedPuzzlePiece] = useState<number | null>(null);
   const [puzzleFeedback, setPuzzleFeedback] = useState<{
@@ -450,13 +461,56 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
     text: string;
   } | null>(null);
   const [wrongCellIdx, setWrongCellIdx] = useState<number | null>(null);
+  const [showLargeReference, setShowLargeReference] = useState<boolean>(false);
+  const [customImageDataUrl, setCustomImageDataUrl] = useState<string | null>(null);
+  const [customTitleDraft, setCustomTitleDraft] = useState<string>('');
+  const [customCols, setCustomCols] = useState<number>(4);
+  const [customRows, setCustomRows] = useState<number>(4);
+  const [customUploadError, setCustomUploadError] = useState<string | null>(null);
 
-  const currentPuzzleArtwork = useMemo(() => {
-    return (
-      PUZZLE_ARTWORKS.find((art) => art.id === roomPuzzleState.artworkId) ||
-      PUZZLE_ARTWORKS[0]
-    );
-  }, [roomPuzzleState.artworkId]);
+  const handleUploadCustomPuzzleImage = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      setCustomUploadError(null);
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+          const size = 560;
+          const canvas = document.createElement('canvas');
+          canvas.width = size;
+          canvas.height = size;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            setCustomUploadError('Không thể xử lý ảnh trên trình duyệt này.');
+            return;
+          }
+          const minSide = Math.min(img.width, img.height);
+          const sx = (img.width - minSide) / 2;
+          const sy = (img.height - minSide) / 2;
+          ctx.drawImage(img, sx, sy, minSide, minSide, 0, 0, size, size);
+          const compressed = canvas.toDataURL('image/jpeg', 0.8);
+          setCustomImageDataUrl(compressed);
+          if (!customTitleDraft.trim()) {
+            const cleanName = file.name.replace(/\.[^.]+$/, '').slice(0, 40);
+            setCustomTitleDraft(cleanName || `Tranh của ${currentNickname}`);
+          }
+        };
+        img.onerror = () => {
+          setCustomUploadError('File không phải ảnh hợp lệ.');
+        };
+        img.src = String(reader.result || '');
+      };
+      reader.readAsDataURL(file);
+    },
+    [currentNickname, customTitleDraft]
+  );
+
+  const currentPuzzleArtwork = useMemo(
+    () => resolveActivePuzzleArtwork(roomPuzzleState),
+    [roomPuzzleState]
+  );
 
   const totalPuzzlePieces =
     currentPuzzleArtwork.gridCols * currentPuzzleArtwork.gridRows;
@@ -2996,11 +3050,11 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
           <div className="flex flex-col flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 bg-[#fdf8f0] text-[#3d2b1f]">
             {/* Sub-tab điều hướng + tiến độ */}
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-1.5 rounded-xl bg-[#efe6d5] p-1">
+              <div className="flex flex-wrap items-center gap-1 rounded-xl bg-[#efe6d5] p-1">
                 <button
                   type="button"
                   onClick={() => setPuzzleSubTab('board')}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-black transition cursor-pointer ${
+                  className={`rounded-lg px-2.5 py-1.5 text-xs font-black transition cursor-pointer ${
                     puzzleSubTab === 'board'
                       ? 'bg-white text-indigo-700 shadow-sm'
                       : 'text-[#6e5a49] hover:text-[#3d2b1f]'
@@ -3010,8 +3064,19 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
                 </button>
                 <button
                   type="button"
+                  onClick={() => setPuzzleSubTab('custom')}
+                  className={`rounded-lg px-2.5 py-1.5 text-xs font-black transition cursor-pointer ${
+                    puzzleSubTab === 'custom'
+                      ? 'bg-white text-emerald-700 shadow-sm'
+                      : 'text-[#6e5a49] hover:text-[#3d2b1f]'
+                  }`}
+                >
+                  📤 Tự set tranh
+                </button>
+                <button
+                  type="button"
                   onClick={() => setPuzzleSubTab('gallery')}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-black transition cursor-pointer ${
+                  className={`rounded-lg px-2.5 py-1.5 text-xs font-black transition cursor-pointer ${
                     puzzleSubTab === 'gallery'
                       ? 'bg-white text-amber-700 shadow-sm'
                       : 'text-[#6e5a49] hover:text-[#3d2b1f]'
@@ -3021,15 +3086,17 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
                 </button>
               </div>
 
-              <div className="flex items-center gap-2 text-[11px] font-bold text-[#6e5a49]">
-                <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-indigo-700">
+              <div className="flex items-center gap-1.5 text-[11px] font-bold text-[#6e5a49]">
+                <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-indigo-700 max-w-[160px] truncate">
                   {currentPuzzleArtwork.title}
                 </span>
-                <span className="hidden sm:inline">• Tự lưu sau mỗi mảnh</span>
+                <span className="rounded-full bg-amber-100 px-2 py-1 text-amber-800">
+                  {currentPuzzleArtwork.gridCols}×{currentPuzzleArtwork.gridRows}
+                </span>
               </div>
             </div>
 
-            {puzzleSubTab === 'board' ? (
+            {puzzleSubTab === 'board' && (
               <div className="space-y-3">
                 {/* Thanh thông báo trạng thái đặt mảnh */}
                 {puzzleFeedback && (
@@ -3053,85 +3120,85 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
                   </div>
                 )}
 
-                <div className="grid grid-cols-1 sm:grid-cols-[1fr_220px] gap-3 items-start">
-                  {/* Bảng ghép tranh 3x3 có bản phác mờ bên dưới */}
+                <div className="grid grid-cols-1 sm:grid-cols-[1fr_230px] gap-3 items-start">
+                  {/* Bảng ghép tranh sạch sẽ (KHÔNG để hình mờ bên dưới) */}
                   <div className="flex flex-col items-center">
-                    <div className="relative w-full max-w-[300px] aspect-square rounded-2xl border-4 border-[#e5dccb] bg-white shadow-md overflow-hidden select-none">
-                      {/* Bản phác mờ giúp người chơi định vị mảnh */}
-                      <img
-                        src={currentPuzzleArtwork.imageUrl}
-                        alt={currentPuzzleArtwork.title}
-                        draggable={false}
-                        className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-25"
-                      />
+                    <div
+                      className="relative w-full max-w-[320px] aspect-square rounded-2xl border-4 border-[#d8cbb5] bg-[#faf5ea] shadow-md overflow-hidden select-none grid"
+                      style={{
+                        gridTemplateColumns: `repeat(${currentPuzzleArtwork.gridCols}, minmax(0, 1fr))`,
+                        gridTemplateRows: `repeat(${currentPuzzleArtwork.gridRows}, minmax(0, 1fr))`,
+                      }}
+                    >
+                      {Array.from({ length: totalPuzzlePieces }, (_, cellIdx) => {
+                        const cols = currentPuzzleArtwork.gridCols;
+                        const rows = currentPuzzleArtwork.gridRows;
+                        const placed = roomPuzzleState.placedPieces[cellIdx];
+                        const col = cellIdx % cols;
+                        const row = Math.floor(cellIdx / cols);
+                        const isWrong = wrongCellIdx === cellIdx;
+                        const canDropOrTap = !placed && selectedPuzzlePiece !== null;
+                        const posX = cols > 1 ? (col / (cols - 1)) * 100 : 0;
+                        const posY = rows > 1 ? (row / (rows - 1)) * 100 : 0;
 
-                      <div className="relative z-10 grid h-full w-full grid-cols-3 grid-rows-3">
-                        {Array.from({ length: totalPuzzlePieces }, (_, cellIdx) => {
-                          const placed = roomPuzzleState.placedPieces[cellIdx];
-                          const col = cellIdx % currentPuzzleArtwork.gridCols;
-                          const row = Math.floor(cellIdx / currentPuzzleArtwork.gridCols);
-                          const isWrong = wrongCellIdx === cellIdx;
-                          const canDropOrTap = !placed && selectedPuzzlePiece !== null;
-
-                          return (
-                            <button
-                              key={cellIdx}
-                              type="button"
-                              onClick={() => {
-                                if (!placed && selectedPuzzlePiece !== null) {
-                                  handleAttemptPlacePiece(selectedPuzzlePiece, cellIdx);
-                                }
-                              }}
-                              onDragOver={(e) => {
-                                if (!placed) e.preventDefault();
-                              }}
-                              onDrop={(e) => {
-                                e.preventDefault();
-                                const raw = e.dataTransfer.getData('text/plain');
-                                const pieceFromDrop =
-                                  draggedPuzzlePiece !== null
-                                    ? draggedPuzzlePiece
-                                    : raw !== ''
-                                      ? Number(raw)
-                                      : null;
-                                if (pieceFromDrop !== null && !Number.isNaN(pieceFromDrop)) {
-                                  handleAttemptPlacePiece(pieceFromDrop, cellIdx);
-                                }
-                              }}
-                              className={`group relative border border-white/60 transition-all overflow-hidden ${
-                                placed
-                                  ? 'cursor-default'
-                                  : canDropOrTap
-                                    ? 'cursor-pointer hover:bg-indigo-500/20 ring-inset hover:ring-2 hover:ring-indigo-400'
-                                    : 'cursor-default hover:bg-white/20'
-                              } ${isWrong ? 'bg-rose-500/35 ring-2 ring-inset ring-rose-500 animate-pulse' : ''}`}
-                            >
-                              {placed ? (
-                                <>
-                                  <div
-                                    className="h-full w-full"
-                                    style={{
-                                      backgroundImage: `url("${currentPuzzleArtwork.imageUrl}")`,
-                                      backgroundSize: '300% 300%',
-                                      backgroundPosition: `${col * 50}% ${row * 50}%`,
-                                    }}
-                                  />
-                                  <span
-                                    title={`Ghép bởi ${placed.placedByNickname}`}
-                                    className="pointer-events-none absolute bottom-1 left-1 max-w-[88%] truncate rounded-full bg-black/55 px-1.5 py-0.5 text-[8px] font-bold text-white opacity-0 transition-opacity group-hover:opacity-100"
-                                  >
-                                    {placed.placedByNickname}
-                                  </span>
-                                </>
-                              ) : (
-                                <span className="flex h-full w-full items-center justify-center text-[10px] font-black text-indigo-900/35">
-                                  {selectedPuzzlePiece !== null ? 'Đặt vào đây' : ''}
+                        return (
+                          <button
+                            key={cellIdx}
+                            type="button"
+                            onClick={() => {
+                              if (!placed && selectedPuzzlePiece !== null) {
+                                handleAttemptPlacePiece(selectedPuzzlePiece, cellIdx);
+                              }
+                            }}
+                            onDragOver={(e) => {
+                              if (!placed) e.preventDefault();
+                            }}
+                            onDrop={(e) => {
+                              e.preventDefault();
+                              const raw = e.dataTransfer.getData('text/plain');
+                              const pieceFromDrop =
+                                draggedPuzzlePiece !== null
+                                  ? draggedPuzzlePiece
+                                  : raw !== ''
+                                    ? Number(raw)
+                                    : null;
+                              if (pieceFromDrop !== null && !Number.isNaN(pieceFromDrop)) {
+                                handleAttemptPlacePiece(pieceFromDrop, cellIdx);
+                              }
+                            }}
+                            className={`group relative border border-[#dfd3be] transition-all overflow-hidden ${
+                              placed
+                                ? 'cursor-default'
+                                : canDropOrTap
+                                  ? 'cursor-pointer bg-white/80 hover:bg-indigo-100/70 ring-inset hover:ring-2 hover:ring-indigo-400'
+                                  : 'cursor-default bg-white/60 hover:bg-white'
+                            } ${isWrong ? 'bg-rose-500/35 ring-2 ring-inset ring-rose-500 animate-pulse' : ''}`}
+                          >
+                            {placed ? (
+                              <>
+                                <div
+                                  className="h-full w-full"
+                                  style={{
+                                    backgroundImage: `url("${currentPuzzleArtwork.imageUrl}")`,
+                                    backgroundSize: `${cols * 100}% ${rows * 100}%`,
+                                    backgroundPosition: `${posX}% ${posY}%`,
+                                  }}
+                                />
+                                <span
+                                  title={`Ghép bởi ${placed.placedByNickname}`}
+                                  className="pointer-events-none absolute bottom-0.5 left-0.5 max-w-[90%] truncate rounded-full bg-black/60 px-1 py-0.5 text-[8px] font-bold text-white opacity-0 transition-opacity group-hover:opacity-100"
+                                >
+                                  {placed.placedByNickname}
                                 </span>
-                              )}
-                            </button>
-                          );
-                        })}
-                      </div>
+                              </>
+                            ) : (
+                              <span className="flex h-full w-full items-center justify-center text-[9px] font-black text-[#b8a88e]">
+                                {totalPuzzlePieces <= 25 ? cellIdx + 1 : ''}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
 
                     <p className="mt-2 text-center text-[11px] font-semibold text-[#7a6452]">
@@ -3139,121 +3206,362 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
                         ? '🎉 Cả phòng đã hoàn thành bức tranh này!'
                         : selectedPuzzlePiece !== null
                           ? `Đang chọn mảnh #${selectedPuzzlePiece + 1} — chạm vào ô trống trên tranh để đặt`
-                          : 'Chạm mảnh ở khay rồi chạm vào ô, hoặc kéo thả trực tiếp vào tranh'}
+                          : 'Nhìn hình mẫu bên cạnh, chạm mảnh ở khay rồi chạm vào ô (hoặc kéo thả)'}
                     </p>
                   </div>
 
-                  {/* Khay mảnh ghép hoặc Thẻ hoàn thành */}
-                  <div className="rounded-2xl border-2 border-[#e5dccb] bg-white p-3 shadow-sm">
-                    {isCurrentPuzzleComplete ? (
-                      <div className="space-y-2.5 text-center">
-                        <div className="text-2xl">🏆</div>
-                        <div className="text-sm font-black text-emerald-700">
-                          Hoàn thành bức tranh!
-                        </div>
-                        <p className="text-[11px] text-[#6e5a49]">
-                          Tranh đã được lưu vào <strong>Bộ sưu tập của phòng</strong>.
-                        </p>
-                        <div className="flex flex-wrap justify-center gap-1 pt-1">
-                          {Array.from(
-                            new Set(
-                              Object.values(roomPuzzleState.placedPieces).map(
-                                (p) => p.placedByNickname,
-                              ),
-                            ),
-                          ).map((name) => (
-                            <span
-                              key={name}
-                              className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800"
-                            >
-                              {name}
-                            </span>
-                          ))}
-                        </div>
+                  {/* Cột phải: Hình mẫu rõ nét + Khay mảnh ghép */}
+                  <div className="space-y-2.5">
+                    {/* Hình mẫu rõ nét (không để hình mờ trên bảng) */}
+                    <div className="rounded-2xl border-2 border-[#e5dccb] bg-white p-2.5 shadow-sm">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-[11px] font-black text-[#3d2b1f]">
+                          🖼️ Hình mẫu
+                        </span>
                         <button
                           type="button"
-                          onClick={() => {
-                            const currIdx = PUZZLE_ARTWORKS.findIndex(
-                              (a) => a.id === currentPuzzleArtwork.id,
-                            );
-                            const nextArt =
-                              PUZZLE_ARTWORKS[(currIdx + 1) % PUZZLE_ARTWORKS.length];
-                            onSelectNextPuzzle(nextArt.id);
-                            setSelectedPuzzlePiece(null);
-                            setPuzzleFeedback({
-                              type: 'ok',
-                              text: `Đã mở bức mới: "${nextArt.title}"!`,
-                            });
-                          }}
-                          className="mt-2 w-full rounded-xl bg-gradient-to-r from-indigo-500 to-sky-500 py-2 text-xs font-black text-white shadow hover:brightness-105 active:scale-95 cursor-pointer"
+                          onClick={() => setShowLargeReference((v) => !v)}
+                          className="text-[10px] font-bold text-indigo-600 hover:underline cursor-pointer"
                         >
-                          🖼️ Chọn bức tiếp theo
+                          {showLargeReference ? 'Thu nhỏ' : 'Phóng to'}
                         </button>
                       </div>
-                    ) : (
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-black text-[#3d2b1f]">
-                            Khay mảnh ({unplacedPuzzlePieces.length} còn lại)
-                          </span>
-                          {selectedPuzzlePiece !== null && (
-                            <button
-                              type="button"
-                              onClick={() => setSelectedPuzzlePiece(null)}
-                              className="text-[10px] font-bold text-rose-500 hover:underline cursor-pointer"
-                            >
-                              Bỏ chọn
-                            </button>
-                          )}
-                        </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowLargeReference((v) => !v)}
+                        className="block w-full overflow-hidden rounded-xl border border-black/10 cursor-pointer"
+                        title="Bấm để phóng to / thu nhỏ hình mẫu"
+                      >
+                        <img
+                          src={currentPuzzleArtwork.imageUrl}
+                          alt={currentPuzzleArtwork.title}
+                          className={`w-full object-cover transition-all ${
+                            showLargeReference ? 'aspect-square' : 'h-24'
+                          }`}
+                        />
+                      </button>
+                    </div>
 
-                        <div className="grid grid-cols-3 gap-2">
-                          {unplacedPuzzlePieces.map((pieceIdx) => {
-                            const col = pieceIdx % currentPuzzleArtwork.gridCols;
-                            const row = Math.floor(pieceIdx / currentPuzzleArtwork.gridCols);
-                            const isSelected = selectedPuzzlePiece === pieceIdx;
-
-                            return (
-                              <button
-                                key={pieceIdx}
-                                type="button"
-                                draggable
-                                onDragStart={(e) => {
-                                  setDraggedPuzzlePiece(pieceIdx);
-                                  setSelectedPuzzlePiece(pieceIdx);
-                                  e.dataTransfer.setData('text/plain', String(pieceIdx));
-                                }}
-                                onDragEnd={() => setDraggedPuzzlePiece(null)}
-                                onClick={() =>
-                                  setSelectedPuzzlePiece((prev) =>
-                                    prev === pieceIdx ? null : pieceIdx,
-                                  )
-                                }
-                                className={`relative aspect-square rounded-xl border-2 overflow-hidden transition-all cursor-grab active:cursor-grabbing ${
-                                  isSelected
-                                    ? 'border-indigo-500 ring-2 ring-indigo-300 scale-105 shadow-md'
-                                    : 'border-[#e5dccb] hover:border-indigo-300 hover:scale-[1.03]'
-                                }`}
-                                style={{
-                                  backgroundImage: `url("${currentPuzzleArtwork.imageUrl}")`,
-                                  backgroundSize: '300% 300%',
-                                  backgroundPosition: `${col * 50}% ${row * 50}%`,
-                                }}
-                                title={`Mảnh #${pieceIdx + 1} — chạm hoặc kéo vào tranh`}
+                    {/* Khay mảnh ghép hoặc Thẻ hoàn thành */}
+                    <div className="rounded-2xl border-2 border-[#e5dccb] bg-white p-3 shadow-sm">
+                      {isCurrentPuzzleComplete ? (
+                        <div className="space-y-2.5 text-center">
+                          <div className="text-2xl">🏆</div>
+                          <div className="text-sm font-black text-emerald-700">
+                            Hoàn thành bức tranh!
+                          </div>
+                          <p className="text-[11px] text-[#6e5a49]">
+                            Tranh đã được lưu vào <strong>Bộ sưu tập của phòng</strong>.
+                          </p>
+                          <div className="flex flex-wrap justify-center gap-1 pt-1">
+                            {Array.from(
+                              new Set(
+                                Object.values(roomPuzzleState.placedPieces).map(
+                                  (p) => p.placedByNickname,
+                                ),
+                              ),
+                            ).map((name) => (
+                              <span
+                                key={name}
+                                className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800"
                               >
-                                <span className="absolute top-0.5 left-0.5 rounded bg-black/45 px-1 text-[8px] font-bold text-white">
-                                  #{pieceIdx + 1}
-                                </span>
-                              </button>
-                            );
-                          })}
+                                {name}
+                              </span>
+                            ))}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const currIdx = PUZZLE_ARTWORKS.findIndex(
+                                (a) => a.id === currentPuzzleArtwork.id,
+                              );
+                              const nextArt =
+                                PUZZLE_ARTWORKS[(currIdx + 1) % PUZZLE_ARTWORKS.length];
+                              onSelectNextPuzzle(nextArt.id, {
+                                gridCols: nextArt.gridCols,
+                                gridRows: nextArt.gridRows,
+                                customArtwork: null,
+                              });
+                              setSelectedPuzzlePiece(null);
+                              setPuzzleFeedback({
+                                type: 'ok',
+                                text: `Đã mở bức mới: "${nextArt.title}"!`,
+                              });
+                            }}
+                            className="mt-2 w-full rounded-xl bg-gradient-to-r from-indigo-500 to-sky-500 py-2 text-xs font-black text-white shadow hover:brightness-105 active:scale-95 cursor-pointer"
+                          >
+                            🖼️ Chọn bức tiếp theo
+                          </button>
                         </div>
-                      </div>
-                    )}
+                      ) : (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-black text-[#3d2b1f]">
+                              Khay mảnh ({unplacedPuzzlePieces.length})
+                            </span>
+                            {selectedPuzzlePiece !== null && (
+                              <button
+                                type="button"
+                                onClick={() => setSelectedPuzzlePiece(null)}
+                                className="text-[10px] font-bold text-rose-500 hover:underline cursor-pointer"
+                              >
+                                Bỏ chọn
+                              </button>
+                            )}
+                          </div>
+
+                          <div
+                            className={`grid gap-1.5 max-h-[240px] overflow-y-auto pr-0.5 ${
+                              totalPuzzlePieces > 16 ? 'grid-cols-4' : 'grid-cols-3'
+                            }`}
+                          >
+                            {unplacedPuzzlePieces.map((pieceIdx) => {
+                              const cols = currentPuzzleArtwork.gridCols;
+                              const rows = currentPuzzleArtwork.gridRows;
+                              const col = pieceIdx % cols;
+                              const row = Math.floor(pieceIdx / cols);
+                              const isSelected = selectedPuzzlePiece === pieceIdx;
+                              const posX = cols > 1 ? (col / (cols - 1)) * 100 : 0;
+                              const posY = rows > 1 ? (row / (rows - 1)) * 100 : 0;
+
+                              return (
+                                <button
+                                  key={pieceIdx}
+                                  type="button"
+                                  draggable
+                                  onDragStart={(e) => {
+                                    setDraggedPuzzlePiece(pieceIdx);
+                                    setSelectedPuzzlePiece(pieceIdx);
+                                    e.dataTransfer.setData('text/plain', String(pieceIdx));
+                                  }}
+                                  onDragEnd={() => setDraggedPuzzlePiece(null)}
+                                  onClick={() =>
+                                    setSelectedPuzzlePiece((prev) =>
+                                      prev === pieceIdx ? null : pieceIdx,
+                                    )
+                                  }
+                                  className={`relative aspect-square rounded-lg border-2 overflow-hidden transition-all cursor-grab active:cursor-grabbing ${
+                                    isSelected
+                                      ? 'border-indigo-500 ring-2 ring-indigo-300 scale-105 shadow-md'
+                                      : 'border-[#e5dccb] hover:border-indigo-300 hover:scale-[1.03]'
+                                  }`}
+                                  style={{
+                                    backgroundImage: `url("${currentPuzzleArtwork.imageUrl}")`,
+                                    backgroundSize: `${cols * 100}% ${rows * 100}%`,
+                                    backgroundPosition: `${posX}% ${posY}%`,
+                                  }}
+                                  title={`Mảnh #${pieceIdx + 1} — chạm hoặc kéo vào tranh`}
+                                >
+                                  <span className="absolute top-0.5 left-0.5 rounded bg-black/50 px-1 text-[8px] font-bold text-white">
+                                    #{pieceIdx + 1}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
-            ) : (
+            )}
+
+            {puzzleSubTab === 'custom' && (
+              /* TAB TỰ SET TRANH & CHIA KHUNG (AI TRONG NHÓM CŨNG SET ĐƯỢC, MAX 100 Ô) */
+              <div className="rounded-2xl border-2 border-[#e5dccb] bg-white p-3.5 shadow-sm space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-sm font-black text-[#3d2b1f]">
+                      📤 Tự set tranh cho cả phòng
+                    </h4>
+                    <p className="text-[11px] text-[#7a6452]">
+                      Mọi thành viên đều có thể tải hình lên và chia tối đa{' '}
+                      <strong>{MAX_PUZZLE_PIECES} ô</strong> (ví dụ 10×10).
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-[150px_1fr] gap-3 items-start">
+                  {/* Xem trước ảnh tải lên */}
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="relative h-36 w-36 rounded-2xl border-2 border-dashed border-[#d6c7ae] bg-[#faf5ea] overflow-hidden flex items-center justify-center">
+                      {customImageDataUrl ? (
+                        <img
+                          src={customImageDataUrl}
+                          alt="Ảnh tự chọn"
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <span className="px-2 text-center text-[11px] font-semibold text-[#8c7763]">
+                          Chưa chọn ảnh
+                        </span>
+                      )}
+                      {/* Đường kẻ chia khung xem trước */}
+                      {customImageDataUrl && (
+                        <div
+                          className="pointer-events-none absolute inset-0 grid"
+                          style={{
+                            gridTemplateColumns: `repeat(${customCols}, minmax(0, 1fr))`,
+                            gridTemplateRows: `repeat(${customRows}, minmax(0, 1fr))`,
+                          }}
+                        >
+                          {Array.from({ length: customCols * customRows }, (_, i) => (
+                            <div key={i} className="border border-white/55" />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <label className="w-full cursor-pointer rounded-xl bg-indigo-500 hover:bg-indigo-400 px-3 py-1.5 text-center text-xs font-black text-white shadow-sm active:scale-95">
+                      📁 Chọn ảnh từ máy
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleUploadCustomPuzzleImage}
+                        className="hidden"
+                      />
+                    </label>
+                    {customUploadError && (
+                      <span className="text-[10px] font-bold text-rose-600 text-center">
+                        {customUploadError}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Thiết lập tên & số khung */}
+                  <div className="space-y-2.5">
+                    <div>
+                      <label className="block text-[11px] font-black text-[#5c4838] mb-1">
+                        Tên bức tranh
+                      </label>
+                      <input
+                        type="text"
+                        value={customTitleDraft}
+                        onChange={(e) => setCustomTitleDraft(e.target.value)}
+                        placeholder={`Tranh của ${currentNickname}`}
+                        maxLength={45}
+                        className="w-full rounded-xl border-2 border-[#e5dccb] bg-[#fdfaf3] px-3 py-1.5 text-xs font-bold text-[#3d2b1f] outline-none focus:border-indigo-400"
+                      />
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-[11px] font-black text-[#5c4838]">
+                          Chia số khung (tối đa {MAX_PUZZLE_PIECES} ô)
+                        </label>
+                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-800">
+                          {customCols} × {customRows} = {customCols * customRows} ô
+                        </span>
+                      </div>
+
+                      <div className="flex flex-wrap gap-1.5 mb-2">
+                        {[
+                          [3, 3],
+                          [4, 4],
+                          [5, 5],
+                          [6, 6],
+                          [8, 8],
+                          [10, 10],
+                        ].map(([c, r]) => {
+                          const active = customCols === c && customRows === r;
+                          return (
+                            <button
+                              key={`${c}x${r}`}
+                              type="button"
+                              onClick={() => {
+                                setCustomCols(c);
+                                setCustomRows(r);
+                              }}
+                              className={`rounded-lg px-2 py-1 text-[11px] font-black border transition cursor-pointer ${
+                                active
+                                  ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
+                                  : 'border-[#e5dccb] bg-white text-[#5c4838] hover:border-indigo-300'
+                              }`}
+                            >
+                              {c}×{r} ({c * r})
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <span className="text-[10px] font-bold text-[#7a6452]">
+                            Số cột (2–10)
+                          </span>
+                          <input
+                            type="number"
+                            min={2}
+                            max={10}
+                            value={customCols}
+                            onChange={(e) => {
+                              const next = clampPuzzleGrid(Number(e.target.value), customRows);
+                              setCustomCols(next.gridCols);
+                              setCustomRows(next.gridRows);
+                            }}
+                            className="mt-0.5 w-full rounded-lg border border-[#e5dccb] px-2.5 py-1 text-xs font-bold"
+                          />
+                        </div>
+                        <div>
+                          <span className="text-[10px] font-bold text-[#7a6452]">
+                            Số hàng (2–10)
+                          </span>
+                          <input
+                            type="number"
+                            min={2}
+                            max={10}
+                            value={customRows}
+                            onChange={(e) => {
+                              const next = clampPuzzleGrid(customCols, Number(e.target.value));
+                              setCustomCols(next.gridCols);
+                              setCustomRows(next.gridRows);
+                            }}
+                            className="mt-0.5 w-full rounded-lg border border-[#e5dccb] px-2.5 py-1 text-xs font-bold"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={!customImageDataUrl}
+                      onClick={() => {
+                        if (!customImageDataUrl) return;
+                        const { gridCols, gridRows } = clampPuzzleGrid(customCols, customRows);
+                        const customId = `custom-${Date.now()}`;
+                        const title =
+                          customTitleDraft.trim() || `Tranh của ${currentNickname}`;
+                        const newArtwork: PuzzleArtwork = {
+                          id: customId,
+                          title,
+                          subtitle: `${gridCols}×${gridRows} (${gridCols * gridRows} ô)`,
+                          gridCols,
+                          gridRows,
+                          imageUrl: customImageDataUrl,
+                        };
+                        onSelectNextPuzzle(customId, {
+                          gridCols,
+                          gridRows,
+                          customArtwork: newArtwork,
+                        });
+                        setSelectedPuzzlePiece(null);
+                        setPuzzleSubTab('board');
+                        setPuzzleFeedback({
+                          type: 'ok',
+                          text: `${currentNickname} vừa đặt tranh mới "${title}" (${gridCols}×${gridRows} = ${gridCols * gridRows} ô) cho cả phòng!`,
+                        });
+                      }}
+                      className="w-full rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 disabled:opacity-45 py-2 text-xs font-black text-white shadow hover:brightness-105 active:scale-95 cursor-pointer"
+                    >
+                      ✨ Áp dụng tranh này cho cả phòng
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {puzzleSubTab === 'gallery' && (
               /* TAB BỘ SƯU TẬP CỦA PHÒNG */
               <div className="space-y-3">
                 <div>
@@ -3268,14 +3576,15 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                       {roomPuzzleState.completedGallery.map((item) => {
                         const art = PUZZLE_ARTWORKS.find((a) => a.id === item.artworkId);
+                        const thumbUrl = item.imageUrl || art?.imageUrl;
                         return (
                           <div
                             key={`${item.artworkId}-${item.completedAt}`}
                             className="flex items-center gap-3 rounded-2xl border border-[#e5dccb] bg-white p-2.5 shadow-sm"
                           >
-                            {art && (
+                            {thumbUrl && (
                               <img
-                                src={art.imageUrl}
+                                src={thumbUrl}
                                 alt={item.title}
                                 className="h-16 w-16 shrink-0 rounded-xl object-cover border border-black/10"
                               />
@@ -3312,7 +3621,8 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
 
                 <div>
                   <h4 className="text-xs font-black uppercase tracking-wider text-[#6e5a49] mb-2">
-                    Chọn bức tranh tiếp theo cho phòng
+                    Chọn nhanh tranh mẫu cho phòng ({customCols}×{customRows} ={' '}
+                    {customCols * customRows} ô)
                   </h4>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     {PUZZLE_ARTWORKS.map((art) => {
@@ -3322,12 +3632,16 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
                           key={art.id}
                           type="button"
                           onClick={() => {
-                            onSelectNextPuzzle(art.id);
+                            onSelectNextPuzzle(art.id, {
+                              gridCols: customCols,
+                              gridRows: customRows,
+                              customArtwork: null,
+                            });
                             setSelectedPuzzlePiece(null);
                             setPuzzleSubTab('board');
                             setPuzzleFeedback({
                               type: 'ok',
-                              text: `Cả phòng chuyển sang ghép bức "${art.title}"!`,
+                              text: `Cả phòng chuyển sang ghép bức "${art.title}" (${customCols}×${customRows})!`,
                             });
                           }}
                           className={`group flex flex-col overflow-hidden rounded-xl border-2 bg-white text-left transition cursor-pointer ${
