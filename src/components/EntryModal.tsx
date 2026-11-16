@@ -1,15 +1,21 @@
 import React, { useState } from 'react';
-import { UserCheck, ShieldAlert, Sparkles, KeyRound, Users } from 'lucide-react';
+import { UserCheck, ShieldAlert, Sparkles, KeyRound, Eye, EyeOff, Lock } from 'lucide-react';
 import type { AvatarGender } from '../types/office';
 import { DEFAULT_ROOM_CODE } from '../constants/officeLayout';
+import {
+  loadRememberedCredentials,
+  clearRememberedCredentials,
+} from '../services/officeApi';
 
 interface EntryModalProps {
   initialRoomCode: string;
   onJoin: (params: {
     roomCode: string;
     nickname: string;
+    password: string;
     avatarGender: AvatarGender;
     createIfMissing: boolean;
+    rememberDevice: boolean;
   }) => Promise<void>;
   error: string | null;
   loading: boolean;
@@ -21,19 +27,32 @@ export const EntryModal: React.FC<EntryModalProps> = ({
   error,
   loading,
 }) => {
-  const [nickname, setNickname] = useState('');
-  const [avatarGender, setAvatarGender] = useState<AvatarGender>('male');
-  const [roomCode, setRoomCode] = useState(initialRoomCode || DEFAULT_ROOM_CODE);
+  const savedCreds = React.useMemo(() => loadRememberedCredentials(), []);
+  const [nickname, setNickname] = useState(savedCreds?.nickname || '');
+  const [password, setPassword] = useState(savedCreds?.password || '');
+  const [showPassword, setShowPassword] = useState(false);
+  const [rememberDevice, setRememberDevice] = useState(true);
+  const [avatarGender, setAvatarGender] = useState<AvatarGender>(
+    savedCreds?.avatarGender || 'male'
+  );
+  const [roomCode, setRoomCode] = useState(
+    initialRoomCode || savedCreds?.roomCode || DEFAULT_ROOM_CODE
+  );
   const [createIfMissing, setCreateIfMissing] = useState(true);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!nickname.trim()) return;
+    if (!nickname.trim() || !password.trim()) return;
+    if (!rememberDevice) {
+      clearRememberedCredentials();
+    }
     await onJoin({
       roomCode: roomCode.trim().toUpperCase() || DEFAULT_ROOM_CODE,
       nickname: nickname.trim(),
+      password: password.trim(),
       avatarGender,
       createIfMissing,
+      rememberDevice,
     });
   };
 
@@ -74,6 +93,47 @@ export const EntryModal: React.FC<EntryModalProps> = ({
               placeholder="VD: Minh, Lan, Cà Phê Sữa..."
               className="w-full rounded-xl border border-white/15 bg-slate-800/90 px-3.5 py-2.5 text-base sm:text-sm text-white placeholder-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/30"
             />
+          </div>
+
+          {/* Mật khẩu riêng cho tài khoản */}
+          <div>
+            <label
+              htmlFor="password-input"
+              className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5"
+            >
+              <Lock className="h-3.5 w-3.5 text-emerald-400" />
+              <span>Mật khẩu tài khoản</span>
+            </label>
+            <div className="relative flex items-center">
+              <input
+                id="password-input"
+                data-testid="entry-password-input"
+                type={showPassword ? 'text' : 'password'}
+                required
+                maxLength={64}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Tạo hoặc nhập mật khẩu của bạn..."
+                className="w-full rounded-xl border border-white/15 bg-slate-800/90 pl-3.5 pr-10 py-2.5 text-base sm:text-sm text-white placeholder-slate-500 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/30"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                className="absolute right-2.5 p-1 text-slate-400 hover:text-white cursor-pointer"
+                title={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+            <label className="mt-2 flex items-center gap-2 text-xs text-slate-300 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={rememberDevice}
+                onChange={(e) => setRememberDevice(e.target.checked)}
+                className="rounded border-slate-600 bg-slate-800 text-emerald-500 focus:ring-emerald-500"
+              />
+              <span>Ghi nhớ đăng nhập & mật khẩu trên thiết bị này</span>
+            </label>
           </div>
 
           {/* Chọn mẫu nhân vật 3D: Nam hoặc Nữ */}
@@ -160,15 +220,12 @@ export const EntryModal: React.FC<EntryModalProps> = ({
             </label>
           </div>
 
-          {/* Lưu ý tài khoản ẩn danh */}
+          {/* Lưu ý tài khoản & mật khẩu chống trùng tên */}
           <div className="rounded-2xl border border-amber-500/25 bg-amber-500/10 p-3 text-xs text-amber-200/90 leading-relaxed flex gap-2.5">
             <ShieldAlert className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
             <div>
-              <strong className="font-semibold text-amber-300">Tài khoản ẩn danh:</strong> Bạn không cần email hay tên thật. Lưu ý rằng việc{' '}
-              <span className="underline decoration-amber-400/60">
-                xóa dữ liệu trình duyệt hoặc đổi thiết bị
-              </span>{' '}
-              có thể làm mất quyền truy cập vào tài khoản ẩn danh, chỗ ngồi và lịch sử cũ của bạn.
+              <strong className="font-semibold text-amber-300">Lưu ý:</strong> Tên trong phòng{' '}
+              <strong>không được trùng</strong>. Nếu là lần đầu, hãy tự tạo mật khẩu riêng; lần sau nhập đúng Tên & Mật khẩu để vào lại đúng tài khoản cũ (hệ thống tự ghi nhớ trên thiết bị của bạn).
             </div>
           </div>
 
@@ -183,7 +240,7 @@ export const EntryModal: React.FC<EntryModalProps> = ({
 
           <button
             type="submit"
-            disabled={loading || !nickname.trim()}
+            disabled={loading || !nickname.trim() || !password.trim()}
             data-testid="entry-submit-btn"
             className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 px-4 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-emerald-500/20 transition-all cursor-pointer"
           >

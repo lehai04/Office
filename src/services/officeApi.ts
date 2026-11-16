@@ -108,6 +108,48 @@ export function clearSavedSession(): void {
   }
 }
 
+export interface RememberedDeviceCredentials {
+  roomCode: string;
+  nickname: string;
+  password: string;
+  avatarGender: AvatarGender;
+}
+
+const CREDENTIALS_STORAGE_PREFIX = 'van_phong_ao_device_creds_v1';
+
+export function loadRememberedCredentials(): RememberedDeviceCredentials | null {
+  try {
+    const key = `${CREDENTIALS_STORAGE_PREFIX}:${getSessionNamespace()}`;
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as RememberedDeviceCredentials;
+    if (parsed && parsed.nickname) {
+      return parsed;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveRememberedCredentials(creds: RememberedDeviceCredentials): void {
+  try {
+    const key = `${CREDENTIALS_STORAGE_PREFIX}:${getSessionNamespace()}`;
+    window.localStorage.setItem(key, JSON.stringify(creds));
+  } catch {
+    // ignore
+  }
+}
+
+export function clearRememberedCredentials(): void {
+  try {
+    const key = `${CREDENTIALS_STORAGE_PREFIX}:${getSessionNamespace()}`;
+    window.localStorage.removeItem(key);
+  } catch {
+    // ignore
+  }
+}
+
 export async function resetAllServerAccounts(): Promise<void> {
   await apiFetch('/api/reset', { method: 'POST', body: JSON.stringify({}) });
   clearSavedSession();
@@ -267,9 +309,11 @@ export interface JoinRoomResponse {
 export async function joinOrRestoreRoom(params: {
   roomCode: string;
   nickname: string;
+  password?: string;
   avatarGender: AvatarGender;
   sessionToken?: string;
   createIfMissing?: boolean;
+  rememberDevice?: boolean;
 }): Promise<JoinRoomResponse> {
   const result = await apiFetch<JoinRoomResponse>(
     '/api/auth/join',
@@ -278,6 +322,7 @@ export async function joinOrRestoreRoom(params: {
       body: JSON.stringify({
         roomCode: params.roomCode,
         nickname: params.nickname,
+        password: params.password ?? '',
         avatarGender: params.avatarGender,
         createIfMissing: params.createIfMissing ?? false,
       }),
@@ -285,7 +330,42 @@ export async function joinOrRestoreRoom(params: {
     params.sessionToken
   );
   saveSessionToStorage(result.session);
+  if (params.rememberDevice !== false && params.password) {
+    saveRememberedCredentials({
+      roomCode: result.room.code,
+      nickname: result.session.nickname,
+      password: params.password,
+      avatarGender: result.session.avatarGender,
+    });
+  }
   return result;
+}
+
+export async function setAccountPasswordApi(
+  roomCode: string,
+  password: string,
+  sessionToken: string
+): Promise<{ ok: boolean; hasPassword: boolean }> {
+  const res = await apiFetch<{ ok: boolean; hasPassword: boolean }>(
+    '/api/auth/password',
+    {
+      method: 'POST',
+      body: JSON.stringify({ roomCode, password }),
+    },
+    sessionToken
+  );
+  const current = loadSavedSession();
+  if (current) {
+    const updated: AuthSession = { ...current, hasPassword: true };
+    saveSessionToStorage(updated);
+    saveRememberedCredentials({
+      roomCode: current.roomCode,
+      nickname: current.nickname,
+      password,
+      avatarGender: current.avatarGender,
+    });
+  }
+  return res;
 }
 
 export interface FullRoomStateResponse {

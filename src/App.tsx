@@ -72,6 +72,7 @@ import {
   loadSavedSession,
   officeApiUrl,
   sendChatMessage,
+  setAccountPasswordApi,
   sitAtMeetingChair,
   subscribeStaticRealtime,
   transferRoomManager,
@@ -153,6 +154,11 @@ export function App() {
   // State đóng/mở menu gọn trên màn hình (Click để xổ chức năng, click để đóng menu)
   const [topMenuOpen, setTopMenuOpen] = useState<boolean>(false);
   const [dockCollapsed, setDockCollapsed] = useState<boolean>(false);
+
+  // State tạo mật khẩu cho tài khoản cũ chưa có mật khẩu
+  const [newPasswordDraft, setNewPasswordDraft] = useState<string>('');
+  const [savingPassword, setSavingPassword] = useState<boolean>(false);
+  const [passwordPromptError, setPasswordPromptError] = useState<string | null>(null);
 
   // Thông báo tin nhắn nổi toàn cục (hiện dù đang ở bất kỳ phòng/game/tab nào)
   const [chatAlertBanner, setChatAlertBanner] = useState<{
@@ -821,8 +827,10 @@ export function App() {
   const handleJoinRoom = async (params: {
     roomCode: string;
     nickname: string;
+    password?: string;
     avatarGender: AvatarGender;
     createIfMissing: boolean;
+    rememberDevice?: boolean;
   }) => {
     setEntryLoading(true);
     setEntryError(null);
@@ -830,8 +838,10 @@ export function App() {
       const joined = await joinOrRestoreRoom({
         roomCode: params.roomCode,
         nickname: params.nickname,
+        password: params.password,
         avatarGender: params.avatarGender,
         createIfMissing: params.createIfMissing,
+        rememberDevice: params.rememberDevice,
       });
       setSession(joined.session);
       await hydrateRoomData(joined.room.code, joined.session.sessionToken, true);
@@ -841,6 +851,30 @@ export function App() {
       );
     } finally {
       setEntryLoading(false);
+    }
+  };
+
+  const handleSaveAccountPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!session || !room) return;
+    const trimmed = newPasswordDraft.trim();
+    if (!trimmed) {
+      setPasswordPromptError('Vui lòng nhập mật khẩu riêng của bạn.');
+      return;
+    }
+    setSavingPassword(true);
+    setPasswordPromptError(null);
+    try {
+      await setAccountPasswordApi(room.code, trimmed, session.sessionToken);
+      setSession({ ...session, hasPassword: true });
+      setNewPasswordDraft('');
+      showToast('🔐 Đã lưu mật khẩu & ghi nhớ trên thiết bị của bạn!');
+    } catch (err) {
+      setPasswordPromptError(
+        err instanceof Error ? err.message : 'Không thể lưu mật khẩu.'
+      );
+    } finally {
+      setSavingPassword(false);
     }
   };
 
@@ -1366,6 +1400,57 @@ export function App() {
           )}
         </div>
       </header>
+
+      {/* THÔNG BÁO YÊU CẦU TẠO MẬT KHẨU RIÊNG CHO TÀI KHOẢN CHƯA CÓ MẬT KHẨU */}
+      {!session.hasPassword && (
+        <div
+          data-testid="create-password-prompt-modal"
+          className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-md"
+        >
+          <form
+            onSubmit={handleSaveAccountPassword}
+            className="w-full max-w-sm rounded-3xl border-2 border-amber-400/60 bg-slate-900 p-5 text-slate-100 shadow-2xl space-y-3.5"
+          >
+            <div className="space-y-1">
+              <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-400/20 px-2.5 py-0.5 text-[11px] font-bold text-amber-300">
+                🔐 Cập nhật bảo mật tài khoản
+              </div>
+              <h3 className="text-base font-black text-white">
+                Tạo Mật Khẩu Cho "{session.nickname}"
+              </h3>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                Hệ thống vừa nâng cấp chống trùng tên. Hãy tạo mật khẩu riêng để lần sau đăng nhập đúng tài khoản này và hệ thống sẽ{' '}
+                <strong className="text-emerald-300">tự động ghi nhớ trên thiết bị của bạn</strong>.
+              </p>
+            </div>
+
+            <input
+              type="password"
+              required
+              autoFocus
+              maxLength={64}
+              value={newPasswordDraft}
+              onChange={(e) => setNewPasswordDraft(e.target.value)}
+              placeholder="Nhập mật khẩu riêng của bạn..."
+              className="w-full rounded-xl border border-white/20 bg-slate-800 px-3.5 py-2.5 text-sm text-white placeholder-slate-400 focus:border-emerald-400 focus:outline-none"
+            />
+
+            {passwordPromptError && (
+              <div className="rounded-xl bg-rose-500/20 border border-rose-500/40 px-3 py-2 text-xs text-rose-200">
+                {passwordPromptError}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={savingPassword || !newPasswordDraft.trim()}
+              className="w-full rounded-2xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 py-2.5 text-sm font-black text-slate-950 shadow-lg cursor-pointer"
+            >
+              {savingPassword ? 'Đang lưu...' : '💾 Lưu mật khẩu & Ghi nhớ thiết bị'}
+            </button>
+          </form>
+        </div>
+      )}
 
       {/* THÔNG BÁO TIN NHẮN NỔI TOÀN CỤC (Hiện trên cùng mọi phòng/game/bảng khi có tin nhắn mới) */}
       {chatAlertBanner && (

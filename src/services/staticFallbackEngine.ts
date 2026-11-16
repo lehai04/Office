@@ -28,6 +28,7 @@ interface StoredAccount {
   userId: string;
   sessionToken: string;
   nickname: string;
+  password?: string;
   avatarGender: AvatarGender;
   memberTag: string;
   createdAt: string;
@@ -242,9 +243,53 @@ function purgeDeprecatedAccounts(db: StaticDatabaseSchema): void {
       delete db.accounts[token];
     }
   }
+
+  // Kiểm tra các tài khoản LeLe: xóa hết các tài khoản trùng, chỉ giữ lại duy nhất Trưởng phòng
+  for (const room of Object.values(db.rooms || {})) {
+    const leleMembers = (db.roomMembers || []).filter(
+      (m) =>
+        m.roomId === room.id &&
+        !removedUserIds.has(m.userId) &&
+        m.nickname.trim().toLowerCase() === 'lele'
+    );
+    if (leleMembers.length > 0) {
+      let keepMember = leleMembers.find((m) => m.userId === room.managerUserId);
+      if (!keepMember) {
+        keepMember = leleMembers[0];
+        room.managerUserId = keepMember.userId;
+      }
+      for (const m of leleMembers) {
+        if (m.userId !== keepMember.userId) {
+          removedUserIds.add(m.userId);
+        }
+      }
+    }
+  }
+
+  // Dọn thêm trong db.accounts các tài khoản LeLe dư thừa không phải Trưởng phòng nào
+  const validLeleUserIds = new Set(
+    (db.roomMembers || [])
+      .filter((m) => !removedUserIds.has(m.userId) && m.nickname.trim().toLowerCase() === 'lele')
+      .map((m) => m.userId)
+  );
+  for (const [token, acc] of Object.entries(db.accounts || {})) {
+    if (
+      acc.nickname.trim().toLowerCase() === 'lele' &&
+      !validLeleUserIds.has(acc.userId)
+    ) {
+      removedUserIds.add(acc.userId);
+      delete db.accounts[token];
+    }
+  }
+
   if (removedUserIds.size === 0) return;
 
   db.roomMembers = db.roomMembers.filter((m) => !removedUserIds.has(m.userId));
+  for (const token of Object.keys(db.accounts || {})) {
+    if (removedUserIds.has(db.accounts[token].userId)) {
+      delete db.accounts[token];
+    }
+  }
   for (const s of db.seats || []) {
     if (s.occupiedByUserId && removedUserIds.has(s.occupiedByUserId)) {
       s.occupiedByUserId = null;
@@ -809,6 +854,8 @@ export async function handleStaticFallbackRequest<T>(
 
   if (pathname === '/api/auth/join' && method === 'POST') {
     const rawNickname = typeof body.nickname === 'string' ? body.nickname.trim() : '';
+    const rawPassword =
+      typeof body.password === 'string' ? body.password.trim().slice(0, 64) : '';
     const rawGender: AvatarGender = body.avatarGender === 'female' ? 'female' : 'male';
     const rawRoomCode =
       typeof body.roomCode === 'string' && body.roomCode.trim()
@@ -848,21 +895,86 @@ export async function handleStaticFallbackRequest<T>(
     let account = existingAccount;
     const nowIso = new Date().toISOString();
 
+    // Kiểm tra trùng tên trong phòng / hệ thống để không tạo nhiều tài khoản trùng tên
+    const normalizedNick = rawNickname.toLowerCase();
+    const matchedMemberInRoom = normalizedNick
+      ? db.roomMembers.find(
+          (m) =>
+            m.roomId === room!.id &&
+            m.nickname.trim().toLowerCase() === normalizedNick
+        )
+      : undefined;
+    const matchedAccountByNick = normalizedNick
+      ? (matchedMemberInRoom
+          ? Object.values(db.accounts).find(
+              (a) => a.userId === matchedMemberInRoom.userId
+            )
+          : Object.values(db.accounts).find(
+              (a) => a.nickname.trim().toLowerCase() === normalizedNick
+            ))
+      : undefined;
+
     if (!account) {
-      const userId = `usr_${randomHex(8)}`;
-      const newToken = sessionToken || `tok_${randomHex(18)}`;
-      const memberTag = `#${userId.slice(4, 8).toUpperCase()}`;
-      account = {
-        userId,
-        sessionToken: newToken,
-        nickname: rawNickname || 'Thành viên',
-        avatarGender: rawGender,
-        memberTag,
-        createdAt: nowIso,
-      };
-      db.accounts[newToken] = account;
+      if (matchedAccountByNick) {
+        if (matchedAccountByNick.password) {
+          if (!rawPassword || rawPassword !== matchedAccountByNick.password) {
+            throw createApiError(
+              409,
+              'DUPLICATE_NICKNAME_WRONG_PASSWORD',
+              `Tên "${rawNickname}" đã có người sử dụng. Nếu đây là tài khoản của bạn, vui lòng nhập đúng mật khẩu; nếu không hãy chọn tên khác!`
+            );
+          }
+        } else {
+          if (!rawPassword) {
+            throw createApiError(
+              400,
+              'PASSWORD_REQUIRED',
+              `Vui lòng nhập mật khẩu riêng cho tài khoản "${rawNickname}"!`
+            );
+          }
+          matchedAccountByNick.password = rawPassword;
+        }
+        account = matchedAccountByNick;
+        if (body.avatarGender === 'male' || body.avatarGender === 'female') {
+          account.avatarGender = body.avatarGender;
+        }
+      } else {
+        if (!rawPassword) {
+          throw createApiError(
+            400,
+            'PASSWORD_REQUIRED',
+            'Vui lòng tạo mật khẩu riêng để vào đúng tài khoản của bạn và tránh trùng tên!'
+          );
+        }
+        const userId = `usr_${randomHex(8)}`;
+        const newToken = sessionToken || `tok_${randomHex(18)}`;
+        const memberTag = `#${userId.slice(4, 8).toUpperCase()}`;
+        account = {
+          userId,
+          sessionToken: newToken,
+          nickname: rawNickname || 'Thành viên',
+          password: rawPassword,
+          avatarGender: rawGender,
+          memberTag,
+          createdAt: nowIso,
+        };
+        db.accounts[newToken] = account;
+      }
     } else {
+      if (
+        matchedAccountByNick &&
+        matchedAccountByNick.userId !== account.userId
+      ) {
+        throw createApiError(
+          409,
+          'DUPLICATE_NICKNAME',
+          `Tên "${rawNickname}" đã có người khác dùng trong phòng. Vui lòng chọn tên khác!`
+        );
+      }
       if (rawNickname) account.nickname = rawNickname;
+      if (rawPassword && !account.password) {
+        account.password = rawPassword;
+      }
       if (body.avatarGender === 'male' || body.avatarGender === 'female') {
         account.avatarGender = body.avatarGender;
       }
@@ -916,9 +1028,37 @@ export async function handleStaticFallbackRequest<T>(
         nickname: account.nickname,
         avatarGender: account.avatarGender,
         memberTag: account.memberTag,
+        hasPassword: Boolean(account.password),
       },
       mySeatId: mySeat ? mySeat.seatId : null,
       ...roomState,
+    } as unknown as T;
+  }
+
+  if (pathname === '/api/auth/password' && method === 'POST') {
+    const newPassword =
+      typeof body.password === 'string' ? body.password.trim().slice(0, 64) : '';
+    if (!newPassword) {
+      throw createApiError(400, 'PASSWORD_REQUIRED', 'Vui lòng nhập mật khẩu mới.');
+    }
+    const account = sessionToken ? db.accounts[sessionToken] ?? null : null;
+    if (!account) {
+      throw createApiError(401, 'UNAUTHORIZED', 'Phiên đăng nhập không hợp lệ.');
+    }
+    account.password = newPassword;
+    saveStaticDb(db);
+
+    const roomCode =
+      typeof body.roomCode === 'string' ? body.roomCode.trim().toUpperCase() : DEFAULT_ROOM_CODE;
+    const room = db.rooms[roomCode] || Object.values(db.rooms)[0];
+    if (room) {
+      const roomState = buildRoomStatePayload(db, room);
+      emitRealtimeEvent(db, room, { type: 'room_state', ...roomState });
+    }
+
+    return {
+      ok: true,
+      hasPassword: true,
     } as unknown as T;
   }
 

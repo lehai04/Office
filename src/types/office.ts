@@ -87,5 +87,6 @@ export interface AuthSession {
   nickname: string;
   avatarGender: AvatarGender;
   memberTag: string;
+  hasPassword?: boolean;
 }
 
