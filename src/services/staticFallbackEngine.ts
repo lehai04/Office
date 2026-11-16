@@ -72,7 +72,7 @@ interface StaticDatabaseSchema {
   seats: WorkSeat[];
   activeMeetingChairs: Record<string, string>; // key = `${roomId}:${userId}` -> meetingChairId
   activeZenMembers?: Record<string, boolean>; // key = `${roomId}:${userId}` -> đang ở Phòng Tịnh Tâm
-  zenResetDoneV1?: boolean;
+  zenResetDoneV2?: boolean;
   messages: ChatMessage[];
   chatClearedAtByRoom?: Record<string, string>;
   attendance: Record<string, AttendanceRecord>;
@@ -411,9 +411,9 @@ function mergeRemoteDatabase(
     };
   }
 
-  // Merge activeZenMembers (chỉ merge từ peer đã cập nhật zenResetDoneV1 để không bị kẹt cờ cũ)
+  // Merge activeZenMembers (chỉ merge từ peer đã cập nhật zenResetDoneV2 để không bị kẹt cờ cũ)
   if (!local.activeZenMembers) local.activeZenMembers = {};
-  if (remoteDb.activeZenMembers && remoteDb.zenResetDoneV1) {
+  if (remoteDb.activeZenMembers && remoteDb.zenResetDoneV2) {
     local.activeZenMembers = {
       ...local.activeZenMembers,
       ...remoteDb.activeZenMembers,
@@ -809,9 +809,9 @@ function loadStaticDb(): StaticDatabaseSchema {
         if (!parsed.activeMeetingChairs) parsed.activeMeetingChairs = {};
         purgeDeprecatedAccounts(parsed);
         purgeClearedMessages(parsed);
-        if (!parsed.zenResetDoneV1) {
+        if (!parsed.zenResetDoneV2) {
           parsed.activeZenMembers = {};
-          parsed.zenResetDoneV1 = true;
+          parsed.zenResetDoneV2 = true;
           saveStaticDb(parsed);
         }
         return parsed;
@@ -1510,7 +1510,7 @@ export async function handleStaticFallbackRequest<T>(
       }
       db.activeZenMembers[`${room.id}:${account.userId}`] = true;
     } else {
-      delete db.activeZenMembers[`${room.id}:${account.userId}`];
+      db.activeZenMembers[`${room.id}:${account.userId}`] = false;
     }
 
     saveStaticDb(db);
@@ -1528,7 +1528,7 @@ export async function handleStaticFallbackRequest<T>(
     }
     delete db.activeMeetingChairs[`${room.id}:${account.userId}`];
     if (db.activeZenMembers) {
-      delete db.activeZenMembers[`${room.id}:${account.userId}`];
+      db.activeZenMembers[`${room.id}:${account.userId}`] = false;
     }
     db.roomMembers = db.roomMembers.filter(
       (m) => !(m.roomId === room.id && m.userId === account.userId)
