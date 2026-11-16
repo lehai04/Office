@@ -1042,7 +1042,14 @@ export function App() {
         const myId = loadSavedSession()?.userId;
         const meMember = fullState.members.find((m) => m.userId === myId);
         if (meMember?.inZenRoom) {
-          setZenRoomPresenceApi(roomCode, false, sessionToken).catch(() => {});
+          setZenRoomPresenceApi(roomCode, false, sessionToken)
+            .then((res) => {
+              if (res?.members) setMembers(res.members);
+            })
+            .catch(() => {});
+          setMembers((prev) =>
+            prev.map((m) => (m.userId === myId ? { ...m, inZenRoom: false } : m))
+          );
         }
         setActivePanel('none');
       }

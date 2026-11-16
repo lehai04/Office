@@ -72,6 +72,7 @@ interface StaticDatabaseSchema {
   seats: WorkSeat[];
   activeMeetingChairs: Record<string, string>; // key = `${roomId}:${userId}` -> meetingChairId
   activeZenMembers?: Record<string, boolean>; // key = `${roomId}:${userId}` -> đang ở Phòng Tịnh Tâm
+  zenResetDoneV1?: boolean;
   messages: ChatMessage[];
   chatClearedAtByRoom?: Record<string, string>;
   attendance: Record<string, AttendanceRecord>;
@@ -410,9 +411,9 @@ function mergeRemoteDatabase(
     };
   }
 
-  // Merge activeZenMembers
+  // Merge activeZenMembers (chỉ merge từ peer đã cập nhật zenResetDoneV1 để không bị kẹt cờ cũ)
   if (!local.activeZenMembers) local.activeZenMembers = {};
-  if (remoteDb.activeZenMembers) {
+  if (remoteDb.activeZenMembers && remoteDb.zenResetDoneV1) {
     local.activeZenMembers = {
       ...local.activeZenMembers,
       ...remoteDb.activeZenMembers,
@@ -808,6 +809,11 @@ function loadStaticDb(): StaticDatabaseSchema {
         if (!parsed.activeMeetingChairs) parsed.activeMeetingChairs = {};
         purgeDeprecatedAccounts(parsed);
         purgeClearedMessages(parsed);
+        if (!parsed.zenResetDoneV1) {
+          parsed.activeZenMembers = {};
+          parsed.zenResetDoneV1 = true;
+          saveStaticDb(parsed);
+        }
         return parsed;
       }
     }
