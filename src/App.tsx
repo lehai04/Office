@@ -625,12 +625,16 @@ export function App() {
   );
 
   useEffect(() => {
+    // Kết nối kênh đồng bộ ngay khi mở trang (kể cả ở màn hình đăng nhập) để nhận sẵn danh sách phòng & tài khoản qua MQTT
+    const unsubPreload = subscribeStaticRealtime(() => {});
     const saved = loadSavedSession();
     const inviteCode = getInviteRoomFromUrl();
 
     if (!saved) {
       setInitializing(false);
-      return;
+      return () => {
+        unsubPreload();
+      };
     }
 
     const targetRoomCode = inviteCode || saved.roomCode || DEFAULT_ROOM_CODE;
@@ -652,6 +656,10 @@ export function App() {
         setInitializing(false);
       }
     })();
+
+    return () => {
+      unsubPreload();
+    };
   }, [hydrateRoomData]);
 
   useEffect(() => {
