@@ -166,6 +166,46 @@ const CuteCatAvatar: React.FC<{
   sizeClass?: string;
 }> = ({ breedId, activity = 'walking', sizeClass = 'h-20 w-20' }) => {
   const breed = ALL_PET_BREEDS.find((b) => b.id === breedId) || CAT_BREEDS[0];
+  if (breedId === 'monkey') {
+    return (
+      <svg viewBox="0 0 120 120" className={sizeClass}>
+        <ellipse cx="60" cy="108" rx="34" ry="7" fill="rgba(0,0,0,0.12)" />
+        {/* Tai tròn hai bên */}
+        <circle cx="20" cy="54" r="15" fill="#6b4423" />
+        <circle cx="21" cy="54" r="9.5" fill="#d99b82" />
+        <circle cx="100" cy="54" r="15" fill="#6b4423" />
+        <circle cx="99" cy="54" r="9.5" fill="#d99b82" />
+        {/* Thân & ngực kem */}
+        <rect x="34" y="74" width="52" height="30" rx="8" fill="#d4a373" />
+        <rect x="44" y="78" width="32" height="24" rx="5" fill="#f2d0a9" />
+        {/* Vòng cổ xanh & thẻ vàng */}
+        <rect x="35" y="72" width="50" height="8" rx="3" fill="#134e4a" />
+        <rect x="55" y="77" width="10" height="10" rx="2" fill="#eab308" />
+        {/* Đầu vuông nâu sẫm */}
+        <rect x="27" y="22" width="66" height="54" rx="9" fill="#6b4423" />
+        {/* Mặt nạ kem hình tim */}
+        <path
+          d="M35 44 C35 32, 55 32, 60 40 C65 32, 85 32, 85 44 C85 61, 74 70, 60 70 C46 70, 35 61, 35 44 Z"
+          fill="#f2d0a9"
+        />
+        {/* Mắt, lỗ mũi & miệng cười */}
+        {activity === 'sleeping' ? (
+          <>
+            <path d="M44 49 Q48 53 52 49" stroke="#1e293b" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+            <path d="M68 49 Q72 53 76 49" stroke="#1e293b" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+          </>
+        ) : (
+          <>
+            <circle cx="47" cy="49" r="4" fill="#0f172a" />
+            <circle cx="73" cy="49" r="4" fill="#0f172a" />
+          </>
+        )}
+        <circle cx="57" cy="56" r="1.4" fill="#9a6b4c" />
+        <circle cx="63" cy="56" r="1.4" fill="#9a6b4c" />
+        <path d="M55 61 L60 65 L65 61" stroke="#3b2314" strokeWidth="2.4" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  }
   return (
     <div className={`relative inline-flex items-center justify-center ${sizeClass}`}>
       {/* Hai tai mèo */}
@@ -465,6 +505,7 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
   const [catReactionBubble, setCatReactionBubble] = useState<string | null>(null);
   const [catBounceKey, setCatBounceKey] = useState<number>(0);
   const [dogNameDraft, setDogNameDraft] = useState<string>('');
+  const [previewShopPetId, setPreviewShopPetId] = useState<CatBreedId>('monkey');
 
   // Phát nhạc nền nhẹ nhàng vui tươi trong game Nuôi Mèo khi bật âm thanh
   useEffect(() => {
@@ -2433,53 +2474,92 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
                         )}
                       </div>
 
-                      {unlockedDogs && (
-                        <div className="space-y-2 pt-1 border-t border-indigo-200/70">
-                          <input
-                            type="text"
-                            maxLength={20}
-                            value={dogNameDraft}
-                            onChange={(e) => setDogNameDraft(e.target.value)}
-                            placeholder="Đặt tên bé chó (tùy chọn)..."
-                            className="w-full rounded-xl border border-indigo-200 bg-white px-2.5 py-1 text-[11px] font-bold text-[#3d2b1f] outline-none focus:border-indigo-400"
-                          />
-                          <div className="grid grid-cols-2 gap-1.5">
-                            {DOG_BREEDS.map((dog) => (
-                              <div
-                                key={dog.id}
-                                className="flex items-center justify-between gap-1.5 rounded-xl border border-indigo-200 bg-white p-2"
-                              >
-                                <div className="min-w-0">
-                                  <div className="truncate text-[11px] font-black text-[#3d2b1f]">
-                                    {dog.id === 'monkey' ? '🐒' : '🐶'}{' '}
-                                    {dog.name.replace('Chó ', '')}
-                                  </div>
-                                  <div className="text-[10px] font-black text-emerald-700">
-                                    {formatVnd(dog.priceVnd || 0)}
-                                  </div>
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const res = onBuyDogPet(dog.id, dogNameDraft);
-                                    if (res.ok) {
-                                      setDogNameDraft('');
-                                      setCatNotice(
-                                        `🐶 Đã mua ${dog.name}! Vào mục Thú cưng để cho bé ra ngoài.`
-                                      );
-                                    } else {
-                                      setCatNotice(`⚠️ ${res.error}`);
-                                    }
-                                  }}
-                                  className="shrink-0 rounded-lg bg-emerald-500 hover:bg-emerald-400 px-2 py-1 text-[10px] font-black text-white cursor-pointer"
-                                >
-                                  Mua
-                                </button>
+                      {unlockedDogs && (() => {
+                        const previewPet =
+                          DOG_BREEDS.find((d) => d.id === previewShopPetId) || DOG_BREEDS[0];
+                        return (
+                          <div className="space-y-2 pt-1 border-t border-indigo-200/70">
+                            {/* Khung XEM TRƯỚC thú cưng trước khi chọn mua */}
+                            <div className="flex items-center gap-3 rounded-2xl border-2 border-indigo-300 bg-white p-2.5 shadow-sm">
+                              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-gradient-to-b from-sky-50 to-amber-50 border border-indigo-100">
+                                <CuteCatAvatar
+                                  breedId={previewPet.id}
+                                  activity="playing"
+                                  sizeClass="h-14 w-14"
+                                />
                               </div>
-                            ))}
+                              <div className="min-w-0 flex-1">
+                                <div className="text-xs font-black text-[#3d2b1f]">
+                                  {previewPet.id === 'monkey' ? '🐒' : '🐶'} {previewPet.name}
+                                </div>
+                                <div className="text-[10px] font-semibold text-[#7c6855]">
+                                  {previewPet.badge}
+                                </div>
+                                <div className="mt-0.5 text-xs font-black text-emerald-700">
+                                  Giá: {formatVnd(previewPet.priceVnd || 0)}
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const res = onBuyDogPet(previewPet.id, dogNameDraft);
+                                  if (res.ok) {
+                                    setDogNameDraft('');
+                                    setCatNotice(
+                                      `🎉 Đã mua ${previewPet.name}! Vào tab Mèo/Thú cưng để cho bé ra ngoài.`
+                                    );
+                                  } else {
+                                    setCatNotice(`⚠️ ${res.error}`);
+                                  }
+                                }}
+                                className="shrink-0 rounded-xl bg-emerald-500 hover:bg-emerald-400 px-3 py-2 text-xs font-black text-white shadow cursor-pointer"
+                              >
+                                Mua ngay
+                              </button>
+                            </div>
+
+                            <input
+                              type="text"
+                              maxLength={20}
+                              value={dogNameDraft}
+                              onChange={(e) => setDogNameDraft(e.target.value)}
+                              placeholder="Đặt tên cho bé (tùy chọn)..."
+                              className="w-full rounded-xl border border-indigo-200 bg-white px-2.5 py-1 text-[11px] font-bold text-[#3d2b1f] outline-none focus:border-indigo-400"
+                            />
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                              {DOG_BREEDS.map((dog) => {
+                                const isSelected = previewPet.id === dog.id;
+                                return (
+                                  <button
+                                    key={dog.id}
+                                    type="button"
+                                    onClick={() => setPreviewShopPetId(dog.id)}
+                                    className={`flex items-center gap-1.5 rounded-xl border-2 p-1.5 text-left transition cursor-pointer ${
+                                      isSelected
+                                        ? 'border-indigo-500 bg-indigo-50 shadow-sm'
+                                        : 'border-indigo-100 bg-white hover:border-indigo-300'
+                                    }`}
+                                  >
+                                    <CuteCatAvatar
+                                      breedId={dog.id}
+                                      activity="walking"
+                                      sizeClass="h-8 w-8 shrink-0"
+                                    />
+                                    <div className="min-w-0">
+                                      <div className="truncate text-[10px] font-black text-[#3d2b1f]">
+                                        {dog.name.replace('Chó ', '')}
+                                      </div>
+                                      <div className="text-[10px] font-black text-emerald-700">
+                                        {formatVnd(dog.priceVnd || 0)}
+                                      </div>
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
                           </div>
-                        </div>
-                      )}
+                        );
+                      })()}
                     </div>
 
                     {/* HỘP XÁC NHẬN TRƯỚC KHI MUA ĐỒ DÙNG: Đồ thường (Công đức) / Đồ cao cấp (Tiền) */}

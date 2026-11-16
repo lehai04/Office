@@ -116,8 +116,8 @@ export const DOG_BREEDS: CatBreedMeta[] = [
   {
     id: 'monkey',
     species: 'monkey',
-    name: 'Khỉ Con Tinh Nghịch',
-    badge: '🐒 Đáng yêu • Vòng cổ vàng',
+    name: 'Khỉ Chó',
+    badge: '🐒 Độc lạ • Vòng cổ thẻ vàng',
     bodyColor: '#d4a373',
     earColor: '#6b4423',
     bellyColor: '#f2d0a9',

@@ -1682,30 +1682,43 @@ const LowPolyCat3D: React.FC<{
         />
       </mesh>
 
-      {/* Khỉ Con: Mặt kem, 2 tai tròn hai bên & vòng cổ xanh thẻ vàng */}
+      {/* Khỉ Chó: Ngực kem, mặt nạ kem, tai tròn 8 cạnh, vòng cổ xanh thẻ vàng */}
       {isMonkey ? (
         <>
-          {/* Mặt nạ kem */}
-          <mesh position={[0, 0.36, 0.385]}>
-            <boxGeometry args={[0.24, 0.2, 0.02]} />
+          {/* Ngực kem phía trước */}
+          <mesh position={[0, 0.2, 0.25]}>
+            <boxGeometry args={[0.26, 0.18, 0.04]} />
             <meshStandardMaterial color="#f2d0a9" roughness={0.65} />
           </mesh>
-          {/* Tai tròn bên trái */}
+          {/* Mặt nạ kem 2 thùy (trái tim) */}
+          <mesh position={[-0.055, 0.4, 0.382]}>
+            <boxGeometry args={[0.12, 0.14, 0.02]} />
+            <meshStandardMaterial color="#f2d0a9" roughness={0.65} />
+          </mesh>
+          <mesh position={[0.055, 0.4, 0.382]}>
+            <boxGeometry args={[0.12, 0.14, 0.02]} />
+            <meshStandardMaterial color="#f2d0a9" roughness={0.65} />
+          </mesh>
+          <mesh position={[0, 0.34, 0.383]}>
+            <boxGeometry args={[0.22, 0.14, 0.02]} />
+            <meshStandardMaterial color="#f2d0a9" roughness={0.65} />
+          </mesh>
+          {/* Tai tròn 8 cạnh bên trái */}
           <mesh position={[-0.19, 0.39, 0.23]} rotation={[0, 0, Math.PI / 2]} castShadow>
-            <cylinderGeometry args={[0.095, 0.095, 0.05, 10]} />
+            <cylinderGeometry args={[0.1, 0.1, 0.05, 8]} />
             <meshStandardMaterial color="#6b4423" roughness={0.65} />
           </mesh>
           <mesh position={[-0.2, 0.39, 0.245]} rotation={[0, 0, Math.PI / 2]}>
-            <cylinderGeometry args={[0.06, 0.06, 0.055, 10]} />
+            <cylinderGeometry args={[0.062, 0.062, 0.055, 8]} />
             <meshStandardMaterial color="#d99b82" roughness={0.65} />
           </mesh>
-          {/* Tai tròn bên phải */}
+          {/* Tai tròn 8 cạnh bên phải */}
           <mesh position={[0.19, 0.39, 0.23]} rotation={[0, 0, Math.PI / 2]} castShadow>
-            <cylinderGeometry args={[0.095, 0.095, 0.05, 10]} />
+            <cylinderGeometry args={[0.1, 0.1, 0.05, 8]} />
             <meshStandardMaterial color="#6b4423" roughness={0.65} />
           </mesh>
           <mesh position={[0.2, 0.39, 0.245]} rotation={[0, 0, Math.PI / 2]}>
-            <cylinderGeometry args={[0.06, 0.06, 0.055, 10]} />
+            <cylinderGeometry args={[0.062, 0.062, 0.055, 8]} />
             <meshStandardMaterial color="#d99b82" roughness={0.65} />
           </mesh>
           {/* Vòng cổ xanh & thẻ vàng */}
@@ -1714,7 +1727,7 @@ const LowPolyCat3D: React.FC<{
             <meshStandardMaterial color="#134e4a" roughness={0.5} />
           </mesh>
           <mesh position={[0, 0.24, 0.31]}>
-            <boxGeometry args={[0.07, 0.07, 0.02]} />
+            <boxGeometry args={[0.075, 0.075, 0.02]} />
             <meshStandardMaterial color="#eab308" metalness={0.5} roughness={0.3} />
           </mesh>
         </>
