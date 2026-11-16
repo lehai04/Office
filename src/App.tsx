@@ -20,7 +20,7 @@ import {
 import { OfficeScene3D, type ActiveSpeechBubble } from './components/OfficeScene3D';
 import { EntryModal } from './components/EntryModal';
 import { SeatSelectorModal } from './components/SeatSelectorModal';
-import { ChatDrawer } from './components/ChatDrawer';
+import { ChatDrawer, formatChatPreviewText } from './components/ChatDrawer';
 import {
   AttendanceDrawer,
   getNextAttendanceStatus,
@@ -187,9 +187,10 @@ export function App() {
 
   const triggerSpeechBubble = useCallback((userId: string, content: string) => {
     const expiresAt = Date.now() + 5000;
+    const displayContent = formatChatPreviewText(content);
     setActiveBubbles((prev) => ({
       ...prev,
-      [userId]: { userId, content, expiresAt },
+      [userId]: { userId, content: displayContent, expiresAt },
     }));
 
     if (bubbleTimersRef.current[userId]) {
@@ -389,10 +390,11 @@ export function App() {
   const triggerGlobalChatAlert = useCallback(
     (incoming: ChatMessage) => {
       playChatNotificationSound();
+      const previewText = formatChatPreviewText(incoming.content);
       setChatAlertBanner({
         id: incoming.id,
         senderNickname: incoming.nickname,
-        content: incoming.content,
+        content: previewText,
       });
       if (chatAlertTimerRef.current) {
         window.clearTimeout(chatAlertTimerRef.current);
@@ -414,7 +416,7 @@ export function App() {
       ) {
         try {
           new window.Notification(`💬 ${incoming.nickname} nhắn tin trong phòng`, {
-            body: incoming.content,
+            body: previewText,
           });
         } catch {
           // ignore

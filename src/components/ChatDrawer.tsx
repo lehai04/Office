@@ -1,7 +1,37 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { MessageSquare, Send, RotateCcw, AlertTriangle, ChevronDown, X } from 'lucide-react';
+import {
+  MessageSquare,
+  Send,
+  RotateCcw,
+  AlertTriangle,
+  ChevronDown,
+  X,
+  Reply,
+} from 'lucide-react';
 import type { ChatMessage, RoomMember } from '../types/office';
 import { formatTimeHoChiMinh } from '../utils/dateVn';
+
+export function parseReplyContent(raw: string): {
+  replySender: string | null;
+  replySnippet: string | null;
+  body: string;
+} {
+  const match = raw.match(/^\[\[reply:([^|\]]+)\|([^\]]*)\]\]\n?([\s\S]*)$/);
+  if (!match) {
+    return { replySender: null, replySnippet: null, body: raw };
+  }
+  return {
+    replySender: match[1],
+    replySnippet: match[2],
+    body: match[3],
+  };
+}
+
+export function formatChatPreviewText(raw: string): string {
+  const parsed = parseReplyContent(raw);
+  if (!parsed.replySender) return raw;
+  return `↩️ Trả lời ${parsed.replySender}: ${parsed.body}`;
+}
 
 interface ChatDrawerProps {
   isOpen: boolean;
@@ -22,7 +52,13 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
 }) => {
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  const [replyingTo, setReplyingTo] = useState<{
+    id: string;
+    sender: string;
+    snippet: string;
+  } | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   // Đếm biệt danh trùng để hiển thị mã phân biệt khi cần
   const duplicateNicknames = React.useMemo(() => {
@@ -46,10 +82,16 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
     e.preventDefault();
     const trimmed = draft.trim();
     if (!trimmed || sending) return;
+
+    const payload = replyingTo
+      ? `[[reply:${replyingTo.sender}|${replyingTo.snippet}]]\n${trimmed}`
+      : trimmed;
+
     setDraft('');
+    setReplyingTo(null);
     setSending(true);
     try {
-      await onSendMessage(trimmed);
+      await onSendMessage(payload);
     } finally {
       setSending(false);
     }
@@ -108,12 +150,16 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
             const senderDisplay = isDuplicateName
               ? `${msg.nickname} (${msg.memberTag})`
               : msg.nickname;
+            const parsed = parseReplyContent(msg.content);
+            const cleanBody = parsed.body.replace(/\n+/g, ' ').trim();
+            const replySnippet =
+              cleanBody.length > 55 ? `${cleanBody.slice(0, 55)}…` : cleanBody;
 
             return (
               <div
                 key={msg.clientMsgId || msg.id}
                 data-testid="chat-message-item"
-                className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}
+                className={`group flex flex-col ${isMine ? 'items-end' : 'items-start'}`}
               >
                 <div className="flex items-center gap-1.5 mb-0.5 px-1">
                   <span className="text-[11px] font-semibold text-slate-300">
@@ -123,6 +169,23 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
                   <span className="text-[10px] text-slate-500">
                     {formatTimeHoChiMinh(msg.createdAt)}
                   </span>
+                  <button
+                    type="button"
+                    data-testid={`reply-msg-btn-${msg.id}`}
+                    onClick={() => {
+                      setReplyingTo({
+                        id: msg.id,
+                        sender: senderDisplay,
+                        snippet: replySnippet.replace(/[|\[\]]/g, ''),
+                      });
+                      inputRef.current?.focus();
+                    }}
+                    title="Trả lời tin nhắn này"
+                    className="inline-flex items-center gap-0.5 rounded-full bg-white/10 hover:bg-emerald-500/25 px-1.5 py-0.2 text-[10px] font-semibold text-slate-300 hover:text-emerald-300 cursor-pointer"
+                  >
+                    <Reply className="h-2.5 w-2.5" />
+                    <span>Trả lời</span>
+                  </button>
                 </div>
 
                 <div
@@ -134,7 +197,19 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
                         : 'bg-slate-800 text-slate-100 border border-white/10 rounded-bl-xs'
                   }`}
                 >
-                  {msg.content}
+                  {parsed.replySender && (
+                    <div
+                      className={`mb-1.5 rounded-xl border-l-4 px-2.5 py-1 text-[11px] leading-snug ${
+                        isMine
+                          ? 'border-slate-900/50 bg-slate-950/15 text-slate-900'
+                          : 'border-emerald-400 bg-slate-900/70 text-slate-300'
+                      }`}
+                    >
+                      <div className="font-bold">↩️ {parsed.replySender}</div>
+                      <div className="truncate opacity-85">{parsed.replySnippet}</div>
+                    </div>
+                  )}
+                  {parsed.body}
                 </div>
 
                 {msg.status === 'failed' && (
@@ -160,18 +235,48 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
         )}
       </div>
 
+      {/* Thanh xem trước tin nhắn đang trả lời */}
+      {replyingTo && (
+        <div
+          data-testid="chat-reply-preview"
+          className="mx-3 mt-2 flex items-center justify-between gap-2 rounded-xl border-l-4 border-emerald-400 bg-slate-800/90 px-3 py-1.5 text-xs"
+        >
+          <div className="min-w-0 flex-1">
+            <div className="font-bold text-emerald-300">
+              ↩️ Đang trả lời {replyingTo.sender}
+            </div>
+            <div className="truncate text-[11px] text-slate-300">
+              {replyingTo.snippet}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setReplyingTo(null)}
+            className="rounded-lg p-1 text-slate-400 hover:text-white cursor-pointer"
+            title="Hủy trả lời"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Ô nhập tin nhắn */}
       <form
         onSubmit={handleSubmit}
         className="border-t border-white/10 p-3 flex items-center gap-2"
       >
         <input
+          ref={inputRef}
           type="text"
           data-testid="chat-input"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           maxLength={1000}
-          placeholder="Nhập tin nhắn cho đồng nghiệp..."
+          placeholder={
+            replyingTo
+              ? `Trả lời ${replyingTo.sender}...`
+              : 'Nhập tin nhắn cho đồng nghiệp...'
+          }
           className="flex-1 rounded-2xl border border-white/15 bg-slate-800/90 px-3.5 py-2 text-base sm:text-sm text-white placeholder-slate-400 focus:border-emerald-400 focus:outline-none"
         />
         <button
