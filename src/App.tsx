@@ -34,15 +34,21 @@ import {
 import { EntertainmentRoomModal } from './components/EntertainmentRoomModal';
 import {
   CAT_SHOP_ITEMS,
+  DOG_BREEDS,
+  DOG_UNLOCK_FEE_VND,
   loadMyCatInventory,
+  loadMyPetCollection,
   loadRoomCats,
   loadRoomGiftRequests,
   saveMyCatInventory,
+  saveMyPetCollection,
   saveRoomCats,
   saveRoomGiftRequests,
   type CatActivity,
+  type CatBreedId,
   type CatGiftRequest,
   type OfficeCatProfile,
+  type UserPetCollectionState,
 } from './utils/officeCatsData';
 import {
   clampPuzzleGrid,
@@ -173,10 +179,14 @@ export function App() {
   const [activeChallengeBanner, setActiveChallengeBanner] = useState<string | null>(null);
   const meritTimerRef = useRef<number | null>(null);
 
-  // State cho Game "Nuôi Mèo Văn Phòng"
+  // State cho Game "Nuôi Mèo Văn Phòng" & Bộ sưu tập nhiều thú cưng (Mèo + Chó)
   const [roomCats, setRoomCats] = useState<Record<string, OfficeCatProfile>>({});
   const [myCatInventory, setMyCatInventory] = useState<Record<string, number>>({});
   const [giftRequests, setGiftRequests] = useState<CatGiftRequest[]>([]);
+  const [myPetCollection, setMyPetCollection] = useState<UserPetCollectionState>({
+    unlockedDogs: false,
+    ownedPets: [],
+  });
 
   // State cho Game "Ghép Tranh Cùng Phòng"
   const [roomPuzzleState, setRoomPuzzleState] = useState<RoomPuzzleState>(() =>
@@ -392,6 +402,7 @@ export function App() {
     setRoomCats(loadedCats);
     setMyCatInventory(loadMyCatInventory(session.userId));
     setGiftRequests(loadedGifts);
+    setMyPetCollection(loadMyPetCollection(session.userId, loadedCats[session.userId]));
     setRoomPuzzleState(loadRoomPuzzleState(room.code));
     setUserWallet(loadUserWalletState(room.code, session.userId));
     setRoomDonationBox(loadRoomDonationBoxState(room.code));
@@ -781,8 +792,139 @@ export function App() {
           session.sessionToken
         ).catch(() => {});
       }
+      // Đồng bộ bé thú cưng vừa cập nhật vào bộ sưu tập sở hữu
+      if (session) {
+        const petKey = catProfile.petId || `pet-${catProfile.breedId}`;
+        const normalizedCat: OfficeCatProfile = { ...catProfile, petId: petKey };
+        setMyPetCollection((prev) => {
+          const existsIdx = prev.ownedPets.findIndex(
+            (p) => (p.petId || `pet-${p.breedId}`) === petKey
+          );
+          const nextOwned =
+            existsIdx === -1
+              ? [normalizedCat, ...prev.ownedPets]
+              : prev.ownedPets.map((p, i) => (i === existsIdx ? normalizedCat : p));
+          const nextCol: UserPetCollectionState = { ...prev, ownedPets: nextOwned };
+          saveMyPetCollection(session.userId, nextCol);
+          return nextCol;
+        });
+      }
     },
     [room, session, giftRequests]
+  );
+
+  const handleSpendMoney = useCallback(
+    (amountVnd: number): boolean => {
+      if (!room || !session || amountVnd <= 0) return false;
+      if (userWallet.balanceVnd < amountVnd) return false;
+      const nextWallet: UserWalletState = {
+        ...userWallet,
+        balanceVnd: userWallet.balanceVnd - amountVnd,
+        updatedAt: Date.now(),
+      };
+      setUserWallet(nextWallet);
+      saveUserWalletState(room.code, session.userId, nextWallet);
+      return true;
+    },
+    [room, session, userWallet]
+  );
+
+  const handleUnlockDogs = useCallback((): { ok: boolean; error?: string } => {
+    if (!session || !room) return { ok: false, error: 'Chưa kết nối phòng.' };
+    if (myPetCollection.unlockedDogs) return { ok: true };
+    if (!handleSpendMoney(DOG_UNLOCK_FEE_VND)) {
+      return {
+        ok: false,
+        error: `Cần ${formatVnd(DOG_UNLOCK_FEE_VND)} để mở khóa mục Chó (Ví: ${formatVnd(userWallet.balanceVnd)}).`,
+      };
+    }
+    const nextCol: UserPetCollectionState = {
+      ...myPetCollection,
+      unlockedDogs: true,
+    };
+    setMyPetCollection(nextCol);
+    saveMyPetCollection(session.userId, nextCol);
+    playCatMeowSound('adopt');
+    return { ok: true };
+  }, [session, room, myPetCollection, handleSpendMoney, userWallet.balanceVnd]);
+
+  const handleBuyDogPet = useCallback(
+    (breedId: CatBreedId, customName: string): { ok: boolean; error?: string } => {
+      if (!session || !room) return { ok: false, error: 'Chưa kết nối phòng.' };
+      if (!myPetCollection.unlockedDogs) {
+        return { ok: false, error: 'Hãy mở khóa mục Thú cưng mới (500.000đ) trước!' };
+      }
+      const meta = DOG_BREEDS.find((d) => d.id === breedId);
+      if (!meta || !meta.priceVnd) {
+        return { ok: false, error: 'Giống chó không hợp lệ.' };
+      }
+      if (!handleSpendMoney(meta.priceVnd)) {
+        return {
+          ok: false,
+          error: `Ví không đủ ${formatVnd(meta.priceVnd)} (hiện có ${formatVnd(userWallet.balanceVnd)}).`,
+        };
+      }
+      const petName = customName.trim() || meta.name;
+      const newDog: OfficeCatProfile = {
+        petId: `dog-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        species: 'dog',
+        ownerUserId: session.userId,
+        ownerNickname: session.nickname,
+        catName: petName,
+        breedId: meta.id,
+        activity: 'playing',
+        fullness: 90,
+        happiness: 95,
+        petCount: 0,
+        placedYardItems: roomCats[session.userId]?.placedYardItems || [],
+        updatedAt: Date.now(),
+      };
+      const nextCol: UserPetCollectionState = {
+        ...myPetCollection,
+        ownedPets: [...myPetCollection.ownedPets, newDog],
+      };
+      setMyPetCollection(nextCol);
+      saveMyPetCollection(session.userId, nextCol);
+
+      // Nếu chưa có thú cưng nào ở ngoài thì cho bé chó vừa mua ra ngoài luôn
+      if (!roomCats[session.userId]) {
+        handleAdoptOrUpdateMyCat(
+          newDog,
+          `🐶 ${session.nickname} vừa mua bé chó "${petName}" (${meta.name})!`
+        );
+      } else {
+        playCatMeowSound('adopt');
+      }
+      return { ok: true };
+    },
+    [
+      session,
+      room,
+      myPetCollection,
+      handleSpendMoney,
+      userWallet.balanceVnd,
+      roomCats,
+      handleAdoptOrUpdateMyCat,
+    ]
+  );
+
+  const handleSwitchActivePet = useCallback(
+    (petId: string) => {
+      if (!session || !room) return;
+      const target = myPetCollection.ownedPets.find(
+        (p) => (p.petId || `pet-${p.breedId}`) === petId
+      );
+      if (!target) return;
+      const currentYard = roomCats[session.userId]?.placedYardItems || target.placedYardItems || [];
+      const switched: OfficeCatProfile = {
+        ...target,
+        placedYardItems: currentYard,
+        updatedAt: Date.now(),
+      };
+      handleAdoptOrUpdateMyCat(switched);
+      playCatMeowSound('happy');
+    },
+    [session, room, myPetCollection.ownedPets, roomCats, handleAdoptOrUpdateMyCat]
   );
 
   const handleUpdateMyCatInventory = useCallback(
@@ -2317,6 +2459,13 @@ export function App() {
         activeChallengeBanner={activeChallengeBanner}
         meritCount={meritCount}
         onSpendMerit={handleSpendMerit}
+        walletBalanceVnd={userWallet.balanceVnd}
+        onSpendMoney={handleSpendMoney}
+        unlockedDogs={myPetCollection.unlockedDogs}
+        ownedPets={myPetCollection.ownedPets}
+        onUnlockDogs={handleUnlockDogs}
+        onBuyDogPet={handleBuyDogPet}
+        onSwitchActivePet={handleSwitchActivePet}
         roomCats={roomCats}
         myCatInventory={myCatInventory}
         giftRequests={giftRequests}

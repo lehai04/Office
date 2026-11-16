@@ -1,16 +1,30 @@
 // Hệ thống Dữ liệu & Đồng bộ cho Game "Nuôi Mèo Văn Phòng" (src/utils/officeCatsData.ts)
 
-export type CatBreedId = 'orange' | 'white' | 'tuxedo' | 'calico' | 'gray';
+export type CatBreedId =
+  | 'orange'
+  | 'white'
+  | 'tuxedo'
+  | 'calico'
+  | 'gray'
+  | 'corgi'
+  | 'shiba'
+  | 'poodle'
+  | 'husky';
+export type PetSpecies = 'cat' | 'dog';
 export type CatActivity = 'walking' | 'playing' | 'sleeping';
 export type CatItemCategory = 'food' | 'toy' | 'bed';
 
+export const DOG_UNLOCK_FEE_VND = 500_000;
+
 export interface CatBreedMeta {
   id: CatBreedId;
+  species?: PetSpecies;
   name: string;
   badge: string;
   bodyColor: string;
   earColor: string;
   bellyColor: string;
+  priceVnd?: number;
 }
 
 export const CAT_BREEDS: CatBreedMeta[] = [
@@ -48,6 +62,7 @@ export const CAT_BREEDS: CatBreedMeta[] = [
   },
   {
     id: 'gray',
+    species: 'cat',
     name: 'Mèo Xám Lông Ngắn',
     badge: '☁️ Điềm tĩnh • Thích ngủ',
     bodyColor: '#64748b',
@@ -56,12 +71,63 @@ export const CAT_BREEDS: CatBreedMeta[] = [
   },
 ];
 
+export const DOG_BREEDS: CatBreedMeta[] = [
+  {
+    id: 'corgi',
+    species: 'dog',
+    name: 'Chó Corgi Lùn',
+    badge: '🐶 Mông đào • Thân thiện',
+    bodyColor: '#ea580c',
+    earColor: '#c2410c',
+    bellyColor: '#fffbeb',
+    priceVnd: 400_000,
+  },
+  {
+    id: 'shiba',
+    species: 'dog',
+    name: 'Chó Shiba Inu',
+    badge: '🐕 Trung thành • Lanh lợi',
+    bodyColor: '#f59e0b',
+    earColor: '#b45309',
+    bellyColor: '#fef3c7',
+    priceVnd: 700_000,
+  },
+  {
+    id: 'poodle',
+    species: 'dog',
+    name: 'Chó Poodle Bông',
+    badge: '🐩 Xoăn tít • Quý tộc',
+    bodyColor: '#d97706',
+    earColor: '#92400e',
+    bellyColor: '#fde68a',
+    priceVnd: 900_000,
+  },
+  {
+    id: 'husky',
+    species: 'dog',
+    name: 'Chó Husky Ngáo',
+    badge: '🐺 Sôi nổi • Năng động',
+    bodyColor: '#475569',
+    earColor: '#1e293b',
+    bellyColor: '#f8fafc',
+    priceVnd: 1_200_000,
+  },
+];
+
+export const ALL_PET_BREEDS: CatBreedMeta[] = [...CAT_BREEDS, ...DOG_BREEDS];
+
+export function isDogBreed(breedId: CatBreedId): boolean {
+  return DOG_BREEDS.some((d) => d.id === breedId);
+}
+
 export interface CatShopItem {
   id: string;
   name: string;
   icon: string;
   category: CatItemCategory;
-  priceMerit: number; // Mua bằng tiền công đức của Phòng Tịnh Tâm
+  priceMerit: number; // Mua bằng tiền công đức (đồ bình thường)
+  priceVnd?: number; // Mua bằng tiền VNĐ (đồ cao cấp)
+  isPremium?: boolean;
   fullnessBoost: number;
   happinessBoost: number;
   description: string;
@@ -148,11 +214,62 @@ export const CAT_SHOP_ITEMS: CatShopItem[] = [
     priceMerit: 35,
     fullnessBoost: 0,
     happinessBoost: 65,
-    description: 'Chiếc ổ êm ái bậc nhất đặt ngoài sân vườn cho các bé mèo.',
+    description: 'Chiếc ổ êm ái bậc nhất đặt ngoài sân vườn cho các bé.',
+  },
+  // 3. Đồ vật cao cấp (Mua bằng Tiền VNĐ)
+  {
+    id: 'diamond_bone',
+    name: 'Xương gặm kim cương',
+    icon: '🦴',
+    category: 'toy',
+    priceMerit: 0,
+    priceVnd: 120_000,
+    isPremium: true,
+    fullnessBoost: 0,
+    happinessBoost: 65,
+    description: 'Đồ chơi cao cấp lấp lánh dành cho cả Mèo & Chó.',
+  },
+  {
+    id: 'wagyu_steak',
+    name: 'Bò Wagyu thượng hạng',
+    icon: '🥩',
+    category: 'food',
+    priceMerit: 0,
+    priceVnd: 150_000,
+    isPremium: true,
+    fullnessBoost: 60,
+    happinessBoost: 50,
+    description: 'Bữa ăn cao cấp siêu bổ dưỡng (+60 Độ no, +50 Vui vẻ).',
+  },
+  {
+    id: 'pet_castle',
+    name: 'Lâu đài thú cưng',
+    icon: '🏰',
+    category: 'bed',
+    priceMerit: 0,
+    priceVnd: 350_000,
+    isPremium: true,
+    fullnessBoost: 0,
+    happinessBoost: 85,
+    description: 'Lâu đài nghỉ dưỡng cao cấp đặt ngoài sân văn phòng.',
+  },
+  {
+    id: 'royal_stroller',
+    name: 'Xe đẩy hoàng gia',
+    icon: '🏎️',
+    category: 'toy',
+    priceMerit: 0,
+    priceVnd: 500_000,
+    isPremium: true,
+    fullnessBoost: 0,
+    happinessBoost: 100,
+    description: 'Siêu xe dạo phố cao cấp tăng tối đa niềm vui.',
   },
 ];
 
 export interface OfficeCatProfile {
+  petId?: string;
+  species?: PetSpecies;
   ownerUserId: string;
   ownerNickname: string;
   catName: string;
@@ -163,6 +280,11 @@ export interface OfficeCatProfile {
   petCount: number;
   placedYardItems: string[]; // Danh sách id của toy/bed đã đặt ra khu vực ngoài văn phòng
   updatedAt: number;
+}
+
+export interface UserPetCollectionState {
+  unlockedDogs: boolean;
+  ownedPets: OfficeCatProfile[];
 }
 
 export interface CatGiftRequest {
@@ -181,6 +303,53 @@ export interface CatGiftRequest {
 const STORAGE_ROOM_CATS_PREFIX = 'van_phong_ao_room_cats_v1:';
 const STORAGE_MY_INVENTORY_PREFIX = 'van_phong_ao_cat_inventory_v1:';
 const STORAGE_GIFT_REQUESTS_PREFIX = 'van_phong_ao_cat_gifts_v1:';
+const STORAGE_MY_PET_COLLECTION_PREFIX = 'van_phong_ao_pet_collection_v1:';
+
+export function loadMyPetCollection(
+  userId: string,
+  fallbackActivePet?: OfficeCatProfile
+): UserPetCollectionState {
+  try {
+    const raw = window.localStorage.getItem(`${STORAGE_MY_PET_COLLECTION_PREFIX}${userId}`);
+    if (raw) {
+      const parsed = JSON.parse(raw) as UserPetCollectionState;
+      const owned = Array.isArray(parsed?.ownedPets) ? parsed.ownedPets : [];
+      if (fallbackActivePet) {
+        const fbId = fallbackActivePet.petId || `pet-${fallbackActivePet.breedId}`;
+        if (!owned.some((p) => (p.petId || `pet-${p.breedId}`) === fbId)) {
+          owned.unshift({ ...fallbackActivePet, petId: fbId });
+        }
+      }
+      return {
+        unlockedDogs: Boolean(parsed?.unlockedDogs),
+        ownedPets: owned,
+      };
+    }
+  } catch {
+    // ignore
+  }
+  const initialOwned = fallbackActivePet
+    ? [{ ...fallbackActivePet, petId: fallbackActivePet.petId || `pet-${fallbackActivePet.breedId}` }]
+    : [];
+  return {
+    unlockedDogs: false,
+    ownedPets: initialOwned,
+  };
+}
+
+export function saveMyPetCollection(
+  userId: string,
+  state: UserPetCollectionState
+): void {
+  try {
+    window.localStorage.setItem(
+      `${STORAGE_MY_PET_COLLECTION_PREFIX}${userId}`,
+      JSON.stringify(state)
+    );
+  } catch {
+    // ignore
+  }
+}
 
 export function loadRoomCats(roomCode: string): Record<string, OfficeCatProfile> {
   try {

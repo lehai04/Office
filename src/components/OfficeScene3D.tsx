@@ -13,8 +13,10 @@ import {
 import type { AvatarGender, RoomMember, WorkSeat } from '../types/office';
 import type { DeityType } from './ZenSanctuaryOverlay';
 import {
+  ALL_PET_BREEDS,
   CAT_BREEDS,
   getActivityLabel,
+  isDogBreed,
   type OfficeCatProfile,
 } from '../utils/officeCatsData';
 
@@ -1581,7 +1583,8 @@ const LowPolyCat3D: React.FC<{
   const tailRef = useRef<THREE.Mesh>(null);
   const [petHeartBurst, setPetHeartBurst] = useState(false);
 
-  const breed = CAT_BREEDS.find((b) => b.id === cat.breedId) || CAT_BREEDS[0];
+  const breed = ALL_PET_BREEDS.find((b) => b.id === cat.breedId) || CAT_BREEDS[0];
+  const isDog = cat.species === 'dog' || isDogBreed(cat.breedId);
 
   // Các vị trí lối đi thông thoáng ngay bên trong văn phòng làm việc
   const officeWaypoints: [number, number][] = useMemo(
@@ -1675,15 +1678,35 @@ const LowPolyCat3D: React.FC<{
         <meshStandardMaterial color={breed.bodyColor} roughness={0.6} />
       </mesh>
 
-      {/* Hai tai nhọn */}
-      <mesh position={[-0.1, 0.56, 0.24]} rotation={[0, 0, 0.18]} castShadow>
-        <coneGeometry args={[0.065, 0.13, 4]} />
-        <meshStandardMaterial color={breed.earColor} roughness={0.65} />
-      </mesh>
-      <mesh position={[0.1, 0.56, 0.24]} rotation={[0, 0, -0.18]} castShadow>
-        <coneGeometry args={[0.065, 0.13, 4]} />
-        <meshStandardMaterial color={breed.earColor} roughness={0.65} />
-      </mesh>
+      {/* Hai tai (tai chó cụp/dài hoặc tai mèo nhọn) */}
+      {isDog ? (
+        <>
+          <mesh position={[-0.17, 0.42, 0.24]} rotation={[0.1, 0, 0.28]} castShadow>
+            <boxGeometry args={[0.07, 0.16, 0.11]} />
+            <meshStandardMaterial color={breed.earColor} roughness={0.65} />
+          </mesh>
+          <mesh position={[0.17, 0.42, 0.24]} rotation={[0.1, 0, -0.28]} castShadow>
+            <boxGeometry args={[0.07, 0.16, 0.11]} />
+            <meshStandardMaterial color={breed.earColor} roughness={0.65} />
+          </mesh>
+          {/* Mõm chó */}
+          <mesh position={[0, 0.33, 0.41]} castShadow>
+            <boxGeometry args={[0.16, 0.11, 0.12]} />
+            <meshStandardMaterial color={breed.bellyColor} roughness={0.65} />
+          </mesh>
+        </>
+      ) : (
+        <>
+          <mesh position={[-0.1, 0.56, 0.24]} rotation={[0, 0, 0.18]} castShadow>
+            <coneGeometry args={[0.065, 0.13, 4]} />
+            <meshStandardMaterial color={breed.earColor} roughness={0.65} />
+          </mesh>
+          <mesh position={[0.1, 0.56, 0.24]} rotation={[0, 0, -0.18]} castShadow>
+            <coneGeometry args={[0.065, 0.13, 4]} />
+            <meshStandardMaterial color={breed.earColor} roughness={0.65} />
+          </mesh>
+        </>
+      )}
 
       {/* Mắt & Mũi hồng */}
       <mesh position={[-0.07, 0.4, 0.385]}>

@@ -27,15 +27,20 @@ import {
   stopCatGameMusic,
 } from '../utils/zenSound';
 import {
+  ALL_PET_BREEDS,
   CAT_BREEDS,
   CAT_SHOP_ITEMS,
+  DOG_BREEDS,
+  DOG_UNLOCK_FEE_VND,
   getActivityLabel,
+  isDogBreed,
   type CatActivity,
   type CatBreedId,
   type CatGiftRequest,
   type CatShopItem,
   type OfficeCatProfile,
 } from '../utils/officeCatsData';
+import { formatVnd } from '../utils/officeEconomyData';
 import {
   clampPuzzleGrid,
   MAX_PUZZLE_PIECES,
@@ -160,7 +165,7 @@ const CuteCatAvatar: React.FC<{
   activity?: CatActivity;
   sizeClass?: string;
 }> = ({ breedId, activity = 'walking', sizeClass = 'h-20 w-20' }) => {
-  const breed = CAT_BREEDS.find((b) => b.id === breedId) || CAT_BREEDS[0];
+  const breed = ALL_PET_BREEDS.find((b) => b.id === breedId) || CAT_BREEDS[0];
   return (
     <div className={`relative inline-flex items-center justify-center ${sizeClass}`}>
       {/* Hai tai mèo */}
@@ -360,6 +365,13 @@ interface EntertainmentRoomModalProps {
   // Props kết nối Tiền Công Đức của Phòng Tịnh Tâm & Hệ thống Nuôi Mèo Văn Phòng
   meritCount: number;
   onSpendMerit: (amount: number) => boolean;
+  walletBalanceVnd: number;
+  onSpendMoney: (amountVnd: number) => boolean;
+  unlockedDogs: boolean;
+  ownedPets: OfficeCatProfile[];
+  onUnlockDogs: () => { ok: boolean; error?: string };
+  onBuyDogPet: (breedId: CatBreedId, petName: string) => { ok: boolean; error?: string };
+  onSwitchActivePet: (petId: string) => void;
   roomCats: Record<string, OfficeCatProfile>;
   myCatInventory: Record<string, number>;
   giftRequests: CatGiftRequest[];
@@ -411,6 +423,13 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
   onBroadcastChallengeMessage,
   meritCount,
   onSpendMerit,
+  walletBalanceVnd,
+  onSpendMoney,
+  unlockedDogs,
+  ownedPets,
+  onUnlockDogs,
+  onBuyDogPet,
+  onSwitchActivePet,
   roomCats,
   myCatInventory,
   giftRequests,
@@ -439,6 +458,7 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
   const [pendingFulfillRequest, setPendingFulfillRequest] = useState<CatGiftRequest | null>(null);
   const [catReactionBubble, setCatReactionBubble] = useState<string | null>(null);
   const [catBounceKey, setCatBounceKey] = useState<number>(0);
+  const [dogNameDraft, setDogNameDraft] = useState<string>('');
 
   // Phát nhạc nền nhẹ nhàng vui tươi trong game Nuôi Mèo khi bật âm thanh
   useEffect(() => {
@@ -1661,13 +1681,23 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
   const handleConfirmBuyShopItem = () => {
     if (!pendingShopBuyItem) return;
     const item = pendingShopBuyItem;
-    if (meritCount < item.priceMerit) {
-      setCatNotice(`⚠️ Cần ${item.priceMerit} Công đức (hiện có ${meritCount}).`);
-      setPendingShopBuyItem(null);
-      return;
+    if (item.isPremium && item.priceVnd && item.priceVnd > 0) {
+      if (walletBalanceVnd < item.priceVnd) {
+        setCatNotice(`⚠️ Cần ${formatVnd(item.priceVnd)} (Ví: ${formatVnd(walletBalanceVnd)}).`);
+        setPendingShopBuyItem(null);
+        return;
+      }
+      const ok = onSpendMoney(item.priceVnd);
+      if (!ok) return;
+    } else {
+      if (meritCount < item.priceMerit) {
+        setCatNotice(`⚠️ Cần ${item.priceMerit} Công đức (hiện có ${meritCount}).`);
+        setPendingShopBuyItem(null);
+        return;
+      }
+      const ok = onSpendMerit(item.priceMerit);
+      if (!ok) return;
     }
-    const ok = onSpendMerit(item.priceMerit);
-    if (!ok) return;
 
     const currentQty = myCatInventory[item.id] || 0;
     const nextInv = { ...myCatInventory, [item.id]: currentQty + 1 };
@@ -2078,9 +2108,43 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
               </form>
             ) : (
               <>
-                {/* ==================== MỤC 1: MÈO CỦA TÔI (SÂN KHẤU SỐNG ĐỘNG & MENU XỔ GỌN) ==================== */}
+                {/* ==================== MỤC 1: THÚ CƯNG CỦA TÔI (SỞ HỮU NHIỀU BÉ, CHỈ 1 BÉ RA NGOÀI CHĂM SÓC) ==================== */}
                 {catSubTab === 'my_cat' && (
                   <div data-testid="my-cat-panel" className="space-y-2.5">
+                    {ownedPets.length > 1 && (
+                      <div className="rounded-2xl border border-amber-200 bg-white/90 p-2 space-y-1.5">
+                        <div className="flex items-center justify-between text-[10px] font-black text-[#5c4938]">
+                          <span>🐾 Bộ sưu tập thú cưng ({ownedPets.length} bé)</span>
+                          <span className="text-emerald-700">Chỉ cho 1 bé ra ngoài & chăm sóc</span>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {ownedPets.map((pet) => {
+                            const pid = pet.petId || `pet-${pet.breedId}`;
+                            const activePid = myCat.petId || `pet-${myCat.breedId}`;
+                            const isOut = pid === activePid;
+                            const isDog = pet.species === 'dog' || isDogBreed(pet.breedId);
+                            return (
+                              <button
+                                key={pid}
+                                type="button"
+                                onClick={() => onSwitchActivePet(pid)}
+                                className={`inline-flex items-center gap-1 rounded-xl border px-2 py-1 text-[10px] font-black transition cursor-pointer ${
+                                  isOut
+                                    ? 'border-emerald-500 bg-emerald-100 text-emerald-900 shadow-sm'
+                                    : 'border-[#e2d6c3] bg-[#fdf8f0] text-[#5c4938] hover:border-amber-400'
+                                }`}
+                              >
+                                <span>{isDog ? '🐶' : '🐱'}</span>
+                                <span>{pet.catName}</span>
+                                <span className="opacity-75">
+                                  {isOut ? '• Đang ra ngoài' : '• Cho ra ngoài'}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                     {/* SÂN KHẤU BÉ MÈO SỐNG ĐỘNG (Chạm trực tiếp vào mèo để vuốt ve & nghe tiếng mèo kêu!) */}
                     <div
                       onClick={handlePetMyCat}
@@ -2321,84 +2385,198 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
                   </div>
                 )}
 
-                {/* ==================== MỤC 2: CỬA HÀNG MÈO (GỌN GÀNG 2 CỘT) ==================== */}
+                {/* ==================== MỤC 2: CỬA HÀNG THÚ CƯNG & ĐỒ DÙNG ==================== */}
                 {catSubTab === 'shop' && (
-                  <div data-testid="cat-shop-panel" className="space-y-2.5">
-                    {/* HỘP XÁC NHẬN TRƯỚC KHI MUA: Hiển thị Giá và Số dư còn lại */}
-                    {pendingShopBuyItem && (
-                      <div
-                        data-testid="shop-confirm-modal"
-                        className="rounded-2xl border-2 border-amber-500 bg-amber-50 p-3 space-y-2 shadow-lg"
-                      >
-                        <div className="text-xs font-black text-amber-950">
-                          📋 Xác nhận mua {pendingShopBuyItem.icon} {pendingShopBuyItem.name}
-                        </div>
-                        <div className="rounded-xl bg-white p-2 border border-amber-200 space-y-1 text-xs">
-                          <div className="flex justify-between">
-                            <span className="text-[#7c6855]">Giá:</span>
-                            <strong data-testid="shop-confirm-price" className="text-amber-700">
-                              {pendingShopBuyItem.priceMerit} Công đức
-                            </strong>
+                  <div data-testid="cat-shop-panel" className="space-y-3">
+                    {/* Thanh số dư Ví Tiền & Công Đức */}
+                    <div className="flex items-center justify-between rounded-2xl border border-[#e5dccb] bg-white px-3 py-1.5 text-[11px] font-black">
+                      <span className="text-emerald-700">💰 Ví: {formatVnd(walletBalanceVnd)}</span>
+                      <span className="text-amber-700">✨ Công đức: {meritCount}</span>
+                    </div>
+
+                    {/* MỤC MỞ KHÓA THÚ CƯNG MỚI (MỞ BÁN CHÓ - 500.000đ) */}
+                    <div className="rounded-2xl border-2 border-indigo-200 bg-gradient-to-br from-indigo-50 to-sky-50 p-2.5 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <div className="text-xs font-black text-indigo-950">
+                            🐶 Thú cưng mới (Chó)
                           </div>
-                          <div className="flex justify-between border-t border-amber-100 pt-1">
-                            <span className="font-bold text-[#3d2b1f]">Số dư còn lại:</span>
-                            <strong
-                              data-testid="shop-confirm-remaining-balance"
-                              className={
-                                meritCount - pendingShopBuyItem.priceMerit >= 0
-                                  ? 'text-emerald-700 font-black'
-                                  : 'text-rose-600 font-black'
+                          <div className="text-[10px] font-semibold text-indigo-700/80">
+                            Sở hữu nhiều thú cưng • Chọn 1 bé ra ngoài chăm sóc
+                          </div>
+                        </div>
+                        {!unlockedDogs ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const res = onUnlockDogs();
+                              if (res.ok) {
+                                setCatNotice('🎉 Đã mở khóa mục Chó! Bạn có thể mua các giống chó bên dưới.');
+                              } else {
+                                setCatNotice(`⚠️ ${res.error}`);
                               }
-                            >
-                              {meritCount - pendingShopBuyItem.priceMerit} Công đức
-                            </strong>
+                            }}
+                            className="shrink-0 rounded-xl bg-indigo-600 hover:bg-indigo-500 px-3 py-1.5 text-[11px] font-black text-white shadow cursor-pointer"
+                          >
+                            🔓 Mở khóa ({formatVnd(DOG_UNLOCK_FEE_VND)})
+                          </button>
+                        ) : (
+                          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-700">
+                            ✓ Đã mở khóa
+                          </span>
+                        )}
+                      </div>
+
+                      {unlockedDogs && (
+                        <div className="space-y-2 pt-1 border-t border-indigo-200/70">
+                          <input
+                            type="text"
+                            maxLength={20}
+                            value={dogNameDraft}
+                            onChange={(e) => setDogNameDraft(e.target.value)}
+                            placeholder="Đặt tên bé chó (tùy chọn)..."
+                            className="w-full rounded-xl border border-indigo-200 bg-white px-2.5 py-1 text-[11px] font-bold text-[#3d2b1f] outline-none focus:border-indigo-400"
+                          />
+                          <div className="grid grid-cols-2 gap-1.5">
+                            {DOG_BREEDS.map((dog) => (
+                              <div
+                                key={dog.id}
+                                className="flex items-center justify-between gap-1.5 rounded-xl border border-indigo-200 bg-white p-2"
+                              >
+                                <div className="min-w-0">
+                                  <div className="truncate text-[11px] font-black text-[#3d2b1f]">
+                                    🐶 {dog.name.replace('Chó ', '')}
+                                  </div>
+                                  <div className="text-[10px] font-black text-emerald-700">
+                                    {formatVnd(dog.priceVnd || 0)}
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const res = onBuyDogPet(dog.id, dogNameDraft);
+                                    if (res.ok) {
+                                      setDogNameDraft('');
+                                      setCatNotice(
+                                        `🐶 Đã mua ${dog.name}! Vào mục Thú cưng để cho bé ra ngoài.`
+                                      );
+                                    } else {
+                                      setCatNotice(`⚠️ ${res.error}`);
+                                    }
+                                  }}
+                                  className="shrink-0 rounded-lg bg-emerald-500 hover:bg-emerald-400 px-2 py-1 text-[10px] font-black text-white cursor-pointer"
+                                >
+                                  Mua
+                                </button>
+                              </div>
+                            ))}
                           </div>
                         </div>
+                      )}
+                    </div>
 
-                        <div className="flex items-center justify-end gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setPendingShopBuyItem(null)}
-                            className="rounded-xl border border-[#d8cbb8] bg-white px-3 py-1 text-xs font-bold text-[#5c4938] cursor-pointer"
-                          >
-                            Hủy
-                          </button>
-                          <button
-                            type="button"
-                            data-testid="shop-confirm-buy-btn"
-                            disabled={meritCount < pendingShopBuyItem.priceMerit}
-                            onClick={handleConfirmBuyShopItem}
-                            className={`inline-flex items-center gap-1 rounded-xl px-3 py-1 text-xs font-black text-white shadow cursor-pointer ${
-                              meritCount >= pendingShopBuyItem.priceMerit
-                                ? 'bg-emerald-600 hover:bg-emerald-500'
-                                : 'bg-slate-400 cursor-not-allowed'
-                            }`}
-                          >
-                            <Check className="h-3.5 w-3.5" />
-                            <span>Xác nhận</span>
-                          </button>
+                    {/* HỘP XÁC NHẬN TRƯỚC KHI MUA ĐỒ DÙNG: Đồ thường (Công đức) / Đồ cao cấp (Tiền) */}
+                    {pendingShopBuyItem && (() => {
+                      const isPrem = Boolean(
+                        pendingShopBuyItem.isPremium &&
+                          pendingShopBuyItem.priceVnd &&
+                          pendingShopBuyItem.priceVnd > 0
+                      );
+                      const canAfford = isPrem
+                        ? walletBalanceVnd >= (pendingShopBuyItem.priceVnd || 0)
+                        : meritCount >= pendingShopBuyItem.priceMerit;
+                      const remainingText = isPrem
+                        ? formatVnd(walletBalanceVnd - (pendingShopBuyItem.priceVnd || 0))
+                        : `${meritCount - pendingShopBuyItem.priceMerit} Công đức`;
+                      return (
+                        <div
+                          data-testid="shop-confirm-modal"
+                          className="rounded-2xl border-2 border-amber-500 bg-amber-50 p-3 space-y-2 shadow-lg"
+                        >
+                          <div className="text-xs font-black text-amber-950">
+                            📋 Xác nhận mua {pendingShopBuyItem.icon} {pendingShopBuyItem.name}
+                          </div>
+                          <div className="rounded-xl bg-white p-2 border border-amber-200 space-y-1 text-xs">
+                            <div className="flex justify-between">
+                              <span className="text-[#7c6855]">Giá:</span>
+                              <strong data-testid="shop-confirm-price" className="text-amber-700">
+                                {isPrem
+                                  ? formatVnd(pendingShopBuyItem.priceVnd || 0)
+                                  : `${pendingShopBuyItem.priceMerit} Công đức`}
+                              </strong>
+                            </div>
+                            <div className="flex justify-between border-t border-amber-100 pt-1">
+                              <span className="font-bold text-[#3d2b1f]">Số dư còn lại:</span>
+                              <strong
+                                data-testid="shop-confirm-remaining-balance"
+                                className={
+                                  canAfford
+                                    ? 'text-emerald-700 font-black'
+                                    : 'text-rose-600 font-black'
+                                }
+                              >
+                                {remainingText}
+                              </strong>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setPendingShopBuyItem(null)}
+                              className="rounded-xl border border-[#d8cbb8] bg-white px-3 py-1 text-xs font-bold text-[#5c4938] cursor-pointer"
+                            >
+                              Hủy
+                            </button>
+                            <button
+                              type="button"
+                              data-testid="shop-confirm-buy-btn"
+                              disabled={!canAfford}
+                              onClick={handleConfirmBuyShopItem}
+                              className={`inline-flex items-center gap-1 rounded-xl px-3 py-1 text-xs font-black text-white shadow cursor-pointer ${
+                                canAfford
+                                  ? 'bg-emerald-600 hover:bg-emerald-500'
+                                  : 'bg-slate-400 cursor-not-allowed'
+                              }`}
+                            >
+                              <Check className="h-3.5 w-3.5" />
+                              <span>Xác nhận</span>
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      );
+                    })()}
 
-                    {/* Lưới 2 cột gọn gàng */}
+                    {/* Lưới 2 cột đồ dùng: Bình thường (Công đức) & Cao cấp (Tiền) */}
                     <div className="grid grid-cols-2 gap-2">
                       {CAT_SHOP_ITEMS.map((item) => {
                         const owned = myCatInventory[item.id] || 0;
+                        const isPrem = Boolean(item.isPremium && item.priceVnd && item.priceVnd > 0);
                         return (
                           <div
                             key={item.id}
-                            className="flex flex-col justify-between rounded-2xl border-2 border-[#e5dccb] bg-white p-2.5 shadow-sm"
+                            className={`flex flex-col justify-between rounded-2xl border-2 p-2.5 shadow-sm ${
+                              isPrem
+                                ? 'border-emerald-300 bg-gradient-to-br from-emerald-50/70 to-amber-50/70'
+                                : 'border-[#e5dccb] bg-white'
+                            }`}
                           >
                             <div className="flex items-center gap-2">
                               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-xl">
                                 {item.icon}
                               </span>
                               <div className="min-w-0">
-                                <div className="truncate text-xs font-black text-[#3d2b1f]">
-                                  {item.name}
+                                <div className="flex items-center gap-1">
+                                  <span className="truncate text-xs font-black text-[#3d2b1f]">
+                                    {item.name}
+                                  </span>
                                 </div>
                                 <div className="text-[10px] font-bold text-[#7c6855]">
+                                  {isPrem && (
+                                    <span className="mr-1 rounded bg-emerald-600 px-1 text-[8px] font-black text-white">
+                                      CAO CẤP
+                                    </span>
+                                  )}
                                   {item.category === 'food'
                                     ? `+${item.fullnessBoost}% No`
                                     : item.category === 'bed'
@@ -2410,14 +2588,22 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
                             </div>
 
                             <div className="mt-2 flex items-center justify-between border-t border-[#f3ece0] pt-1.5">
-                              <span className="text-[11px] font-black text-amber-700">
-                                ✨ {item.priceMerit}
+                              <span
+                                className={`text-[11px] font-black ${
+                                  isPrem ? 'text-emerald-700' : 'text-amber-700'
+                                }`}
+                              >
+                                {isPrem ? `💰 ${formatVnd(item.priceVnd || 0)}` : `✨ ${item.priceMerit}`}
                               </span>
                               <button
                                 type="button"
                                 data-testid={`shop-buy-${item.id}`}
                                 onClick={() => setPendingShopBuyItem(item)}
-                                className="rounded-lg bg-amber-400 hover:bg-amber-300 px-2.5 py-0.5 text-[11px] font-black text-slate-950 cursor-pointer"
+                                className={`rounded-lg px-2.5 py-0.5 text-[11px] font-black cursor-pointer ${
+                                  isPrem
+                                    ? 'bg-emerald-500 hover:bg-emerald-400 text-white'
+                                    : 'bg-amber-400 hover:bg-amber-300 text-slate-950'
+                                }`}
                               >
                                 Mua
                               </button>
