@@ -1584,7 +1584,8 @@ const LowPolyCat3D: React.FC<{
   const [petHeartBurst, setPetHeartBurst] = useState(false);
 
   const breed = ALL_PET_BREEDS.find((b) => b.id === cat.breedId) || CAT_BREEDS[0];
-  const isDog = cat.species === 'dog' || isDogBreed(cat.breedId);
+  const isMonkey = cat.breedId === 'monkey' || cat.species === 'monkey';
+  const isDog = !isMonkey && (cat.species === 'dog' || isDogBreed(cat.breedId));
 
   // Các vị trí lối đi thông thoáng ngay bên trong văn phòng làm việc
   const officeWaypoints: [number, number][] = useMemo(
@@ -1672,14 +1673,52 @@ const LowPolyCat3D: React.FC<{
         <meshStandardMaterial color={breed.bellyColor} roughness={0.75} />
       </mesh>
 
-      {/* Đầu mèo */}
+      {/* Đầu */}
       <mesh position={[0, 0.38, 0.24]} castShadow>
         <boxGeometry args={[0.32, 0.28, 0.28]} />
-        <meshStandardMaterial color={breed.bodyColor} roughness={0.6} />
+        <meshStandardMaterial
+          color={isMonkey ? '#6b4423' : breed.bodyColor}
+          roughness={0.6}
+        />
       </mesh>
 
-      {/* Hai tai (tai chó cụp/dài hoặc tai mèo nhọn) */}
-      {isDog ? (
+      {/* Khỉ Con: Mặt kem, 2 tai tròn hai bên & vòng cổ xanh thẻ vàng */}
+      {isMonkey ? (
+        <>
+          {/* Mặt nạ kem */}
+          <mesh position={[0, 0.36, 0.385]}>
+            <boxGeometry args={[0.24, 0.2, 0.02]} />
+            <meshStandardMaterial color="#f2d0a9" roughness={0.65} />
+          </mesh>
+          {/* Tai tròn bên trái */}
+          <mesh position={[-0.19, 0.39, 0.23]} rotation={[0, 0, Math.PI / 2]} castShadow>
+            <cylinderGeometry args={[0.095, 0.095, 0.05, 10]} />
+            <meshStandardMaterial color="#6b4423" roughness={0.65} />
+          </mesh>
+          <mesh position={[-0.2, 0.39, 0.245]} rotation={[0, 0, Math.PI / 2]}>
+            <cylinderGeometry args={[0.06, 0.06, 0.055, 10]} />
+            <meshStandardMaterial color="#d99b82" roughness={0.65} />
+          </mesh>
+          {/* Tai tròn bên phải */}
+          <mesh position={[0.19, 0.39, 0.23]} rotation={[0, 0, Math.PI / 2]} castShadow>
+            <cylinderGeometry args={[0.095, 0.095, 0.05, 10]} />
+            <meshStandardMaterial color="#6b4423" roughness={0.65} />
+          </mesh>
+          <mesh position={[0.2, 0.39, 0.245]} rotation={[0, 0, Math.PI / 2]}>
+            <cylinderGeometry args={[0.06, 0.06, 0.055, 10]} />
+            <meshStandardMaterial color="#d99b82" roughness={0.65} />
+          </mesh>
+          {/* Vòng cổ xanh & thẻ vàng */}
+          <mesh position={[0, 0.26, 0.22]}>
+            <boxGeometry args={[0.35, 0.05, 0.16]} />
+            <meshStandardMaterial color="#134e4a" roughness={0.5} />
+          </mesh>
+          <mesh position={[0, 0.24, 0.31]}>
+            <boxGeometry args={[0.07, 0.07, 0.02]} />
+            <meshStandardMaterial color="#eab308" metalness={0.5} roughness={0.3} />
+          </mesh>
+        </>
+      ) : isDog ? (
         <>
           <mesh position={[-0.17, 0.42, 0.24]} rotation={[0.1, 0, 0.28]} castShadow>
             <boxGeometry args={[0.07, 0.16, 0.11]} />

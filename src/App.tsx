@@ -876,7 +876,7 @@ export function App() {
       const petName = customName.trim() || meta.name;
       const newDog: OfficeCatProfile = {
         petId: `dog-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        species: 'dog',
+        species: meta.species || 'dog',
         ownerUserId: session.userId,
         ownerNickname: session.nickname,
         catName: petName,

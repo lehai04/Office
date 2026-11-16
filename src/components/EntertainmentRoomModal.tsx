@@ -2127,6 +2127,8 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
                             const activePid = myCat.petId || `pet-${myCat.breedId}`;
                             const isOut = pid === activePid;
                             const isDog = pet.species === 'dog' || isDogBreed(pet.breedId);
+                            const petEmoji =
+                              pet.breedId === 'monkey' ? '🐒' : isDog ? '🐶' : '🐱';
                             return (
                               <button
                                 key={pid}
@@ -2138,7 +2140,7 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
                                     : 'border-[#e2d6c3] bg-[#fdf8f0] text-[#5c4938] hover:border-amber-400'
                                 }`}
                               >
-                                <span>{isDog ? '🐶' : '🐱'}</span>
+                                <span>{petEmoji}</span>
                                 <span>{pet.catName}</span>
                                 <span className="opacity-75">
                                   {isOut ? '• Đang ra ngoài' : '• Cho ra ngoài'}
@@ -2449,7 +2451,8 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
                               >
                                 <div className="min-w-0">
                                   <div className="truncate text-[11px] font-black text-[#3d2b1f]">
-                                    🐶 {dog.name.replace('Chó ', '')}
+                                    {dog.id === 'monkey' ? '🐒' : '🐶'}{' '}
+                                    {dog.name.replace('Chó ', '')}
                                   </div>
                                   <div className="text-[10px] font-black text-emerald-700">
                                     {formatVnd(dog.priceVnd || 0)}

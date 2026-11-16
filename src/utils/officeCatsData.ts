@@ -9,8 +9,9 @@ export type CatBreedId =
   | 'corgi'
   | 'shiba'
   | 'poodle'
-  | 'husky';
-export type PetSpecies = 'cat' | 'dog';
+  | 'husky'
+  | 'monkey';
+export type PetSpecies = 'cat' | 'dog' | 'monkey';
 export type CatActivity = 'walking' | 'playing' | 'sleeping';
 export type CatItemCategory = 'food' | 'toy' | 'bed';
 
@@ -111,6 +112,16 @@ export const DOG_BREEDS: CatBreedMeta[] = [
     earColor: '#1e293b',
     bellyColor: '#f8fafc',
     priceVnd: 1_200_000,
+  },
+  {
+    id: 'monkey',
+    species: 'monkey',
+    name: 'Khỉ Con Tinh Nghịch',
+    badge: '🐒 Đáng yêu • Vòng cổ vàng',
+    bodyColor: '#d4a373',
+    earColor: '#6b4423',
+    bellyColor: '#f2d0a9',
+    priceVnd: 1_000_000,
   },
 ];
 
