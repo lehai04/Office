@@ -281,15 +281,7 @@ export const AttendanceDrawer: React.FC<AttendanceDrawerProps> = ({
               const meta = ATTENDANCE_META[status];
               const isToday = cell.dateStr === nowVn.dateStr;
 
-              const viewMonthKey = `${viewYear}-${String(viewMonth).padStart(2, '0')}`;
-  const salaryInfo = useMemo(
-    () => calculateMonthSalaryVnd(attendanceMap, viewMonthKey),
-    [attendanceMap, viewMonthKey]
-  );
-  const todayStatus: AttendanceStatus = attendanceMap[nowVn.dateStr] ?? 'none';
-  const isTodayCheckedIn = todayStatus !== 'none';
-
-  return (
+              return (
                 <button
                   key={cell.dateStr}
                   type="button"
@@ -320,15 +312,8 @@ export const AttendanceDrawer: React.FC<AttendanceDrawerProps> = ({
           <div className="grid grid-cols-2 gap-2 text-xs">
             {ATTENDANCE_CYCLE.map((st) => {
               const meta = ATTENDANCE_META[st];
-              const viewMonthKey = `${viewYear}-${String(viewMonth).padStart(2, '0')}`;
-  const salaryInfo = useMemo(
-    () => calculateMonthSalaryVnd(attendanceMap, viewMonthKey),
-    [attendanceMap, viewMonthKey]
-  );
-  const todayStatus: AttendanceStatus = attendanceMap[nowVn.dateStr] ?? 'none';
-  const isTodayCheckedIn = todayStatus !== 'none';
 
-  return (
+              return (
                 <div
                   key={st}
                   className="flex items-center gap-2 rounded-xl bg-slate-900/60 px-2.5 py-1.5"
