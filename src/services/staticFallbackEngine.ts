@@ -227,6 +227,38 @@ function publishOverMqtt(data: Record<string, unknown>): void {
   }
 }
 
+const PURGED_MEMBER_TAGS = new Set<string>(['#D0D4']);
+
+function purgeDeprecatedAccounts(db: StaticDatabaseSchema): void {
+  const removedUserIds = new Set<string>();
+  for (const m of db.roomMembers || []) {
+    if (PURGED_MEMBER_TAGS.has(m.memberTag.toUpperCase())) {
+      removedUserIds.add(m.userId);
+    }
+  }
+  for (const [token, acc] of Object.entries(db.accounts || {})) {
+    if (PURGED_MEMBER_TAGS.has(acc.memberTag.toUpperCase())) {
+      removedUserIds.add(acc.userId);
+      delete db.accounts[token];
+    }
+  }
+  if (removedUserIds.size === 0) return;
+
+  db.roomMembers = db.roomMembers.filter((m) => !removedUserIds.has(m.userId));
+  for (const s of db.seats || []) {
+    if (s.occupiedByUserId && removedUserIds.has(s.occupiedByUserId)) {
+      s.occupiedByUserId = null;
+      s.claimedAt = null;
+    }
+  }
+  for (const key of Object.keys(db.activeMeetingChairs || {})) {
+    const uid = key.split(':')[1];
+    if (uid && removedUserIds.has(uid)) {
+      delete db.activeMeetingChairs[key];
+    }
+  }
+}
+
 function mergeRemoteDatabase(
   remoteDb: StaticDatabaseSchema,
   kickedUserId?: string,
@@ -354,6 +386,7 @@ function mergeRemoteDatabase(
     }
   }
 
+  purgeDeprecatedAccounts(local);
   saveStaticDb(local);
   return local;
 }
@@ -595,6 +628,7 @@ function loadStaticDb(): StaticDatabaseSchema {
       const parsed = JSON.parse(raw) as StaticDatabaseSchema;
       if (parsed && parsed.dbVersion === CURRENT_DB_VERSION && parsed.rooms && parsed.seats) {
         if (!parsed.activeMeetingChairs) parsed.activeMeetingChairs = {};
+        purgeDeprecatedAccounts(parsed);
         return parsed;
       }
     }
