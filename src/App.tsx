@@ -14,6 +14,8 @@ import {
   PenSquare,
   Crown,
   Gamepad2,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { OfficeScene3D, type ActiveSpeechBubble } from './components/OfficeScene3D';
 import { EntryModal } from './components/EntryModal';
@@ -43,6 +45,7 @@ import {
   type OfficeCatProfile,
 } from './utils/officeCatsData';
 import {
+  playCatMeowSound,
   playWoodenFishSound,
   playTempleBellSound,
   startZenBackgroundMusic,
@@ -143,6 +146,10 @@ export function App() {
   const [roomCats, setRoomCats] = useState<Record<string, OfficeCatProfile>>({});
   const [myCatInventory, setMyCatInventory] = useState<Record<string, number>>({});
   const [giftRequests, setGiftRequests] = useState<CatGiftRequest[]>([]);
+
+  // State đóng/mở menu gọn trên màn hình (Click để xổ chức năng, click để đóng menu)
+  const [topMenuOpen, setTopMenuOpen] = useState<boolean>(false);
+  const [dockCollapsed, setDockCollapsed] = useState<boolean>(false);
 
   // Bong bóng chat 5 giây trên đầu nhân vật
   const [activeBubbles, setActiveBubbles] = useState<Record<string, ActiveSpeechBubble>>({});
@@ -454,6 +461,7 @@ export function App() {
   const handlePetCatIn3D = useCallback(
     (cat: OfficeCatProfile) => {
       if (!room) return;
+      playCatMeowSound('happy');
       const updated: OfficeCatProfile = {
         ...cat,
         petCount: (cat.petCount || 0) + 1,
@@ -466,7 +474,7 @@ export function App() {
         return nextMap;
       });
       showToast(
-        `🤚 Bạn vừa vuốt ve bé mèo "${cat.catName}" của ${cat.ownerNickname}! 💕`
+        `🤚 Meow~ Bạn vừa vuốt ve bé "${cat.catName}" (${cat.ownerNickname})! 💕`
       );
     },
     [room, showToast]
@@ -997,160 +1005,165 @@ export function App() {
         onPetCatIn3D={handlePetCatIn3D}
       />
 
-      {/* THANH THÔNG TIN PHÒNG, CHỖ NGỒI & NÚT CHUYỂN GÓC NHÌN THỨ NHẤT Ở TRÊN CÙNG */}
-      <header className="pointer-events-none fixed top-2 sm:top-3 left-2 sm:left-3 right-2 sm:right-3 z-20 flex flex-wrap items-center justify-between gap-1.5 sm:gap-2">
-        <div className="pointer-events-auto flex items-center gap-1.5 sm:gap-2 rounded-2xl border border-white/15 bg-slate-900/80 px-2.5 sm:px-3.5 py-1.5 sm:py-2 backdrop-blur-md shadow-lg max-w-full">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <span className="h-2 w-2 sm:h-2.5 sm:w-2.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
-            <span className="text-[11px] sm:text-sm font-bold text-white truncate max-w-[110px] sm:max-w-none">
-              {room.name}
-            </span>
-          </div>
-          {editingRoomCode ? (
-            <form onSubmit={handleSaveNewRoomCode} className="flex items-center gap-1">
-              <input
-                type="text"
-                autoFocus
-                maxLength={20}
-                value={newRoomCodeDraft}
-                onChange={(e) => setNewRoomCodeDraft(e.target.value.toUpperCase())}
-                placeholder="ID phòng..."
-                className="w-20 sm:w-28 rounded-lg border border-emerald-400 bg-slate-950 px-2 py-0.5 text-xs sm:text-[11px] font-mono font-bold uppercase text-emerald-300 focus:outline-none"
-              />
-              <button
-                type="submit"
-                className="rounded-lg bg-emerald-500 px-2 py-0.5 text-[10px] sm:text-[11px] font-bold text-slate-950 cursor-pointer"
-              >
-                Lưu
-              </button>
-              <button
-                type="button"
-                onClick={() => setEditingRoomCode(false)}
-                className="rounded-lg bg-slate-800 px-1.5 py-0.5 text-[10px] sm:text-[11px] text-slate-400 cursor-pointer"
-              >
-                Hủy
-              </button>
-            </form>
-          ) : (
-            <button
-              type="button"
-              onClick={() => {
-                setNewRoomCodeDraft(room.code);
-                setEditingRoomCode(true);
-              }}
-              title="Bấm để đổi ID / Mã phòng"
-              className="inline-flex items-center gap-1 rounded-lg bg-slate-800 hover:bg-slate-700 px-1.5 sm:px-2 py-0.5 text-[10px] sm:text-[11px] font-mono font-semibold text-emerald-300 border border-white/10 transition-all cursor-pointer shrink-0"
-            >
-              <span>{room.code}</span>
-              <PenSquare className="h-3 w-3 text-emerald-400" />
-            </button>
-          )}
+      {/* THANH TRÊN CÙNG SIÊU GỌN (Click vào nút Menu góc phải để xổ thêm chức năng, click lại để đóng) */}
+      <header className="pointer-events-none fixed top-2 left-2 right-2 z-20 flex items-start justify-between gap-1.5">
+        {/* Cụm trái: Mã phòng & Sao chép link nhanh */}
+        <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-white/15 bg-slate-900/80 px-2.5 py-1 backdrop-blur-md shadow-md">
+          <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+          <span className="text-[11px] font-bold text-white truncate max-w-[95px] sm:max-w-[150px]">
+            {room.name}
+          </span>
           <button
             type="button"
             onClick={handleCopyInviteLink}
             title="Sao chép link mời vào phòng"
-            className="inline-flex items-center gap-1 rounded-xl bg-white/10 hover:bg-white/20 px-2 sm:px-2.5 py-1 text-[10px] sm:text-[11px] font-medium text-slate-200 transition-all cursor-pointer shrink-0"
+            className="inline-flex items-center gap-1 rounded-full bg-white/10 hover:bg-white/20 px-2 py-0.5 text-[10px] font-mono font-bold text-emerald-300 cursor-pointer shrink-0"
           >
             {copiedInvite ? (
               <>
                 <Check className="h-3 w-3 text-emerald-400" />
-                <span className="text-emerald-300 hidden xs:inline">Đã chép</span>
+                <span>Đã chép</span>
               </>
             ) : (
               <>
-                <Share2 className="h-3 w-3" />
-                <span className="hidden sm:inline">Link mời</span>
+                <span>{room.code}</span>
+                <Share2 className="h-2.5 w-2.5 text-slate-300" />
               </>
             )}
           </button>
         </div>
 
-        {/* Nút chuyển đổi Góc nhìn thứ nhất (FPV) & Trạng thái nhân vật */}
-        <div className="pointer-events-auto flex flex-wrap items-center gap-1 sm:gap-2 rounded-2xl border border-white/15 bg-slate-900/80 px-2 sm:px-3 py-1 sm:py-1.5 backdrop-blur-md shadow-lg text-[11px] sm:text-xs max-w-full">
-          {/* Nút bật/tắt Góc nhìn thứ nhất của nhân vật */}
+        {/* Cụm phải: Góc nhìn & Nút xổ Menu cá nhân (Click để mở, click để đóng) */}
+        <div className="pointer-events-auto relative flex items-center gap-1">
           <button
             type="button"
             data-testid="toggle-camera-mode-btn"
             onClick={() =>
               setCameraMode((prev) => (prev === 'overview' ? 'first_person' : 'overview'))
             }
-            className={`inline-flex items-center gap-1 sm:gap-1.5 rounded-xl px-2 sm:px-2.5 py-1 font-bold transition-all cursor-pointer ${
+            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold border shadow-md backdrop-blur-md transition-all cursor-pointer ${
               cameraMode === 'first_person'
-                ? 'bg-emerald-500 text-slate-950 shadow ring-2 ring-emerald-300'
-                : 'bg-sky-500/20 hover:bg-sky-500/30 text-sky-200 border border-sky-400/40'
+                ? 'border-emerald-300 bg-emerald-500 text-slate-950'
+                : 'border-white/15 bg-slate-900/80 text-sky-200 hover:bg-slate-800'
             }`}
-            title="Chuyển đổi giữa Góc nhìn thứ nhất (nhìn từ mắt nhân vật) và Góc nhìn toàn cảnh 3D"
+            title="Đổi góc nhìn 3D / Góc nhìn thứ nhất"
           >
             {cameraMode === 'first_person' ? (
               <>
                 <Compass className="h-3.5 w-3.5 shrink-0" />
-                <span className="hidden sm:inline">Đang ở Góc nhìn thứ 1 (Bấm về 3D)</span>
-                <span className="sm:hidden">Về 3D</span>
+                <span>Về 3D</span>
               </>
             ) : (
               <>
                 <Eye className="h-3.5 w-3.5 shrink-0" />
-                <span className="hidden sm:inline">Góc nhìn thứ nhất</span>
-                <span className="sm:hidden">Góc nhìn 1</span>
+                <span>Góc nhìn 1</span>
               </>
             )}
           </button>
 
           <button
             type="button"
-            onClick={() => togglePanel('seats')}
-            title="Xem danh sách thành viên & Quản lý Trưởng phòng"
-            className="flex items-center gap-1 sm:gap-1.5 rounded-xl bg-white/5 hover:bg-white/10 px-2 py-1 text-slate-200 transition-all cursor-pointer"
+            data-testid="top-menu-toggle-btn"
+            onClick={() => setTopMenuOpen((v) => !v)}
+            className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-slate-900/85 hover:bg-slate-800 px-2.5 py-1 text-[11px] font-bold text-white shadow-md backdrop-blur-md cursor-pointer"
           >
-            <Users className="h-3.5 w-3.5 text-sky-400 shrink-0" />
-            <span data-testid="hud-user-nickname" className="font-bold text-white truncate max-w-[80px] sm:max-w-none">
+            {myMember?.isManager && (
+              <Crown
+                data-testid="hud-manager-badge"
+                className="h-3 w-3 text-amber-400 shrink-0"
+              />
+            )}
+            <span data-testid="hud-user-nickname" className="truncate max-w-[75px] sm:max-w-[120px]">
               {session.nickname}
             </span>
-            {myMember?.isManager && (
-              <span
-                data-testid="hud-manager-badge"
-                className="inline-flex items-center gap-0.5 rounded-full bg-amber-400 px-1.5 py-0.2 text-[9px] sm:text-[10px] font-extrabold text-slate-950 shrink-0"
-              >
-                <Crown className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
-                <span className="hidden xs:inline">Trưởng phòng</span>
-              </span>
+            {topMenuOpen ? (
+              <ChevronUp className="h-3.5 w-3.5 text-slate-300" />
+            ) : (
+              <ChevronDown className="h-3.5 w-3.5 text-slate-300" />
             )}
           </button>
 
-          <button
-            type="button"
-            data-testid="hud-seat-status-btn"
-            onClick={() => togglePanel('seats')}
-            className={`inline-flex items-center gap-1 rounded-xl px-2 sm:px-2.5 py-1 font-semibold transition-all cursor-pointer ${
-              activePanel === 'zen'
-                ? 'bg-amber-500/25 text-amber-200 border border-amber-400/40'
-                : myMeetingChair
-                  ? 'bg-amber-500/20 text-amber-300 border border-amber-400/40'
-                  : mySeatLayout
-                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/40'
-                    : 'bg-amber-500/20 text-amber-300 border border-amber-400/40 animate-pulse'
-            }`}
-          >
-            <Armchair className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate max-w-[115px] sm:max-w-none">
-              {activePanel === 'zen'
-                ? 'Phòng Tịnh Tâm'
-                : myMeetingChair
-                  ? `Họp ${myMeetingChair.shortLabel}${mySeatLayout ? ` (${mySeatLayout.shortLabel})` : ''}`
-                  : mySeatLayout
-                    ? `Ghế ${mySeatLayout.shortLabel}`
-                    : 'Chọn ghế'}
-            </span>
-          </button>
+          {/* HỘP MENU XỔ XUỐNG KHI CLICK (Click nút trên hoặc chọn mục để đóng gọn) */}
+          {topMenuOpen && (
+            <div className="absolute right-0 top-9 z-40 w-56 rounded-2xl border border-white/15 bg-slate-900/95 p-2.5 text-xs text-slate-100 shadow-2xl backdrop-blur-xl space-y-2">
+              <div className="flex items-center justify-between border-b border-white/10 pb-1.5">
+                <span className="text-[11px] font-bold text-slate-400">Tiện ích phòng</span>
+                <button
+                  type="button"
+                  onClick={() => setTopMenuOpen(false)}
+                  className="text-[11px] font-bold text-slate-400 hover:text-white cursor-pointer"
+                >
+                  Đóng ✕
+                </button>
+              </div>
 
-          <button
-            type="button"
-            onClick={handleLogoutOrSwitch}
-            title="Rời phòng / Đổi tài khoản ẩn danh"
-            className="rounded-xl bg-slate-800 hover:bg-rose-500/20 p-1.5 text-slate-400 hover:text-rose-300 transition-all cursor-pointer shrink-0"
-          >
-            <LogOut className="h-3.5 w-3.5" />
-          </button>
+              <button
+                type="button"
+                data-testid="hud-seat-status-btn"
+                onClick={() => {
+                  setTopMenuOpen(false);
+                  togglePanel('seats');
+                }}
+                className="flex w-full items-center justify-between rounded-xl bg-white/5 hover:bg-white/10 px-2.5 py-2 text-left font-semibold text-emerald-300 cursor-pointer"
+              >
+                <span className="inline-flex items-center gap-1.5">
+                  <Armchair className="h-3.5 w-3.5" />
+                  <span>
+                    {myMeetingChair
+                      ? `Họp ${myMeetingChair.shortLabel}`
+                      : mySeatLayout
+                        ? `Ghế ${mySeatLayout.shortLabel}`
+                        : 'Chọn ghế ngồi'}
+                  </span>
+                </span>
+                <span className="text-[10px] text-slate-400">Đổi →</span>
+              </button>
+
+              {editingRoomCode ? (
+                <form onSubmit={handleSaveNewRoomCode} className="flex items-center gap-1">
+                  <input
+                    type="text"
+                    autoFocus
+                    maxLength={20}
+                    value={newRoomCodeDraft}
+                    onChange={(e) => setNewRoomCodeDraft(e.target.value.toUpperCase())}
+                    placeholder="ID phòng..."
+                    className="w-full rounded-lg border border-emerald-400 bg-slate-950 px-2 py-1 text-xs font-mono font-bold uppercase text-emerald-300 focus:outline-none"
+                  />
+                  <button
+                    type="submit"
+                    className="rounded-lg bg-emerald-500 px-2 py-1 text-[11px] font-bold text-slate-950 cursor-pointer"
+                  >
+                    Lưu
+                  </button>
+                </form>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNewRoomCodeDraft(room.code);
+                    setEditingRoomCode(true);
+                  }}
+                  className="flex w-full items-center justify-between rounded-xl bg-white/5 hover:bg-white/10 px-2.5 py-1.5 text-left text-slate-200 cursor-pointer"
+                >
+                  <span>Mã phòng: <strong className="font-mono text-emerald-300">{room.code}</strong></span>
+                  <PenSquare className="h-3.5 w-3.5 text-emerald-400" />
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  setTopMenuOpen(false);
+                  handleLogoutOrSwitch();
+                }}
+                className="flex w-full items-center gap-1.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 px-2.5 py-1.5 font-semibold text-rose-300 cursor-pointer"
+              >
+                <LogOut className="h-3.5 w-3.5" />
+                <span>Rời phòng / Đổi tên</span>
+              </button>
+            </div>
+          )}
         </div>
       </header>
 
@@ -1273,103 +1286,122 @@ export function App() {
         onFulfillGiftRequest={handleFulfillGiftRequest}
       />
 
-      {/* THANH NÚT KÍNH MỜ GỌN Ở PHÍA DƯỚI MÀN HÌNH (Tối ưu cho cả Điện thoại & Máy tính) */}
-      <nav
-        aria-label="Điều khiển văn phòng"
-        className="fixed bottom-2 sm:bottom-3 left-1/2 -translate-x-1/2 z-30 flex items-center justify-between sm:justify-center gap-1 sm:gap-1.5 rounded-2xl sm:rounded-full border border-white/20 bg-slate-900/90 px-1.5 sm:px-3.5 py-1.5 sm:py-2 backdrop-blur-xl shadow-2xl w-[calc(100vw-16px)] sm:w-auto max-w-2xl no-scrollbar overflow-x-auto"
-      >
+      {/* THANH ĐIỀU KHIỂN DƯỚI CÙNG (Có thể click thu gọn / mở rộng để không che màn hình) */}
+      {dockCollapsed ? (
         <button
           type="button"
-          data-testid="dock-seats-btn"
-          onClick={() => togglePanel('seats')}
-          className={`flex flex-1 sm:flex-initial flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 whitespace-nowrap rounded-xl sm:rounded-full px-2 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs font-semibold transition-all cursor-pointer ${
-            activePanel === 'seats'
-              ? 'bg-sky-500 text-slate-950 shadow-lg shadow-sky-500/30'
-              : 'text-slate-200 hover:bg-white/10'
-          }`}
+          data-testid="expand-bottom-dock-btn"
+          onClick={() => setDockCollapsed(false)}
+          className="fixed bottom-2.5 right-3 z-30 inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-slate-900/90 hover:bg-slate-800 px-3.5 py-2 text-xs font-extrabold text-amber-300 shadow-2xl backdrop-blur-xl cursor-pointer"
         >
-          <Armchair className="h-4 w-4 shrink-0" />
-          <span>Chỗ ngồi</span>
+          <ChevronUp className="h-4 w-4" />
+          <span>Menu</span>
         </button>
+      ) : (
+        <nav
+          aria-label="Điều khiển văn phòng"
+          className="fixed bottom-2 left-1/2 -translate-x-1/2 z-30 flex items-center justify-between sm:justify-center gap-0.5 sm:gap-1 rounded-2xl sm:rounded-full border border-white/20 bg-slate-900/90 px-1.5 sm:px-3 py-1 sm:py-1.5 backdrop-blur-xl shadow-2xl w-[calc(100vw-12px)] sm:w-auto max-w-xl"
+        >
+          <button
+            type="button"
+            data-testid="dock-seats-btn"
+            onClick={() => togglePanel('seats')}
+            className={`flex flex-1 sm:flex-initial flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1 whitespace-nowrap rounded-xl sm:rounded-full px-1.5 sm:px-2.5 py-1 sm:py-1.5 text-[10px] sm:text-xs font-semibold transition-all cursor-pointer ${
+              activePanel === 'seats'
+                ? 'bg-sky-500 text-slate-950 shadow'
+                : 'text-slate-200 hover:bg-white/10'
+            }`}
+          >
+            <Armchair className="h-3.5 w-3.5 shrink-0" />
+            <span>Ghế</span>
+          </button>
 
-        <button
-          type="button"
-          data-testid="dock-chat-btn"
-          onClick={() => togglePanel('chat')}
-          className={`relative flex flex-1 sm:flex-initial flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 whitespace-nowrap rounded-xl sm:rounded-full px-2 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs font-semibold transition-all cursor-pointer ${
-            activePanel === 'chat'
-              ? 'bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/30'
-              : 'text-slate-200 hover:bg-white/10'
-          }`}
-        >
-          <MessageSquare className="h-4 w-4 shrink-0" />
-          <span>Chat</span>
-          {messages.length > 0 && (
-            <span className="rounded-full bg-white/20 px-1.5 py-0.2 text-[9px] sm:text-[10px] hidden sm:inline">
-              {messages.length}
-            </span>
-          )}
-        </button>
+          <button
+            type="button"
+            data-testid="dock-chat-btn"
+            onClick={() => togglePanel('chat')}
+            className={`relative flex flex-1 sm:flex-initial flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1 whitespace-nowrap rounded-xl sm:rounded-full px-1.5 sm:px-2.5 py-1 sm:py-1.5 text-[10px] sm:text-xs font-semibold transition-all cursor-pointer ${
+              activePanel === 'chat'
+                ? 'bg-emerald-500 text-slate-950 shadow'
+                : 'text-slate-200 hover:bg-white/10'
+            }`}
+          >
+            <MessageSquare className="h-3.5 w-3.5 shrink-0" />
+            <span>Chat</span>
+            {messages.length > 0 && (
+              <span className="rounded-full bg-white/20 px-1 text-[9px] hidden sm:inline">
+                {messages.length}
+              </span>
+            )}
+          </button>
 
-        <button
-          type="button"
-          data-testid="dock-attendance-btn"
-          onClick={() => togglePanel('attendance')}
-          className={`flex flex-1 sm:flex-initial flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 whitespace-nowrap rounded-xl sm:rounded-full px-2 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs font-semibold transition-all cursor-pointer ${
-            activePanel === 'attendance'
-              ? 'bg-amber-400 text-slate-950 shadow-lg shadow-amber-400/30'
-              : 'text-slate-200 hover:bg-white/10'
-          }`}
-        >
-          <CalendarCheck className="h-4 w-4 shrink-0" />
-          <span>Chấm công</span>
-        </button>
+          <button
+            type="button"
+            data-testid="dock-attendance-btn"
+            onClick={() => togglePanel('attendance')}
+            className={`flex flex-1 sm:flex-initial flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1 whitespace-nowrap rounded-xl sm:rounded-full px-1.5 sm:px-2.5 py-1 sm:py-1.5 text-[10px] sm:text-xs font-semibold transition-all cursor-pointer ${
+              activePanel === 'attendance'
+                ? 'bg-amber-400 text-slate-950 shadow'
+                : 'text-slate-200 hover:bg-white/10'
+            }`}
+          >
+            <CalendarCheck className="h-3.5 w-3.5 shrink-0" />
+            <span>Công</span>
+          </button>
 
-        <button
-          type="button"
-          data-testid="dock-diary-btn"
-          onClick={() => togglePanel('diary')}
-          className={`flex flex-1 sm:flex-initial flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 whitespace-nowrap rounded-xl sm:rounded-full px-2 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs font-semibold transition-all cursor-pointer ${
-            activePanel === 'diary'
-              ? 'bg-purple-500 text-white shadow-lg shadow-purple-500/30'
-              : 'text-slate-200 hover:bg-white/10'
-          }`}
-        >
-          <BookHeart className="h-4 w-4 shrink-0" />
-          <span className="sm:hidden">Nhật ký</span>
-          <span className="hidden sm:inline">Nhật ký ẩn danh</span>
-        </button>
+          <button
+            type="button"
+            data-testid="dock-diary-btn"
+            onClick={() => togglePanel('diary')}
+            className={`flex flex-1 sm:flex-initial flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1 whitespace-nowrap rounded-xl sm:rounded-full px-1.5 sm:px-2.5 py-1 sm:py-1.5 text-[10px] sm:text-xs font-semibold transition-all cursor-pointer ${
+              activePanel === 'diary'
+                ? 'bg-purple-500 text-white shadow'
+                : 'text-slate-200 hover:bg-white/10'
+            }`}
+          >
+            <BookHeart className="h-3.5 w-3.5 shrink-0" />
+            <span>Nhật ký</span>
+          </button>
 
-        <button
-          type="button"
-          data-testid="dock-zen-btn"
-          onClick={() => togglePanel('zen')}
-          className={`flex flex-1 sm:flex-initial flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 whitespace-nowrap rounded-xl sm:rounded-full px-2 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs font-bold transition-all cursor-pointer ${
-            activePanel === 'zen'
-              ? 'bg-gradient-to-r from-amber-400 to-orange-400 text-slate-950 shadow-lg shadow-amber-500/30 ring-2 ring-amber-200'
-              : 'bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 border border-amber-400/30'
-          }`}
-        >
-          <span className="text-sm sm:text-xs leading-none">🪷</span>
-          <span className="sm:hidden">Tịnh Tâm</span>
-          <span className="hidden sm:inline">Phòng Tịnh Tâm</span>
-        </button>
+          <button
+            type="button"
+            data-testid="dock-zen-btn"
+            onClick={() => togglePanel('zen')}
+            className={`flex flex-1 sm:flex-initial flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1 whitespace-nowrap rounded-xl sm:rounded-full px-1.5 sm:px-2.5 py-1 sm:py-1.5 text-[10px] sm:text-xs font-bold transition-all cursor-pointer ${
+              activePanel === 'zen'
+                ? 'bg-amber-400 text-slate-950 shadow'
+                : 'bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 border border-amber-400/30'
+            }`}
+          >
+            <span className="text-xs leading-none">🪷</span>
+            <span>Tịnh Tâm</span>
+          </button>
 
-        <button
-          type="button"
-          data-testid="dock-games-btn"
-          onClick={() => togglePanel('games')}
-          className={`flex flex-1 sm:flex-initial flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 whitespace-nowrap rounded-xl sm:rounded-full px-2 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs font-bold transition-all cursor-pointer ${
-            activePanel === 'games'
-              ? 'bg-gradient-to-r from-indigo-500 to-fuchsia-500 text-white shadow-lg shadow-indigo-500/30 ring-2 ring-indigo-300'
-              : 'bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/30 border border-indigo-400/35'
-          }`}
-        >
-          <Gamepad2 className="h-4 w-4 shrink-0" />
-          <span className="sm:hidden">Giải Trí</span>
-          <span className="hidden sm:inline">Phòng Giải Trí</span>
-        </button>
-      </nav>
+          <button
+            type="button"
+            data-testid="dock-games-btn"
+            onClick={() => togglePanel('games')}
+            className={`flex flex-1 sm:flex-initial flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1 whitespace-nowrap rounded-xl sm:rounded-full px-1.5 sm:px-2.5 py-1 sm:py-1.5 text-[10px] sm:text-xs font-bold transition-all cursor-pointer ${
+              activePanel === 'games'
+                ? 'bg-indigo-500 text-white shadow'
+                : 'bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/30 border border-indigo-400/35'
+            }`}
+          >
+            <Gamepad2 className="h-3.5 w-3.5 shrink-0" />
+            <span>Giải Trí</span>
+          </button>
+
+          <button
+            type="button"
+            data-testid="collapse-bottom-dock-btn"
+            onClick={() => setDockCollapsed(true)}
+            title="Thu gọn thanh menu"
+            className="flex items-center justify-center rounded-xl sm:rounded-full p-1.5 text-slate-400 hover:bg-white/10 hover:text-white cursor-pointer shrink-0"
+          >
+            <ChevronDown className="h-3.5 w-3.5" />
+          </button>
+        </nav>
+      )}
     </main>
   );
 }

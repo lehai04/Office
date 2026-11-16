@@ -424,3 +424,128 @@ export function playWoodShatterSound(): void {
   playDartHitSound(true);
 }
 
+// ============================================================================
+// ÂM THANH TIẾNG MÈO KÊU ("MEOW~", "PURR~") & NHẠC NỀN NHẸ NHÀNG CHO GAME NUÔI MÈO
+// ============================================================================
+let catBgMusicTimer: number | null = null;
+
+/**
+ * Phát tiếng mèo kêu dễ thương theo từng hành động:
+ * - 'happy': Tiếng "Meow~" ngọt ngào kèm tiếng gừ gừ khi vuốt ve
+ * - 'eat': Tiếng "Mlem~ Meow!" vui sướng khi được cho ăn
+ * - 'play': Tiếng "Miu-miu!" nảy cao tinh nghịch khi chơi đùa
+ * - 'adopt': Tiếng "Meow~" chào chủ mới kèm chuông lấp lánh
+ */
+export function playCatMeowSound(
+  mood: 'happy' | 'eat' | 'play' | 'adopt' = 'happy'
+): void {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+
+  const playSingleMeow = (
+    startTime: number,
+    startFreq: number,
+    peakFreq: number,
+    endFreq: number,
+    duration: number,
+    volume = 0.28
+  ) => {
+    const osc = ctx.createOscillator();
+    const filter = ctx.createBiquadFilter();
+    const gain = ctx.createGain();
+
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(startFreq, startTime);
+    osc.frequency.exponentialRampToValueAtTime(peakFreq, startTime + duration * 0.38);
+    osc.frequency.exponentialRampToValueAtTime(endFreq, startTime + duration);
+
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(peakFreq * 1.15, startTime);
+    filter.Q.setValueAtTime(2.2, startTime);
+
+    gain.gain.setValueAtTime(0.001, startTime);
+    gain.gain.linearRampToValueAtTime(volume, startTime + duration * 0.15);
+    gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(startTime);
+    osc.stop(startTime + duration + 0.03);
+  };
+
+  if (mood === 'eat') {
+    // Hai tiếng "Mlem~ Meow!" hào hứng khi ăn
+    playSingleMeow(now, 540, 820, 660, 0.18, 0.24);
+    playSingleMeow(now + 0.2, 620, 980, 580, 0.32, 0.28);
+  } else if (mood === 'play') {
+    // Tiếng "Miu~ Miu!" tinh nghịch khi vờn đồ chơi
+    playSingleMeow(now, 680, 1080, 760, 0.22, 0.26);
+    playSingleMeow(now + 0.24, 720, 1160, 820, 0.24, 0.26);
+  } else if (mood === 'adopt') {
+    // Tiếng "Meow~" kèm nốt chuông vui tươi
+    playSingleMeow(now, 560, 940, 620, 0.38, 0.28);
+    [523.25, 659.25, 783.99, 1046.5].forEach((f, idx) => {
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(f, now + 0.15 + idx * 0.06);
+      g.gain.setValueAtTime(0.001, now + 0.15 + idx * 0.06);
+      g.gain.linearRampToValueAtTime(0.12, now + 0.17 + idx * 0.06);
+      g.gain.exponentialRampToValueAtTime(0.001, now + 0.42 + idx * 0.06);
+      o.connect(g);
+      g.connect(ctx.destination);
+      o.start(now + 0.15 + idx * 0.06);
+      o.stop(now + 0.45 + idx * 0.06);
+    });
+  } else {
+    // Mặc định 'happy' (Vuốt ve): Tiếng "Meow~" dịu dàng
+    playSingleMeow(now, 510, 880, 560, 0.42, 0.28);
+  }
+}
+
+/**
+ * Nhạc nền Music-Box nhẹ nhàng, vui tươi khi ở trong màn hình Nuôi Mèo (chỉ phát khi người chơi bật âm thanh)
+ */
+export function startCatGameMusic(): void {
+  stopCatGameMusic();
+  if (typeof window === 'undefined') return;
+
+  const melody = [523.25, 659.25, 783.99, 880, 783.99, 659.25, 587.33, 698.46];
+  let step = 0;
+
+  const playTick = () => {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const freq = melody[step % melody.length];
+    step += 1;
+
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, now);
+
+    gain.gain.setValueAtTime(0.0005, now);
+    gain.gain.linearRampToValueAtTime(0.045, now + 0.03);
+    gain.gain.exponentialRampToValueAtTime(0.0005, now + 0.95);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 1.0);
+  };
+
+  playTick();
+  catBgMusicTimer = window.setInterval(playTick, 720);
+}
+
+export function stopCatGameMusic(): void {
+  if (catBgMusicTimer !== null && typeof window !== 'undefined') {
+    window.clearInterval(catBgMusicTimer);
+    catBgMusicTimer = null;
+  }
+}
+

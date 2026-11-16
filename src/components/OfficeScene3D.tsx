@@ -525,12 +525,12 @@ const LowPolyCharacter: React.FC<{
             )}
 
             <div
-              className={`flex items-center gap-1 sm:gap-1.5 whitespace-nowrap rounded-full px-1.5 sm:px-2.5 py-0.5 text-[9px] sm:text-[11px] font-semibold shadow-md backdrop-blur-md transition-all ${
+              className={`flex items-center gap-1 whitespace-nowrap rounded-full px-1.5 py-0.2 text-[9px] sm:text-[10px] font-bold shadow backdrop-blur-sm transition-all ${
                 isCurrentUser
-                  ? 'bg-emerald-600/95 text-white ring-2 ring-emerald-300'
+                  ? 'bg-emerald-600/90 text-white ring-1 ring-emerald-300'
                   : isOnline
-                    ? 'bg-slate-900/85 text-slate-100 ring-1 ring-white/25'
-                    : 'bg-slate-800/65 text-slate-300 ring-1 ring-white/10'
+                    ? 'bg-slate-900/75 text-slate-100 ring-1 ring-white/20'
+                    : 'bg-slate-800/55 text-slate-300'
               }`}
             >
               <span
@@ -538,14 +538,8 @@ const LowPolyCharacter: React.FC<{
                   isOnline ? 'bg-emerald-400' : 'bg-slate-400'
                 }`}
               />
-              {isManager && (
-                <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-400 px-1 sm:px-1.5 py-0.2 text-[8px] sm:text-[9px] font-extrabold text-slate-950 shadow-sm">
-                  👑 <span className="hidden sm:inline">Trưởng phòng</span>
-                </span>
-              )}
+              {isManager && <span title="Trưởng phòng">👑</span>}
               <span>{displayName}</span>
-              {isCurrentUser && <span className="text-[9px] sm:text-[10px] opacity-90">(Bạn)</span>}
-              {!isOnline && <span className="text-[9px] sm:text-[10px] opacity-75">(Offline)</span>}
             </div>
           </div>
         </Html>
@@ -1120,8 +1114,8 @@ const WorkDeskUnit: React.FC<{
           <meshStandardMaterial color="#1e293b" />
         </mesh>
 
-        {isAvailable && (
-          <Html position={[0, 1.08, 0]} center zIndexRange={[10, 0]}>
+        {isAvailable && hovered && (
+          <Html position={[0, 1.02, 0]} center zIndexRange={[10, 0]}>
             <button
               type="button"
               disabled={isClaiming}
@@ -1130,9 +1124,9 @@ const WorkDeskUnit: React.FC<{
                 onSelectSeat(layout.seatId);
               }}
               data-testid={`seat-3d-btn-${layout.seatId}`}
-              className="group flex items-center justify-center whitespace-nowrap rounded-full bg-sky-500/90 hover:bg-sky-400 active:scale-95 px-2 sm:px-2.5 py-0.5 text-[9px] sm:text-[11px] font-semibold text-slate-950 shadow-lg ring-1 sm:ring-2 ring-white/70 transition-all cursor-pointer"
+              className="flex items-center justify-center whitespace-nowrap rounded-full bg-sky-500 px-2 py-0.5 text-[9px] font-bold text-slate-950 shadow cursor-pointer"
             >
-              <span>Trống</span>
+              <span>Ngồi</span>
             </button>
           </Html>
         )}
@@ -1216,8 +1210,8 @@ const SharedMeetingChairUnit: React.FC<{
         <meshStandardMaterial color="#1e293b" />
       </mesh>
 
-      {isAvailable && (
-        <Html position={[0, 1.02, 0]} center zIndexRange={[10, 0]}>
+      {isAvailable && hovered && (
+        <Html position={[0, 0.98, 0]} center zIndexRange={[10, 0]}>
           <button
             type="button"
             onClick={(e) => {
@@ -1225,10 +1219,9 @@ const SharedMeetingChairUnit: React.FC<{
               onSelectMeetingChair(chair.id);
             }}
             data-testid={`meeting-chair-3d-${chair.id}`}
-            title={`${chair.label} — Bấm để vào ngồi họp tự do`}
-            className="flex items-center justify-center whitespace-nowrap rounded-full bg-amber-500/90 hover:bg-amber-400 active:scale-95 px-1.5 sm:px-2.5 py-0.5 text-[9px] sm:text-[10px] font-bold text-slate-950 shadow-md ring-1 ring-white/70 transition-all cursor-pointer"
+            className="flex items-center justify-center whitespace-nowrap rounded-full bg-amber-500 px-2 py-0.5 text-[9px] font-bold text-slate-950 shadow cursor-pointer"
           >
-            <span>Trống</span>
+            <span>Ngồi họp</span>
           </button>
         </Html>
       )}
@@ -1328,8 +1321,8 @@ const DrawerCabinetUnit: React.FC<{
 };
 
 /**
- * Mô hình Bé Mèo 3D dễ thương di chuyển, chơi đùa hoặc nằm ngủ ở khu vực bên ngoài văn phòng.
- * Khi chạm vào một bé mèo -> hiển thị Tên mèo & Tên người nuôi + nút Vuốt ve mèo ngay tại đó.
+ * Mô hình Bé Mèo 3D dễ thương đi dạo, chơi đùa hoặc nằm ngủ NGAY TRONG VĂN PHÒNG LÀM VIỆC.
+ * Mặc định chỉ hiện nhãn rất nhỏ; khi click vào bé mèo mới xổ ra hộp thông tin & nút Vuốt ve.
  */
 const LowPolyCat3D: React.FC<{
   cat: OfficeCatProfile;
@@ -1344,42 +1337,46 @@ const LowPolyCat3D: React.FC<{
 
   const breed = CAT_BREEDS.find((b) => b.id === cat.breedId) || CAT_BREEDS[0];
 
-  // Quỹ đạo di chuyển / vị trí nghỉ ngơi riêng cho từng bé mèo ngoài sân
-  const baseAnchorX = useMemo(() => {
-    const slots = [-3.6, -1.2, 1.4, 3.8, -2.4, 2.6];
-    return slots[index % slots.length];
-  }, [index]);
+  // Các vị trí lối đi thông thoáng ngay bên trong văn phòng làm việc
+  const officeWaypoints: [number, number][] = useMemo(
+    () => [
+      [-1.9, 0.3],   // Lối đi giữa bàn họp và dãy bàn làm việc
+      [0.6, 1.35],   // Sảnh trung tâm văn phòng
+      [-1.4, 2.55],  // Lối đi phía trước tủ hồ sơ dưới
+      [3.7, -0.35],  // Hành lang giữa 2 cụm bàn làm việc
+      [-4.6, -2.3],  // Góc thoáng phía trên bàn họp
+      [1.8, -2.4],   // Lối đi gần cửa chính
+    ],
+    []
+  );
 
-  const baseAnchorZ = useMemo(() => {
-    const zSlots = [-0.25, 0.35, -0.15, 0.4, 0.1, -0.35];
-    return zSlots[index % zSlots.length];
-  }, [index]);
+  const [baseAnchorX, baseAnchorZ] = officeWaypoints[index % officeWaypoints.length];
 
   useFrame(({ clock }) => {
     if (!groupRef.current) return;
-    const t = clock.getElapsedTime() + index * 2.1;
+    const t = clock.getElapsedTime() + index * 2.3;
 
     if (cat.activity === 'sleeping') {
-      // Mèo nằm cuộn tròn thở nhịp nhàng trên đệm ngủ
-      groupRef.current.position.set(baseAnchorX, 0.06, baseAnchorZ);
-      groupRef.current.rotation.y = 0.35;
+      // Mèo nằm cuộn tròn thở nhịp nhàng trên đệm ngủ trong văn phòng
+      groupRef.current.position.set(baseAnchorX, 0.05, baseAnchorZ);
+      groupRef.current.rotation.y = 0.4;
       const breath = 1 + Math.sin(t * 2.2) * 0.04;
       groupRef.current.scale.set(breath, 0.82, breath);
     } else if (cat.activity === 'playing') {
-      // Mèo nhảy nhót vờn quanh đồ chơi
-      const px = baseAnchorX + Math.cos(t * 1.6) * 0.55;
-      const pz = baseAnchorZ + Math.sin(t * 1.6) * 0.38;
-      const hop = Math.abs(Math.sin(t * 4.5)) * 0.16;
+      // Mèo nhảy nhót vờn quanh đồ chơi trong văn phòng
+      const px = baseAnchorX + Math.cos(t * 1.5) * 0.48;
+      const pz = baseAnchorZ + Math.sin(t * 1.5) * 0.42;
+      const hop = Math.abs(Math.sin(t * 4.5)) * 0.14;
       groupRef.current.position.set(px, hop, pz);
-      groupRef.current.rotation.y = -t * 1.6 + Math.PI / 2;
+      groupRef.current.rotation.y = -t * 1.5 + Math.PI / 2;
       groupRef.current.scale.set(1, 1, 1);
     } else {
-      // Mèo đi dạo thong thả ngoài sân văn phòng
-      const wx = baseAnchorX + Math.sin(t * 0.75) * 1.15;
-      const wz = baseAnchorZ + Math.cos(t * 0.5) * 0.42;
-      const stepBob = Math.abs(Math.sin(t * 3.5)) * 0.05;
-      const dx = Math.cos(t * 0.75) * 0.75 * 1.15;
-      const dz = -Math.sin(t * 0.5) * 0.5 * 0.42;
+      // Mèo đi dạo thong thả quanh các bàn làm việc trong văn phòng
+      const wx = baseAnchorX + Math.sin(t * 0.65) * 0.95;
+      const wz = baseAnchorZ + Math.cos(t * 0.48) * 0.65;
+      const stepBob = Math.abs(Math.sin(t * 3.5)) * 0.045;
+      const dx = Math.cos(t * 0.65) * 0.65 * 0.95;
+      const dz = -Math.sin(t * 0.48) * 0.48 * 0.65;
       groupRef.current.position.set(wx, stepBob, wz);
       groupRef.current.rotation.y = Math.atan2(dx, dz);
       groupRef.current.scale.set(1, 1, 1);
@@ -1480,26 +1477,38 @@ const LowPolyCat3D: React.FC<{
         <meshStandardMaterial color={breed.earColor} roughness={0.65} />
       </mesh>
 
-      {/* Nhãn nổi trên đầu bé mèo: Khi chạm vào hiển thị rõ Tên mèo + Tên người nuôi + nút Vuốt ve */}
-      <Html position={[0, 0.85, 0]} center zIndexRange={[15, 0]}>
+      {/* Nhãn siêu gọn trên đầu bé mèo: Click vào mới xổ thẻ chi tiết, click ✕ để đóng */}
+      <Html position={[0, 0.78, 0]} center zIndexRange={[15, 0]}>
         {isSelected ? (
           <div
             data-testid={`cat-3d-popup-${cat.ownerUserId}`}
             onClick={(e) => e.stopPropagation()}
-            className="flex flex-col items-center gap-1 rounded-2xl border-2 border-amber-400 bg-slate-950/95 px-3 py-2 text-center shadow-2xl backdrop-blur-md min-w-[165px]"
+            className="flex flex-col items-center gap-1 rounded-2xl border-2 border-amber-400 bg-slate-950/95 px-2.5 py-2 text-center shadow-2xl backdrop-blur-md min-w-[148px]"
           >
-            <div className="text-xs font-black text-amber-300">
-              🐱 {cat.catName}
+            <div className="flex w-full items-center justify-between gap-2">
+              <span className="text-[11px] font-black text-amber-300">
+                🐱 {cat.catName}
+              </span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSelectCat();
+                }}
+                className="text-[10px] font-bold text-slate-400 hover:text-white cursor-pointer"
+              >
+                ✕
+              </button>
             </div>
             <div className="text-[10px] font-semibold text-slate-200 whitespace-nowrap">
-              Người nuôi: <strong className="text-emerald-300">{cat.ownerNickname}</strong>
+              Chủ: <strong className="text-emerald-300">{cat.ownerNickname}</strong>
             </div>
-            <div className="text-[10px] font-bold text-amber-200/90">
+            <div className="text-[9px] font-bold text-amber-200/90">
               {getActivityLabel(cat.activity)}
             </div>
             {petHeartBurst && (
-              <div className="text-[11px] font-black text-rose-400 animate-bounce">
-                💕 Meow~ (+1 Vuốt ve!)
+              <div className="text-[10px] font-black text-rose-400 animate-bounce">
+                💕 Meow~ (+1)
               </div>
             )}
             <button
@@ -1508,7 +1517,7 @@ const LowPolyCat3D: React.FC<{
               onClick={handlePetClick}
               className="mt-0.5 inline-flex items-center gap-1 rounded-xl bg-rose-500 hover:bg-rose-400 px-2.5 py-1 text-[10px] font-black text-white shadow cursor-pointer"
             >
-              🤚 Vuốt ve mèo ({cat.petCount})
+              🤚 Vuốt ve ({cat.petCount})
             </button>
           </div>
         ) : (
@@ -1519,9 +1528,9 @@ const LowPolyCat3D: React.FC<{
               e.stopPropagation();
               onSelectCat();
             }}
-            className="whitespace-nowrap rounded-full border border-amber-300/80 bg-slate-950/85 hover:bg-slate-900 px-2 py-0.5 text-[10px] font-bold text-amber-200 shadow cursor-pointer"
+            className="whitespace-nowrap rounded-full border border-amber-300/60 bg-slate-950/75 hover:bg-slate-900 px-1.5 py-0.2 text-[9px] font-bold text-amber-200 shadow-sm cursor-pointer"
           >
-            🐾 {cat.catName} <span className="text-slate-400">({cat.ownerNickname})</span>
+            🐾 {cat.catName}
           </button>
         )}
       </Html>
@@ -1530,25 +1539,24 @@ const LowPolyCat3D: React.FC<{
 };
 
 /**
- * Khu vực bên ngoài văn phòng (Sân Vườn Mèo 3D) nằm ngay phía trước cửa văn phòng:
- * Nơi mèo của bạn và mèo của đồng nghiệp đi dạo, chơi đùa với đồ chơi hoặc nằm ngủ trên đệm.
+ * Các bé mèo, đệm ngủ và đồ chơi được đặt NGAY TRONG VĂN PHÒNG LÀM VIỆC
+ * để mọi người vừa làm việc vừa ngắm mèo đi dạo, chơi đùa hoặc nằm ngủ.
  */
 const OutdoorCatCourtyard3D: React.FC<{
   roomCats?: Record<string, OfficeCatProfile>;
   currentUserId: string;
   onPetCatIn3D?: (cat: OfficeCatProfile) => void;
   onOpenCatGame?: () => void;
-}> = ({ roomCats = {}, currentUserId, onPetCatIn3D, onOpenCatGame }) => {
+}> = ({ roomCats = {}, currentUserId, onPetCatIn3D }) => {
   const [selectedCatOwnerId, setSelectedCatOwnerId] = useState<string | null>(null);
 
-  // Tập hợp danh sách mèo trong phòng + 1 bé mèo của đồng nghiệp mẫu để khu vườn ngoài văn phòng luôn sinh động
   const displayCats = useMemo(() => {
     const list = Object.values(roomCats);
     const hasColleagueCat = list.some((c) => c.ownerUserId !== currentUserId);
     if (!hasColleagueCat) {
       list.push({
         ownerUserId: 'colleague_demo_linh',
-        ownerNickname: 'Linh Đan (Đồng nghiệp)',
+        ownerNickname: 'Linh Đan',
         catName: 'Bông Gòn',
         breedId: 'white',
         activity: 'playing',
@@ -1562,7 +1570,6 @@ const OutdoorCatCourtyard3D: React.FC<{
     return list;
   }, [roomCats, currentUserId]);
 
-  // Tập hợp tất cả đồ chơi & đệm ngủ đã được đặt ở khu vực bên ngoài văn phòng
   const placedItems = useMemo(() => {
     const set = new Set<string>(['yarn_ball', 'daisy_bed']);
     for (const c of Object.values(roomCats)) {
@@ -1574,90 +1581,58 @@ const OutdoorCatCourtyard3D: React.FC<{
   }, [roomCats]);
 
   return (
-    <group position={[0, 0, 7.1]}>
-      {/* Thảm cỏ xanh mát bên ngoài văn phòng */}
-      <mesh
-        position={[0, -0.07, 0]}
-        receiveShadow
-        onClick={() => setSelectedCatOwnerId(null)}
-      >
-        <boxGeometry args={[12.4, 0.12, 2.8]} />
-        <meshStandardMaterial color="#15803d" roughness={0.9} />
-      </mesh>
-      <mesh position={[0, -0.01, 0]} receiveShadow>
-        <boxGeometry args={[12.0, 0.03, 2.45]} />
-        <meshStandardMaterial color="#22c55e" roughness={0.85} />
-      </mesh>
-
-      {/* Hàng rào gỗ trắng thấp bao quanh sân mèo */}
-      <mesh position={[0, 0.22, 1.36]} castShadow>
-        <boxGeometry args={[12.2, 0.08, 0.08]} />
-        <meshStandardMaterial color="#fef3c7" roughness={0.6} />
-      </mesh>
-
-      {/* Bảng tên khu vực bên ngoài văn phòng */}
-      <Html position={[-4.8, 0.65, -0.95]} center zIndexRange={[10, 0]}>
-        <button
-          type="button"
-          data-testid="outdoor-cat-yard-banner-btn"
-          onClick={(e) => {
-            e.stopPropagation();
-            if (onOpenCatGame) onOpenCatGame();
-          }}
-          className="whitespace-nowrap rounded-full border border-emerald-300/60 bg-emerald-950/90 hover:bg-emerald-900 px-2.5 py-0.5 text-[9px] sm:text-[10px] font-bold text-emerald-200 shadow-lg cursor-pointer"
-        >
-          🐾 Khu vực ngoài văn phòng ({displayCats.length} bé mèo • Chạm vào mèo để xem & vuốt ve)
-        </button>
-      </Html>
-
-      {/* Đệm ngủ & Đồ chơi đặt ở khu vực bên ngoài cho mèo sử dụng */}
+    <group position={[0, 0, 0]}>
+      {/* Đệm ngủ hoa cúc đặt ngay góc thoáng trong văn phòng */}
       {placedItems.includes('daisy_bed') && (
-        <group position={[-3.5, 0.04, 0.2]}>
+        <group position={[-1.9, 0.04, 2.65]}>
           <mesh receiveShadow castShadow>
-            <cylinderGeometry args={[0.48, 0.52, 0.1, 20]} />
+            <cylinderGeometry args={[0.42, 0.46, 0.08, 20]} />
             <meshStandardMaterial color="#fde047" roughness={0.7} />
           </mesh>
-          <mesh position={[0, 0.06, 0]}>
-            <cylinderGeometry args={[0.32, 0.32, 0.05, 16]} />
+          <mesh position={[0, 0.05, 0]}>
+            <cylinderGeometry args={[0.28, 0.28, 0.04, 16]} />
             <meshStandardMaterial color="#fffbeb" roughness={0.8} />
           </mesh>
         </group>
       )}
 
+      {/* Đệm nhung hoàng gia đặt trong văn phòng */}
       {placedItems.includes('royal_cushion') && (
-        <group position={[3.5, 0.05, 0.25]}>
+        <group position={[0.6, 0.05, 2.7]}>
           <mesh receiveShadow castShadow>
-            <cylinderGeometry args={[0.52, 0.55, 0.12, 20]} />
+            <cylinderGeometry args={[0.45, 0.48, 0.1, 20]} />
             <meshStandardMaterial color="#ec4899" roughness={0.6} />
           </mesh>
-          <mesh position={[0, 0.07, 0]}>
-            <cylinderGeometry args={[0.36, 0.36, 0.05, 16]} />
+          <mesh position={[0, 0.06, 0]}>
+            <cylinderGeometry args={[0.3, 0.3, 0.04, 16]} />
             <meshStandardMaterial color="#fce7f3" roughness={0.7} />
           </mesh>
         </group>
       )}
 
+      {/* Cuộn len đồ chơi đặt giữa lối đi văn phòng */}
       {placedItems.includes('yarn_ball') && (
-        <mesh position={[-0.9, 0.14, 0.25]} castShadow>
-          <sphereGeometry args={[0.15, 14, 14]} />
+        <mesh position={[-1.1, 0.12, 0.55]} castShadow>
+          <sphereGeometry args={[0.13, 14, 14]} />
           <meshStandardMaterial color="#f43f5e" roughness={0.5} />
         </mesh>
       )}
 
+      {/* Cần câu lông vũ đặt trong văn phòng */}
       {placedItems.includes('feather_wand') && (
-        <group position={[1.6, 0, -0.2]}>
-          <mesh position={[0, 0.28, 0]} rotation={[0, 0, 0.3]} castShadow>
-            <cylinderGeometry args={[0.02, 0.025, 0.55, 8]} />
+        <group position={[0.9, 0, 0.85]}>
+          <mesh position={[0, 0.24, 0]} rotation={[0, 0, 0.3]} castShadow>
+            <cylinderGeometry args={[0.02, 0.025, 0.48, 8]} />
             <meshStandardMaterial color="#d97706" />
           </mesh>
-          <mesh position={[0.12, 0.52, 0]} castShadow>
-            <sphereGeometry args={[0.09, 10, 10]} />
+          <mesh position={[0.1, 0.45, 0]} castShadow>
+            <sphereGeometry args={[0.08, 10, 10]} />
             <meshStandardMaterial color="#38bdf8" />
           </mesh>
         </group>
       )}
 
-      {/* Các bé mèo của mình và của đồng nghiệp đang đi dạo, chơi đùa hoặc nằm ngủ */}
+      {/* Các bé mèo của mình và của đồng nghiệp đi chơi ngay trong văn phòng làm việc */}
       {displayCats.map((cat, idx) => (
         <LowPolyCat3D
           key={cat.ownerUserId}
@@ -1956,16 +1931,16 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
                   <boxGeometry args={[1.3, 1.75, 0.12]} />
                   <meshStandardMaterial color="#b45309" roughness={0.5} />
                 </mesh>
-                <Html position={[0, 2.05, 0]} center zIndexRange={[10, 0]}>
+                <Html position={[0, 2.02, 0]} center zIndexRange={[10, 0]}>
                   <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       onEnterZenRoom();
                     }}
-                    className="whitespace-nowrap rounded-full bg-amber-500/95 hover:bg-amber-400 px-2 sm:px-2.5 py-0.5 text-[9px] sm:text-[10px] font-bold text-slate-950 shadow-lg ring-1 sm:ring-2 ring-amber-200 cursor-pointer"
+                    className="whitespace-nowrap rounded-full bg-amber-500/95 hover:bg-amber-400 px-2 py-0.5 text-[9px] font-bold text-slate-950 shadow cursor-pointer"
                   >
-                    🪷 Phòng Tịnh Tâm <span className="hidden sm:inline">(Phật • Ông Địa • Thần Tài)</span>
+                    🪷 Tịnh Tâm
                   </button>
                 </Html>
               </group>
@@ -1992,7 +1967,7 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
                     <boxGeometry args={[1.3, 1.75, 0.12]} />
                     <meshStandardMaterial color="#4f46e5" roughness={0.4} />
                   </mesh>
-                  <Html position={[0, 2.05, 0]} center zIndexRange={[10, 0]}>
+                  <Html position={[0, 2.02, 0]} center zIndexRange={[10, 0]}>
                     <button
                       type="button"
                       data-testid="enter-game-room-3d-btn"
@@ -2000,9 +1975,9 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
                         e.stopPropagation();
                         onEnterGameRoom();
                       }}
-                      className="whitespace-nowrap rounded-full bg-indigo-500/95 hover:bg-indigo-400 px-2 sm:px-2.5 py-0.5 text-[9px] sm:text-[10px] font-bold text-white shadow-lg ring-1 sm:ring-2 ring-indigo-300 cursor-pointer"
+                      className="whitespace-nowrap rounded-full bg-indigo-500/95 hover:bg-indigo-400 px-2 py-0.5 text-[9px] font-bold text-white shadow cursor-pointer"
                     >
-                      🎮 Phòng Giải Trí <span className="hidden sm:inline">(Phóng Phi Tiêu • Solo)</span>
+                      🎮 Giải Trí
                     </button>
                   </Html>
                 </group>
