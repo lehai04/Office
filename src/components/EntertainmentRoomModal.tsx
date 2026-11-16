@@ -2613,7 +2613,13 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
       data-testid="entertainment-room-overlay"
       className="fixed inset-0 z-30 flex items-center justify-center bg-slate-950/75 p-2 backdrop-blur-sm"
     >
-      <div className="relative flex w-full max-w-[380px] sm:max-w-[400px] flex-col overflow-hidden rounded-3xl border border-teal-400/35 bg-[#041d24] text-slate-100 shadow-2xl">
+      <div
+        className={`relative flex w-full flex-col overflow-hidden rounded-3xl border border-teal-400/35 bg-[#041d24] text-slate-100 shadow-2xl transition-all ${
+          activeView === 'puzzle'
+            ? 'max-w-[96vw] md:max-w-4xl max-h-[92dvh]'
+            : 'max-w-[380px] sm:max-w-[400px] max-h-[92dvh]'
+        }`}
+      >
         {/* Input file ảnh ẩn */}
         <input
           ref={photoInputRef}
@@ -3120,11 +3126,11 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
                   </div>
                 )}
 
-                <div className="grid grid-cols-1 sm:grid-cols-[1fr_230px] gap-3 items-start">
+                <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1.25fr)_minmax(260px,1fr)] gap-3 items-start">
                   {/* Bảng ghép tranh sạch sẽ (KHÔNG để hình mờ bên dưới) */}
                   <div className="flex flex-col items-center">
                     <div
-                      className="relative w-full max-w-[320px] aspect-square rounded-2xl border-4 border-[#d8cbb5] bg-[#faf5ea] shadow-md overflow-hidden select-none grid"
+                      className="relative w-full max-w-[430px] aspect-square rounded-2xl border-4 border-[#d8cbb5] bg-[#faf5ea] shadow-md overflow-hidden select-none grid"
                       style={{
                         gridTemplateColumns: `repeat(${currentPuzzleArtwork.gridCols}, minmax(0, 1fr))`,
                         gridTemplateRows: `repeat(${currentPuzzleArtwork.gridRows}, minmax(0, 1fr))`,
@@ -3311,8 +3317,12 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
                           </div>
 
                           <div
-                            className={`grid gap-1.5 max-h-[240px] overflow-y-auto pr-0.5 ${
-                              totalPuzzlePieces > 16 ? 'grid-cols-4' : 'grid-cols-3'
+                            className={`grid gap-1.5 max-h-[250px] overflow-y-auto pr-0.5 ${
+                              totalPuzzlePieces > 36
+                                ? 'grid-cols-5'
+                                : totalPuzzlePieces > 16
+                                  ? 'grid-cols-4'
+                                  : 'grid-cols-3'
                             }`}
                           >
                             {unplacedPuzzlePieces.map((pieceIdx) => {
