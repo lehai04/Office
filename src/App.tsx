@@ -19,6 +19,9 @@ import {
 } from 'lucide-react';
 import { OfficeScene3D, type ActiveSpeechBubble } from './components/OfficeScene3D';
 import { OfficeShopModal } from './components/OfficeShopModal';
+import { ZenAltarControls } from './components/ZenAltarControls';
+import { requestAltar } from './services/zenAltar';
+import type { AltarKind, AltarView } from './utils/zenAltar';
 import { EMPTY_OFFICE_SHOP, OFFICE_SHOP, type DecorationItem, type OfficeAction, type OfficeShopState, type ScenePoint, type ShopItem } from './utils/officeShop';
 import { EntryModal } from './components/EntryModal';
 import { SeatSelectorModal } from './components/SeatSelectorModal';
@@ -169,12 +172,11 @@ export function App() {
       return 30;
     }
   });
-  const [incenseLit, setIncenseLit] = useState(false);
+  const [altar, setAltar] = useState<AltarView | null>(null);
   const [shopOpen, setShopOpen] = useState(false);
   const [placingItem, setPlacingItem] = useState<DecorationItem | null>(null);
   const [walkTarget, setWalkTarget] = useState<ScenePoint | null>(null);
   const [officeAction, setOfficeAction] = useState<OfficeAction | null>(null);
-  const [offeringUntil, setOfferingUntil] = useState(0);
   const [isBowing, setIsBowing] = useState<boolean>(false);
   const [autoMo, setAutoMo] = useState<boolean>(false);
   // Game mặc định tắt âm thanh theo yêu cầu
@@ -260,18 +262,6 @@ export function App() {
   const [savingPassword, setSavingPassword] = useState<boolean>(false);
   const [passwordPromptError, setPasswordPromptError] = useState<string | null>(null);
   useEffect(() => {
-    if (!incenseLit) return;
-    const timer = window.setTimeout(() => setIncenseLit(false), 60_000);
-    return () => window.clearTimeout(timer);
-  }, [incenseLit]);
-
-  useEffect(() => {
-    if (!offeringUntil) return;
-    const timer = window.setTimeout(() => setOfferingUntil(0), Math.max(0, offeringUntil - Date.now()));
-    return () => window.clearTimeout(timer);
-  }, [offeringUntil]);
-
-  useEffect(() => {
     if (!officeAction) return;
     const timer = window.setTimeout(() => setOfficeAction(null), 3_000);
     return () => window.clearTimeout(timer);
@@ -331,6 +321,9 @@ export function App() {
 
   // Xử lý Gõ Mõ trong Phòng Tịnh Tâm
   const handleStrikeMo = useCallback(() => {
+    if (session && room && !isUsingStaticFallback()) {
+      void requestAltar(room.code, session.sessionToken, { action: 'merit', practice: 'bell' }).catch(() => {});
+    }
     if (soundEnabled) {
       playWoodenFishSound();
     }
@@ -355,7 +348,7 @@ export function App() {
     meritTimerRef.current = window.setTimeout(() => {
       setFloatingMeritText(null);
     }, 1500);
-  }, [soundEnabled, selectedDeity]);
+  }, [soundEnabled, selectedDeity, session, room]);
 
   const handleRingBell = useCallback(() => {
     if (soundEnabled) {
@@ -372,6 +365,9 @@ export function App() {
 
   const handleBowToDeity = useCallback(() => {
     if (isBowing) return;
+    if (session && room && !isUsingStaticFallback()) {
+      void requestAltar(room.code, session.sessionToken, { action: 'merit', practice: 'bow' }).catch(() => {});
+    }
     setIsBowing(true);
     if (soundEnabled) {
       playTempleBellSound();
@@ -399,7 +395,7 @@ export function App() {
     window.setTimeout(() => {
       setIsBowing(false);
     }, 3000);
-  }, [isBowing, soundEnabled, selectedDeity]);
+  }, [isBowing, soundEnabled, selectedDeity, session, room]);
 
   // Tự động gõ mõ đều đặn khi bật autoMo trong Phòng Tịnh Tâm
   useEffect(() => {
@@ -1985,8 +1981,7 @@ export function App() {
     setPlacingItem(null);
     setWalkTarget(null);
     setOfficeAction(null);
-    setIncenseLit(false);
-    setOfferingUntil(0);
+    setAltar(null);
     setPushConnected(false);
     setPushStatus('');
     const subscription = await swRegistrationRef.current?.pushManager?.getSubscription().catch(() => null);
@@ -2128,30 +2123,28 @@ export function App() {
       setShopOpen(false);
       return;
     }
-    if (activePanel !== 'zen') {
-      showToast('Vào phòng Tịnh Tâm để sử dụng vật phẩm này.');
-      return;
-    }
-    if (id === 'incense' && incenseLit) {
-      showToast('Nhang đang cháy.');
-      return;
-    }
-    updateShop({ ...shop, inventory: { ...shop.inventory, [id]: quantity - 1 } });
-    if (id === 'incense') setIncenseLit(true);
-    else setOfferingUntil(Date.now() + 45_000);
     setShopOpen(false);
-    showToast(id === 'incense' ? 'Đã thắp một cây nhang.' : 'Đã dâng mâm trái cây.');
+    if (activePanel !== 'zen') void enterZenRoom();
+  };
+  const consumeAltarItem = (id: AltarKind) => {
+    const latest = loadUserWalletState(room.code, session.userId);
+    const currentShop = latest.shop ?? EMPTY_OFFICE_SHOP;
+    const quantity = currentShop.inventory[id] ?? 0;
+    if (!quantity) return;
+    const wallet = { ...latest, shop: { ...currentShop, inventory: { ...currentShop.inventory, [id]: quantity - 1 } }, updatedAt: Date.now() };
+    saveUserWalletState(room.code, session.userId, wallet);
+    setUserWallet(wallet);
   };
 
   return (
     <main className="relative h-[100dvh] w-screen overflow-hidden select-none bg-slate-950">
       {/* CẢNH PHÒNG 3D CHÍNH & GIAN PHÒNG TỊNH TÂM 3D */}
       <OfficeScene3D
+        altar={altar}
         walkTarget={walkTarget}
         decorations={shop.decorations}
         outfit={Boolean(shop.outfit)}
         action={officeAction}
-        offeringVisible={offeringUntil > 0}
         onFloorClick={(point) => {
           if (placingItem) placeItem(point);
           else if (activePanel === 'none' && cameraMode === 'overview') setWalkTarget(point);
@@ -2172,7 +2165,6 @@ export function App() {
         inGameRoom={activePanel === 'games'}
         onEnterGameRoom={() => setActivePanel('games')}
         selectedDeity={selectedDeity}
-        incenseLit={incenseLit}
         isBowing={isBowing}
         moPulseKey={moPulseKey}
         floatingMeritText={floatingMeritText}
@@ -2187,6 +2179,11 @@ export function App() {
         roomCats={roomCats}
         onPetCatIn3D={handlePetCatIn3D}
       />
+      {activePanel === 'zen' && (
+        <ZenAltarControls key={`${room.code}:${session.userId}`} roomCode={room.code} token={session.sessionToken}
+          userId={session.userId} incense={shop.inventory.incense ?? 0} offerings={shop.inventory.offering ?? 0}
+          onBuy={() => setShopOpen(true)} onCompletion={consumeAltarItem} onChange={setAltar} onToast={showToast} />
+      )}
       {shopOpen && (
         <OfficeShopModal balance={userWallet.balanceVnd} shop={shop} onClose={() => setShopOpen(false)}
           onBuy={buyItem} onUse={useItem} onRemove={(id) => {
@@ -2652,8 +2649,7 @@ export function App() {
           setSelectedDeity(d);
           setActiveBlessing(null);
         }}
-        meritCount={meritCount}
-        incenseLit={incenseLit}
+        meritCount={altar?.merit ?? meritCount}
         isBowing={isBowing}
         autoMo={autoMo}
         soundEnabled={soundEnabled}
@@ -2674,10 +2670,6 @@ export function App() {
         onStrikeMo={handleStrikeMo}
         onRingBell={handleRingBell}
         onBow={handleBowToDeity}
-        onLightIncense={() => {
-          if (shop.inventory.incense || incenseLit) useItem('incense');
-          else setShopOpen(true);
-        }}
         onToggleAutoMo={() => setAutoMo((v) => !v)}
         onToggleSound={() => setSoundEnabled((v) => !v)}
         zenCount={zenMembersCount}

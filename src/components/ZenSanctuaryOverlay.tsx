@@ -90,7 +90,6 @@ interface ZenSanctuaryOverlayProps {
   selectedDeity: DeityType;
   onSelectDeity: (deity: DeityType) => void;
   meritCount: number;
-  incenseLit: boolean;
   isBowing: boolean;
   autoMo: boolean;
   soundEnabled: boolean;
@@ -104,7 +103,6 @@ interface ZenSanctuaryOverlayProps {
   onStrikeMo: () => void;
   onRingBell: () => void;
   onBow: () => void;
-  onLightIncense: () => void;
   onToggleAutoMo: () => void;
   onToggleSound: () => void;
   zenCount?: number;
@@ -135,7 +133,6 @@ export const ZenSanctuaryOverlay: React.FC<ZenSanctuaryOverlayProps> = ({
   selectedDeity,
   onSelectDeity,
   meritCount,
-  incenseLit,
   isBowing,
   autoMo,
   soundEnabled,
@@ -149,7 +146,6 @@ export const ZenSanctuaryOverlay: React.FC<ZenSanctuaryOverlayProps> = ({
   onStrikeMo,
   onRingBell,
   onBow,
-  onLightIncense,
   onToggleAutoMo,
   onToggleSound,
   zenCount = 1,
@@ -329,17 +325,6 @@ export const ZenSanctuaryOverlay: React.FC<ZenSanctuaryOverlayProps> = ({
           >
             <span className="text-base leading-none">🙇</span>
             <span>{isBowing ? 'Đang lạy...' : `Lạy ${currentMeta.name}`}</span>
-          </button>
-
-          {/* 2. Dâng hương */}
-          <button
-            type="button"
-            data-testid="zen-incense-btn"
-            onClick={onLightIncense}
-            className={`${pillBaseClass} ${incenseLit ? pillActiveStyle : pillDefaultStyle}`}
-          >
-            <span className="text-base leading-none">🪔</span>
-            <span>{incenseLit ? 'Dâng hương (Bật)' : 'Dâng hương'}</span>
           </button>
 
           {/* 3. Gõ mõ */}

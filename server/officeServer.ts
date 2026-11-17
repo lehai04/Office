@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { altarView, createAltarState, settleAltar, updateAltar, type RoomAltarState } from './zenAltar';
 import { getNowInHoChiMinh, VN_TIMEZONE } from '../src/utils/dateVn';
 import { pushPublicKey, parseReminderDevice, sendReminder, type ReminderDevice } from './reminderPush';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -57,6 +58,7 @@ interface DatabaseSchema {
   attendance: Record<string, AttendanceRecord>; // keyed by `${roomId}:${userId}:${date}`
   diaryEntries: StoredDiaryEntry[];
   reminderDevices?: Record<string, ReminderDevice>;
+  altars?: Record<string, RoomAltarState>;
 }
 
 export async function dispatchDailyReminders(): Promise<void> {
@@ -591,6 +593,31 @@ export async function handleApiRequest(
     }
 
     memberRecord.lastSeenAt = new Date().toISOString();
+
+    if (subPath === 'altar' && (method === 'GET' || method === 'POST')) {
+      const body = method === 'POST' ? await readJsonBody(req) : null;
+      const now = Date.now();
+      const altars = db.altars ??= {};
+      const altar = altars[room.id] ??= createAltarState();
+      const appointedAbbot = process.env.OFFICE_ABBOT_USER_ID;
+      const abbot = appointedAbbot || db.roomMembers.find((member) =>
+        member.roomId === room.id && member.nickname.normalize('NFC').trim().toLowerCase() === 'trụ trì thanh ngọc'
+      )?.userId;
+      if (appointedAbbot) altar.abbotUserId = appointedAbbot;
+      else if (abbot) altar.abbotUserId ??= abbot;
+      const settled = settleAltar(altar, now);
+      const error = body ? updateAltar(altar, memberRecord, body, now) : undefined;
+      if (settled || (body && !error)) saveDatabase(db, true);
+      const started = body?.action === 'start' && !error
+        ? altar.rituals.find((ritual) => ritual.id === body.id && ritual.userId === account.userId) : undefined;
+      if (started) {
+        setTimeout(() => {
+          if (db.altars?.[room.id] === altar && settleAltar(altar, Date.now())) saveDatabase(db, true);
+        }, Math.max(1, started.finishAt - Date.now() + 10)).unref();
+      }
+      sendJson(res, error ? 409 : 200, { ...altarView(altar, account.userId, now), error });
+      return true;
+    }
 
     if (subPath === 'reminders/device' && method === 'POST') {
       if (!pushPublicKey) {

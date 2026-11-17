@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { isUsingStaticFallback } from '../services/officeApi';
 import { uniqueStaticRoomMembers } from '../utils/roomMemberDisplay';
+import { ALTAR_BOW_MS, ALTAR_KICK_MS, ALTAR_PLACE_MS, ALTAR_WALK_MS, type AltarRitual, type AltarView } from '../utils/zenAltar';
 import type { OfficeAction, OfficeDecoration, ScenePoint } from '../utils/officeShop';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Html, OrbitControls, ContactShadows } from '@react-three/drei';
@@ -34,7 +35,7 @@ interface OfficeScene3DProps {
   decorations: OfficeDecoration[];
   outfit: boolean;
   action: OfficeAction | null;
-  offeringVisible: boolean;
+  altar: AltarView | null;
   onFloorClick: (point: ScenePoint) => void;
   onDeskClick?: (point: ScenePoint) => void;
   currentUserId: string;
@@ -51,7 +52,6 @@ interface OfficeScene3DProps {
   inGameRoom?: boolean;
   onEnterGameRoom?: () => void;
   selectedDeity: DeityType;
-  incenseLit: boolean;
   isBowing: boolean;
   moPulseKey: number;
   floatingMeritText: string | null;
@@ -737,10 +737,95 @@ const LowPolyCharacter: React.FC<{
 /**
  * Gian Phòng Tịnh Tâm 3D (Có tượng Đức Phật, Ông Địa, Thần Tài, Mõ Gỗ, Chuông Đồng, Lư Hương & Bồ Đoàn)
  */
+const TRAY_SLOT_X = [-1.45, -0.95, 0.48, 1.0, 1.49];
+
+function FruitTray() {
+  return (
+    <group>
+      <mesh><cylinderGeometry args={[0.19, 0.16, 0.035, 16]} /><meshStandardMaterial color="#fde68a" /></mesh>
+      {[-0.09, 0, 0.09].map((x, index) => (
+        <mesh key={x} position={[x, 0.072, 0]}><sphereGeometry args={[0.055, 10, 8]} />
+          <meshStandardMaterial color={['#ef4444', '#fb923c', '#84cc16'][index]} /></mesh>
+      ))}
+    </group>
+  );
+}
+
+function PlacedTray({ slot, replacing }: { slot: number; replacing?: AltarRitual }) {
+  const mesh = useRef<THREE.Group>(null);
+  useFrame(() => {
+    if (!mesh.current) return;
+    const elapsed = replacing ? Date.now() - replacing.startAt - ALTAR_WALK_MS : 0;
+    const movement = THREE.MathUtils.clamp(elapsed / ALTAR_KICK_MS, 0, 1);
+    mesh.current.position.set(TRAY_SLOT_X[slot], 1.045 - movement * movement * 0.95, 0.49 + movement * 0.85);
+    mesh.current.rotation.x = -movement * Math.PI;
+  });
+  return <group ref={mesh} position={[TRAY_SLOT_X[slot], 1.045, 0.49]}><FruitTray /></group>;
+}
+
+function RitualCharacter({ ritual, origin }: {
+  ritual: AltarRitual;
+  origin: ScenePoint;
+}) {
+  const actor = useRef<THREE.Group>(null);
+  const carried = useRef<THREE.Group>(null);
+  const knee = useRef<THREE.Group>(null);
+  const start = useRef(origin);
+  const targetX = ritual.kind === 'incense' ? 0 : TRAY_SLOT_X[ritual.slot ?? 2];
+  useFrame(() => {
+    if (!actor.current || !carried.current || !knee.current) return;
+    const elapsed = Date.now() - ritual.startAt;
+    const walk = THREE.MathUtils.clamp(elapsed / ALTAR_WALK_MS, 0, 1);
+    const afterWalk = elapsed - ALTAR_WALK_MS;
+    const gestureMs = ritual.kind === 'incense' ? 3 * ALTAR_BOW_MS : ritual.targetId ? ALTAR_KICK_MS : 0;
+    const placing = THREE.MathUtils.clamp((afterWalk - gestureMs) / ALTAR_PLACE_MS, 0, 1);
+    const [x, y, z] = start.current;
+    const bow = ritual.kind === 'incense' && afterWalk >= 0 && afterWalk < gestureMs
+      ? Math.sin(Math.PI * ((afterWalk % ALTAR_BOW_MS) / ALTAR_BOW_MS)) : 0;
+    const kick = ritual.targetId && afterWalk >= 0 && afterWalk < ALTAR_KICK_MS
+      ? Math.sin(Math.PI * afterWalk / ALTAR_KICK_MS) : 0;
+    actor.current.position.set(
+      THREE.MathUtils.lerp(x, targetX, walk),
+      THREE.MathUtils.lerp(y, 0, walk) + (walk < 1 ? Math.abs(Math.sin(walk * 5 * Math.PI)) * 0.065 : 0),
+      THREE.MathUtils.lerp(z, -10.52, walk),
+    );
+    actor.current.rotation.y = walk < 1 ? Math.atan2(targetX - x, -10.52 - z) : Math.PI;
+    actor.current.rotation.x = -(bow * 0.66 + Math.sin(Math.PI * placing) * 0.2);
+    carried.current.position.set(0, 1.04 - 0.03 * placing, 0.35 + 0.5 * placing);
+    carried.current.visible = Date.now() < ritual.finishAt;
+    knee.current.visible = kick > 0;
+    knee.current.rotation.x = -kick * 1.3;
+  });
+  return (
+    <group ref={actor} position={origin}>
+      <LowPolyCharacter gender={ritual.avatarGender} nickname={ritual.nickname} memberTag=""
+        isCurrentUser={false} isOnline isSeated={false} position={[0, 0, 0]} rotationY={0}
+        duplicateNicknameCount={1} />
+      <group ref={carried} position={[0, 1.04, 0.35]}>
+        {([-0.19, 0.19] as const).map((x) => (
+          <mesh key={x} position={[x, -0.035, -0.10]} rotation={[Math.PI / 2, 0, 0]}>
+            <boxGeometry args={[0.09, 0.25, 0.09]} /><meshStandardMaterial color="#fcd34d" />
+          </mesh>
+        ))}
+        {ritual.kind === 'offering' ? <FruitTray /> : (
+          <mesh position={[0, 0.15, 0]}>
+            <cylinderGeometry args={[0.012, 0.012, 0.34, 8]} /><meshStandardMaterial color="#dc2626" />
+          </mesh>
+        )}
+      </group>
+      <group ref={knee} position={[0.13, 0.62, 0]} visible={false}>
+        <mesh position={[0, -0.25, 0]}>
+          <boxGeometry args={[0.12, 0.5, 0.12]} /><meshStandardMaterial color="#334155" />
+        </mesh>
+      </group>
+    </group>
+  );
+}
+
 const ZenSanctuaryRoom3D: React.FC<{
   selectedDeity: DeityType;
   incenseLit: boolean;
-  offeringVisible: boolean;
+  altar: AltarView | null;
   moPulseKey: number;
   floatingMeritText: string | null;
   onStrikeMo: () => void;
@@ -750,7 +835,7 @@ const ZenSanctuaryRoom3D: React.FC<{
 }> = ({
   selectedDeity,
   incenseLit,
-  offeringVisible,
+  altar,
   moPulseKey,
   floatingMeritText,
   onStrikeMo,
@@ -917,6 +1002,10 @@ const ZenSanctuaryRoom3D: React.FC<{
 
       {/* BÀN THỜ GỖ CHẠM KHẮC TRANG NGHIÊM */}
       <group position={[0, 0, -1.55]}>
+        {altar?.trays.map((tray) => (
+          <PlacedTray key={tray.id} slot={tray.slot}
+            replacing={altar.rituals.find((ritual) => ritual.targetId === tray.id)} />
+        ))}
         {/* Mặt bàn thờ chính */}
         <mesh position={[0, 0.95, 0]} castShadow receiveShadow>
           <boxGeometry args={[3.6, 0.14, 1.35]} />
@@ -1087,15 +1176,6 @@ const ZenSanctuaryRoom3D: React.FC<{
             <meshStandardMaterial color="#d97706" metalness={0.6} roughness={0.35} />
           </mesh>
           {/* 3 nén nhang cháy đỏ khi thắp nhang */}
-          {offeringVisible && (
-            <group position={[0.38, 0.05, 0]}>
-              <mesh><cylinderGeometry args={[0.17, 0.14, 0.035, 16]} /><meshStandardMaterial color="#fde68a" /></mesh>
-              {[-0.09, 0, 0.09].map((x, index) => (
-                <mesh key={x} position={[x, 0.072, 0]}><sphereGeometry args={[0.055, 10, 8]} />
-                  <meshStandardMaterial color={['#ef4444', '#fb923c', '#84cc16'][index]} /></mesh>
-              ))}
-            </group>
-          )}
           {incenseLit && (
             <group>
               {[-0.06, 0, 0.06].map((xOffset, idx) => (
@@ -2021,7 +2101,7 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
   decorations,
   outfit,
   action,
-  offeringVisible,
+  altar,
   onFloorClick,
   onDeskClick,
   currentUserId,
@@ -2037,7 +2117,6 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
   inGameRoom = false,
   onEnterGameRoom,
   selectedDeity,
-  incenseLit,
   isBowing,
   moPulseKey,
   floatingMeritText,
@@ -2280,8 +2359,8 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
           {/* GIAN PHÒNG TỊNH TÂM 3D (Phật • Ông Địa • Thần Tài • Mõ Gỗ • Chuông Đồng) */}
           <ZenSanctuaryRoom3D
             selectedDeity={selectedDeity}
-            incenseLit={incenseLit}
-            offeringVisible={offeringVisible}
+            incenseLit={Boolean(altar && altar.incenseUntil > Date.now())}
+            altar={altar}
             moPulseKey={moPulseKey}
             floatingMeritText={floatingMeritText}
             onStrikeMo={onStrikeMo}
@@ -2552,6 +2631,7 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
 
           {/* 8. CÁC NHÂN VẬT 3D TRONG PHÒNG */}
           {characterPlacements.map(({ member, isSeated, position, rotationY }) => {
+            if (altar?.rituals.some((ritual) => ritual.userId === member.userId)) return null;
             const isMe = member.userId === currentUserId;
             const bubble = activeBubbles[member.userId];
             const dupCount =
@@ -2577,6 +2657,10 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
               />
             );
           })}
+          {altar?.rituals.map((ritual) => (
+            <RitualCharacter key={ritual.id} ritual={ritual}
+              origin={characterPlacements.find((placement) => placement.member.userId === ritual.userId)?.position ?? [0, 0, -8.25]} />
+          ))}
 
           {/* Nhân vật mặc định Trụ trì Thanh Ngọc ngồi bàn góc trái (chỉ hiện khi phòng chưa có tài khoản Thanh Ngọc nào) */}
           {!members.some((m) =>
