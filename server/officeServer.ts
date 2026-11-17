@@ -743,7 +743,7 @@ export async function handleApiRequest(
         }
       }, 15000);
 
-      req.on('close', () => {
+      res.once('close', () => {
         clearInterval(heartbeat);
         sseClients.delete(clientId);
         if (!isUserOnlineInRoom(room.id, account.userId)) {

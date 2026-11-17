@@ -1598,16 +1598,12 @@ export function App() {
       }
     };
 
-    const unsubscribeStatic = subscribeStaticRealtime((evt) => {
-      if (evt.roomId !== room.id && evt.roomCode !== room.code) return;
-      if (evt.hiddenUserIds && evt.hiddenUserIds.includes(session.userId)) return;
-      handleRealtimePayload(evt.payload);
-    });
-
     if (isUsingStaticFallback()) {
-      return () => {
-        unsubscribeStatic();
-      };
+      return subscribeStaticRealtime((evt) => {
+        if (evt.roomId !== room.id && evt.roomCode !== room.code) return;
+        if (evt.hiddenUserIds && evt.hiddenUserIds.includes(session.userId)) return;
+        handleRealtimePayload(evt.payload);
+      });
     }
 
     const url = `/api/rooms/${encodeURIComponent(room.code)}/events?token=${encodeURIComponent(
@@ -1624,11 +1620,8 @@ export function App() {
       }
     };
 
-    return () => {
-      unsubscribeStatic();
-      es.close();
-    };
-  }, [session, room, triggerSpeechBubble, showToast]);
+    return () => es.close();
+  }, [session, room?.id, room?.code, triggerSpeechBubble, showToast]);
 
   const handleJoinRoom = async (params: {
     roomCode: string;
