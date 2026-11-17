@@ -19,6 +19,7 @@ import type {
 } from '../src/types/office';
 
 interface StoredAccount {
+  passwordHash?: string;
   userId: string;
   sessionToken: string;
   nickname: string;
@@ -202,6 +203,11 @@ const sseClients = new Map<string, SseClient>();
 const roomLocks = new Map<string, Promise<unknown>>();
 // Lưu trạng thái ngồi tự do tạm thời tại 6 ghế bàn họp chung: key = `${roomId}:${userId}` -> meetingChairId
 const activeMeetingChairs = new Map<string, string>();
+const zenPresence = new Set<string>();
+
+function hashAccountPassword(password: string, salt = crypto.randomBytes(16).toString('hex')): string {
+  return `${salt}:${crypto.scryptSync(password, salt, 32).toString('hex')}`;
+}
 
 async function withRoomLock<T>(roomId: string, fn: () => Promise<T> | T): Promise<T> {
   const prev = roomLocks.get(roomId) ?? Promise.resolve();
@@ -303,6 +309,7 @@ function buildRoomStatePayload(room: RoomInfo) {
       memberTag: m.memberTag,
       seatId: mySeat ? mySeat.seatId : null,
       meetingChairId: currentMeetingChair,
+      inZenRoom: zenPresence.has(`${room.id}:${m.userId}`),
       isManager: room.managerUserId === m.userId,
       online: isUserOnlineInRoom(room.id, m.userId),
       joinedAt: m.joinedAt,
@@ -390,6 +397,7 @@ export function resetDatabaseToInitial(): DatabaseSchema {
   };
   db = freshDb;
   activeMeetingChairs.clear();
+  zenPresence.clear();
   saveDatabase(freshDb, true);
   return freshDb;
 }
@@ -428,16 +436,39 @@ export async function handleApiRequest(
       return true;
     }
 
+    if (pathname === '/api/auth/password' && method === 'POST') {
+      const account = getAuthenticatedAccount(req);
+      if (!account) {
+        sendJson(res, 401, { error: 'UNAUTHORIZED', message: 'Vui lòng đăng nhập lại.' });
+        return true;
+      }
+      const body = await readJsonBody(req);
+      const password = typeof body.password === 'string' ? body.password.trim() : '';
+      if (!password || password.length > 64) {
+        sendJson(res, 400, { error: 'INVALID_PASSWORD', message: 'Mật khẩu phải có từ 1 đến 64 ký tự.' });
+        return true;
+      }
+      account.passwordHash = hashAccountPassword(password);
+      saveDatabase(db, true);
+      sendJson(res, 200, { ok: true, hasPassword: true });
+      return true;
+    }
+
     // 2. Create or restore anonymous session & join room
     // POST /api/auth/join
     if (pathname === '/api/auth/join' && method === 'POST') {
       const body = await readJsonBody(req);
       const rawNickname = typeof body.nickname === 'string' ? body.nickname.trim() : '';
+      const password = typeof body.password === 'string' ? body.password.trim() : '';
+      if (password.length > 64) {
+        sendJson(res, 400, { error: 'INVALID_PASSWORD', message: 'Mật khẩu phải có từ 1 đến 64 ký tự.' });
+        return true;
+      }
       const rawGender = body.avatarGender === 'female' ? 'female' : 'male';
       const rawRoomCode = typeof body.roomCode === 'string' ? body.roomCode.trim().toUpperCase() : DEFAULT_ROOM_CODE;
       const createIfMissing = Boolean(body.createIfMissing);
 
-      const existingAccount = getAuthenticatedAccount(req, urlObj);
+      let existingAccount = getAuthenticatedAccount(req, urlObj);
 
       if (!rawNickname && !existingAccount) {
         sendJson(res, 400, { error: 'INVALID_NICKNAME', message: 'Vui lòng nhập biệt danh của bạn.' });
@@ -467,17 +498,32 @@ export async function handleApiRequest(
         }
       }
 
+      const normalizeNickname = (name: string) => name.normalize('NFC').trim().toLowerCase();
+      const nickname = normalizeNickname(rawNickname);
+      const matchingMembers = nickname ? db.roomMembers.filter((member) =>
+        member.roomId === room.id && normalizeNickname(member.nickname) === nickname
+      ) : [];
+      if (matchingMembers.length && !matchingMembers.some((member) => member.userId === existingAccount?.userId)) {
+        const matches = new Set(matchingMembers.map((member) => member.userId));
+        const protectedAccount = !existingAccount && password && Object.values(db.accounts).find((account) =>
+          matches.has(account.userId) && account.passwordHash &&
+          crypto.timingSafeEqual(
+            Buffer.from(account.passwordHash),
+            Buffer.from(hashAccountPassword(password, account.passwordHash.split(':', 1)[0])),
+          )
+        );
+        if (!protectedAccount) {
+          sendJson(res, 409, { error: 'DUPLICATE_NICKNAME', message: 'Biệt danh đã được dùng. Kiểm tra lại mật khẩu hoặc chọn tên khác.' });
+          return true;
+        }
+        existingAccount = protectedAccount;
+      }
       let account = existingAccount;
       const nowIso = new Date().toISOString();
 
       if (!account) {
-        const authHeader = req.headers['authorization'];
-        const incomingToken =
-          typeof authHeader === 'string' && authHeader.startsWith('Bearer ')
-            ? authHeader.slice(7).trim()
-            : '';
         const userId = `usr_${crypto.randomBytes(8).toString('hex')}`;
-        const sessionToken = incomingToken || `tok_${crypto.randomBytes(18).toString('hex')}`;
+        const sessionToken = `tok_${crypto.randomBytes(18).toString('hex')}`;
         const memberTag = `#${userId.slice(4, 8).toUpperCase()}`;
         account = {
           userId,
@@ -486,6 +532,7 @@ export async function handleApiRequest(
           avatarGender: rawGender,
           memberTag,
           createdAt: nowIso,
+          passwordHash: password ? hashAccountPassword(password) : undefined,
         };
         db.accounts[sessionToken] = account;
       } else {
@@ -547,6 +594,7 @@ export async function handleApiRequest(
           nickname: account.nickname,
           avatarGender: account.avatarGender,
           memberTag: account.memberTag,
+          hasPassword: Boolean(account.passwordHash),
         },
         mySeatId: mySeat ? mySeat.seatId : null,
         ...roomState,
@@ -593,6 +641,25 @@ export async function handleApiRequest(
     }
 
     memberRecord.lastSeenAt = new Date().toISOString();
+
+    if (subPath === 'zen' && method === 'POST') {
+      const body = await readJsonBody(req);
+      const key = `${room.id}:${account.userId}`;
+      if (body.active === true) {
+        const count = db.roomMembers.filter((member) => member.roomId === room.id && zenPresence.has(`${room.id}:${member.userId}`)).length;
+        if (!zenPresence.has(key) && count >= 10) {
+          sendJson(res, 409, { error: 'ZEN_ROOM_FULL', message: 'Phòng Tịnh Tâm đã đủ 10 người.' });
+          return true;
+        }
+        zenPresence.add(key);
+      } else {
+        zenPresence.delete(key);
+      }
+      const roomState = buildRoomStatePayload(room);
+      broadcastToRoom(room.id, { type: 'room_state', ...roomState });
+      sendJson(res, 200, roomState);
+      return true;
+    }
 
     if (subPath === 'altar' && (method === 'GET' || method === 'POST')) {
       const body = method === 'POST' ? await readJsonBody(req) : null;
@@ -679,6 +746,9 @@ export async function handleApiRequest(
       req.on('close', () => {
         clearInterval(heartbeat);
         sseClients.delete(clientId);
+        if (!isUserOnlineInRoom(room.id, account.userId)) {
+          zenPresence.delete(`${room.id}:${account.userId}`);
+        }
         const updatedState = buildRoomStatePayload(room);
         broadcastToRoom(room.id, { type: 'room_state', ...updatedState });
       });

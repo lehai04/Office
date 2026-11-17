@@ -34,7 +34,7 @@ const API_ORIGIN_STORAGE_KEY = 'van_phong_ao_api_origin';
 
 function resolveApiOrigin(): string {
   const envOrigin = import.meta.env.VITE_API_ORIGIN?.trim().replace(/\/+$/, '') ?? '';
-  if (typeof window === 'undefined') return envOrigin;
+  if (envOrigin || typeof window === 'undefined') return envOrigin;
   try {
     const params = new URLSearchParams(window.location.search);
     const queryApi = params.get('api')?.trim().replace(/\/+$/, '');
@@ -75,7 +75,7 @@ export function getSessionNamespace(): string {
   if (typeof window === 'undefined') return 'default';
   const params = new URLSearchParams(window.location.search);
   const s = params.get('session')?.trim();
-  return s || 'default';
+  return API_ORIGIN ? `${API_ORIGIN}:${s || 'default'}` : s || 'default';
 }
 
 export function getInviteRoomFromUrl(): string | null {
@@ -293,6 +293,7 @@ async function apiFetch<T>(
       headers,
     });
   } catch {
+    if (API_ORIGIN) throw new Error('Chưa kết nối được máy chủ Office. Vui lòng thử lại.');
     // Khi không kết nối được máy chủ Node (ví dụ chạy bản tĩnh), chuyển sang Static Fallback Engine
     staticFallbackActive = true;
     return handleStaticFallbackRequest<T>(path, options, sessionToken);
@@ -305,6 +306,7 @@ async function apiFetch<T>(
   // Nếu máy chủ tĩnh (như GitHub Pages / Netlify / Vercel static) trả về 405 Method Not Allowed,
   // 404 HTML (không phải JSON từ API của chúng ta), hoặc 502/503, tự động chuyển sang Static Fallback Engine
   if (
+    !API_ORIGIN &&
     !res.ok &&
     (res.status === 405 ||
       res.status === 502 ||
