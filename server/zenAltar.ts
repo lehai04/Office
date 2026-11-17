@@ -1,3 +1,4 @@
+import type { ShopConsumable, ShopOffering } from '../src/utils/officeShop';
 import {
   ALTAR_CAPACITY, REPLACE_MERIT, altarRitualDuration,
   type AltarKind, type AltarResult, type AltarRitual, type AltarTray, type AltarView,
@@ -42,13 +43,13 @@ function finishOffering(state: RoomAltarState, ritual: AltarRitual, owner: Membe
     return { ...result, message: 'Vị trí đã có mâm lễ. Vui lòng thử lại.' };
   }
 
-  const tray = { id: ritual.id, slot, userId: ritual.userId, nickname: ritual.nickname };
+  const tray = { id: ritual.id, slot, userId: ritual.userId, nickname: ritual.nickname, item: ritual.item as ShopOffering | undefined };
   state.trays = target ? state.trays.map((item) => item.id === target.id ? tray : item) : [...state.trays, tray];
   if (target) owner.merit -= REPLACE_MERIT;
   return { ...result, ok: true, message: 'Dâng lễ thành công' };
 }
 
-export function settleAltar(state: RoomAltarState, now: number): boolean {
+export function settleAltar(state: RoomAltarState, now: number, consume?: (userId: string, item: ShopConsumable) => void): boolean {
   const due = state.rituals.filter((ritual) => ritual.finishAt <= now)
     .sort((a, b) => a.finishAt - b.finishAt || a.id.localeCompare(b.id));
   if (!due.length) return false;
@@ -59,13 +60,14 @@ export function settleAltar(state: RoomAltarState, now: number): boolean {
       ? finishOffering(state, ritual, owner)
       : { id: ritual.id, kind: ritual.kind, ok: true, message: 'Đã dâng hương' };
     if (ritual.kind === 'incense') state.incenseUntil = ritual.finishAt + 60_000;
+    if (result.ok && ritual.item) consume?.(ritual.userId, ritual.item);
     owner.results.push(result);
   }
   return true;
 }
 
 export function updateAltar(
-  state: RoomAltarState, member: AltarMember, body: Record<string, unknown>, now: number,
+  state: RoomAltarState, member: AltarMember, body: Record<string, unknown>, now: number, item?: ShopConsumable,
 ): string | undefined {
   const owner = account(state, member.userId);
   if (body.action === 'clear') {
@@ -111,7 +113,7 @@ export function updateAltar(
   }
   const startAt = now + 900;
   const { userId, nickname, avatarGender } = member;
-  state.rituals.push({ userId, nickname, avatarGender, id, kind, targetId, slot, startAt,
+  state.rituals.push({ userId, nickname, avatarGender, id, kind, item, targetId, slot, startAt,
     finishAt: startAt + altarRitualDuration(kind, Boolean(targetId)) });
 }
 

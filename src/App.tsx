@@ -1,3 +1,4 @@
+import { requestRoomShop, SHOP_UPDATE_EVENT } from './services/officeShop';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Armchair,
@@ -22,7 +23,7 @@ import { OfficeShopModal } from './components/OfficeShopModal';
 import { ZenAltarControls } from './components/ZenAltarControls';
 import { ALTAR_UPDATE_EVENT, requestAltar, USE_OFFICE_WEBSOCKET } from './services/zenAltar';
 import type { AltarKind, AltarView } from './utils/zenAltar';
-import { EMPTY_OFFICE_SHOP, OFFICE_SHOP, type DecorationItem, type OfficeAction, type OfficeShopState, type ScenePoint, type ShopItem } from './utils/officeShop';
+import { EMPTY_OFFICE_SHOP, OFFICE_SHOP, type DecorationItem, type OfficeAction, SHOP_OFFERINGS, type RoomShopView, type ScenePoint, type ShopItem, type ShopConsumable, type ShopCommand } from './utils/officeShop';
 import { EntryModal } from './components/EntryModal';
 import { SeatSelectorModal } from './components/SeatSelectorModal';
 import { ChatDrawer, formatChatPreviewText } from './components/ChatDrawer';
@@ -37,6 +38,11 @@ import {
   type DeityType,
 } from './components/ZenSanctuaryOverlay';
 import { EntertainmentRoomModal } from './components/EntertainmentRoomModal';
+import { DonationCaseModal } from './components/DonationCaseModal';
+import type {
+  PublicDonationCaseView,
+  UserEconomyLedgerEntry,
+} from './utils/donationCaseEngine';
 import {
   CAT_SHOP_ITEMS,
   DOG_BREEDS,
@@ -99,6 +105,7 @@ import {
   claimWorkSeat,
   createDiaryEntry,
   fetchDiaryLists,
+  fetchDonationCaseApi,
   fetchFullRoomState,
   fetchSingleDiaryEntry,
   getInviteRoomFromUrl,
@@ -110,14 +117,18 @@ import {
   leaveWorkSeatToStand,
   loadSavedSession,
   officeApiUrl,
+  reportDonationCasePoliceApi,
   sendChatMessage,
   setAccountPasswordApi,
   setZenRoomPresenceApi,
   sitAtMeetingChair,
+  stealDonationBoxCaseApi,
   subscribeStaticRealtime,
+  tickDonationCaseApi,
   transferRoomManager,
   updateAttendanceDay,
   updateDiaryEntry,
+  voteDonationCaseApi,
 } from './services/officeApi';
 import { DEFAULT_ROOM_CODE, WORK_SEAT_LAYOUTS, MEETING_CHAIRS } from './constants/officeLayout';
 import type {
@@ -174,6 +185,11 @@ export function App() {
   });
   const [altar, setAltar] = useState<AltarView | null>(null);
   const [shopOpen, setShopOpen] = useState(false);
+  const [shopView, setShopView] = useState<RoomShopView | null>(null);
+  const [shopError, setShopError] = useState('');
+  const shopRequestOrder = useRef(0);
+  const placingRequest = useRef(false);
+  const [shopRitual, setShopRitual] = useState<ShopConsumable | null>(null);
   const [placingItem, setPlacingItem] = useState<DecorationItem | null>(null);
   const [walkTarget, setWalkTarget] = useState<ScenePoint | null>(null);
   const [officeAction, setOfficeAction] = useState<OfficeAction | null>(null);
@@ -213,6 +229,8 @@ export function App() {
   );
   const [isDonationModalOpen, setIsDonationModalOpen] = useState<boolean>(false);
   const [abbotAtDonationDesk, setAbbotAtDonationDesk] = useState<boolean>(true);
+  const [donationCaseView, setDonationCaseView] = useState<PublicDonationCaseView | null>(null);
+  const [isDonationCaseModalOpen, setIsDonationCaseModalOpen] = useState<boolean>(false);
   const [notificationPermission, setNotificationPermission] = useState<
     NotificationPermission | 'unsupported'
   >(() => {
@@ -470,6 +488,9 @@ export function App() {
     setRoomPuzzleState(loadRoomPuzzleState(room.code));
     setUserWallet(loadUserWalletState(room.code, session.userId));
     setRoomDonationBox(loadRoomDonationBoxState(room.code));
+    fetchDonationCaseApi(room.code, session.sessionToken)
+      .then((res) => setDonationCaseView(res.caseView))
+      .catch(() => {});
 
     // Tự động phát đồng bộ mèo, quà & tranh ghép lên phòng sau 1.8s
     const syncTimer = window.setTimeout(() => {
@@ -504,6 +525,9 @@ export function App() {
       setRoomPuzzleState(loadRoomPuzzleState(room.code));
     setUserWallet(loadUserWalletState(room.code, session.userId));
     setRoomDonationBox(loadRoomDonationBoxState(room.code));
+    fetchDonationCaseApi(room.code, session.sessionToken)
+      .then((res) => setDonationCaseView(res.caseView))
+      .catch(() => {});
     };
     window.addEventListener('storage', onStorageChange);
     return () => {
@@ -626,9 +650,49 @@ export function App() {
     }
   }, [showToast]);
 
+  const refreshShop = useCallback(async (command?: ShopCommand, signal?: AbortSignal) => {
+    if (!session || !room) return;
+    const order = ++shopRequestOrder.current;
+    try {
+      const view = await requestRoomShop(room.code, session.sessionToken, command, signal);
+      if (signal?.aborted || order !== shopRequestOrder.current) return view;
+      setShopView(view);
+      setShopError('');
+      setUserWallet((previous) => ({ ...previous, balanceVnd: view.balanceVnd, shop: view.shop }));
+      setRoomDonationBox((box) => box.totalVnd === view.donationTotalVnd ? box : { ...box, totalVnd: view.donationTotalVnd });
+      return view;
+    } catch (problem) {
+      if (command) throw problem;
+      if (signal?.aborted || order !== shopRequestOrder.current) return;
+      setShopError(problem instanceof Error ? problem.message : 'Chưa tải được cửa hàng.');
+    }
+  }, [session, room?.code]);
+
+  useEffect(() => {
+    if (!session || !room || isUsingStaticFallback()) return;
+    const controller = new AbortController();
+    const refresh = () => { void refreshShop(undefined, controller.signal); };
+    window.addEventListener(SHOP_UPDATE_EVENT, refresh);
+    window.addEventListener(ALTAR_UPDATE_EVENT, refresh);
+    window.addEventListener('focus', refresh);
+    const timer = window.setInterval(refresh, USE_OFFICE_WEBSOCKET ? 30_000 : 4_000);
+    refresh();
+    return () => {
+      controller.abort();
+      window.removeEventListener(SHOP_UPDATE_EVENT, refresh);
+      window.removeEventListener(ALTAR_UPDATE_EVENT, refresh);
+      window.removeEventListener('focus', refresh);
+      window.clearInterval(timer);
+    };
+  }, [refreshShop]);
+
+  useEffect(() => {
+    if (shopOpen) void refreshShop();
+  }, [shopOpen, refreshShop]);
+
   // Tự động kết toán lương các tháng trước đã chấm công vào ví (8h/ngày × 100k/giờ)
   useEffect(() => {
-    if (!session || !room) return;
+    if (!session || !room || !isUsingStaticFallback()) return;
     const nowVn = getNowInHoChiMinh();
     const currentYearMonth = nowVn.dateStr.slice(0, 7);
     setUserWallet((prev) => {
@@ -728,9 +792,9 @@ export function App() {
   }, [sendDesktopNotification]);
 
   const handleDonateToBox = useCallback(
-    (
+    async (
       amountVnd: number
-    ): { ok: boolean; error?: string; meritAwarded?: number } => {
+    ): Promise<{ ok: boolean; error?: string; meritAwarded?: number }> => {
       if (!session || !room) {
         return { ok: false, error: 'Chưa kết nối phòng.' };
       }
@@ -744,6 +808,17 @@ export function App() {
         };
       }
 
+      if (!isUsingStaticFallback()) {
+        try {
+          await refreshShop({ action: 'donate', amount: amountVnd, id: crypto.randomUUID() });
+          const meritAwarded = calculateDonationMerit(amountVnd);
+          setMeritCount((count) => count + meritAwarded);
+          playTempleBellSound();
+          return { ok: true, meritAwarded };
+        } catch (problem) {
+          return { ok: false, error: problem instanceof Error ? problem.message : 'Chưa thể bỏ tiền vào hòm.' };
+        }
+      }
       const meritAwarded = calculateDonationMerit(amountVnd);
       const nextWallet: UserWalletState = {
         ...userWallet,
@@ -798,18 +873,110 @@ export function App() {
       }, 2200);
       return { ok: true, meritAwarded };
     },
-    [session, room, userWallet, roomDonationBox]
+    [session, room, userWallet, roomDonationBox, refreshShop]
+  );
+
+  const applyLedgerFromCaseApi = useCallback(
+    (ledger?: UserEconomyLedgerEntry) => {
+      if (!ledger || !room || !session) return;
+      setUserWallet((prev) => {
+        const next: UserWalletState = {
+          ...prev,
+          balanceVnd: ledger.balanceVnd,
+          updatedAt: Date.now(),
+        };
+        saveUserWalletState(room.code, session.userId, next);
+        return next;
+      });
+      if (typeof ledger.meritCount === 'number' && ledger.meritCount > 0) {
+        setMeritCount(ledger.meritCount);
+      }
+    },
+    [room, session]
+  );
+
+  // Tự động tick tiến trình vụ án mỗi 10s khi đang điều tra
+  useEffect(() => {
+    if (!session || !room || donationCaseView?.status !== 'investigating') return;
+    const timer = window.setInterval(() => {
+      tickDonationCaseApi(room.code, session.sessionToken)
+        .then((res) => {
+          setDonationCaseView(res.caseView);
+          applyLedgerFromCaseApi(res.myLedger);
+        })
+        .catch(() => {});
+    }, 10_000);
+    return () => window.clearInterval(timer);
+  }, [session, room, donationCaseView?.status, applyLedgerFromCaseApi]);
+
+  const handleStealDonationBoxCase = useCallback(async () => {
+    if (!session || !room) return;
+    try {
+      const res = await stealDonationBoxCaseApi(room.code, session.sessionToken);
+      setDonationCaseView(res.caseView);
+      applyLedgerFromCaseApi(res.myLedger);
+      setRoomDonationBox(loadRoomDonationBoxState(room.code));
+      playChatNotificationSound();
+      showToast(
+        `🕵️ Bạn đã trộm thành công ${formatVnd(res.stolenAmountVnd || 0)} từ Hòm Công Đức! Hãy giữ bí mật nhé.`
+      );
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Không thể trộm hòm công đức lúc này.');
+    }
+  }, [session, room, applyLedgerFromCaseApi, showToast]);
+
+  const handleReportDonationCasePolice = useCallback(async () => {
+    if (!session || !room) return;
+    try {
+      const res = await reportDonationCasePoliceApi(room.code, session.sessionToken);
+      setDonationCaseView(res.caseView);
+      applyLedgerFromCaseApi(res.myLedger);
+      setIsDonationCaseModalOpen(true);
+      playTempleBellSound();
+      showToast('🚔 Đã báo cảnh sát NPC! Bảng vụ án đã mở.');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Không thể báo cảnh sát.');
+    }
+  }, [session, room, applyLedgerFromCaseApi, showToast]);
+
+  const handleVoteDonationCase = useCallback(
+    async (suspectName: string): Promise<{ ok: boolean; error?: string }> => {
+      if (!session || !room) return { ok: false, error: 'Chưa kết nối phòng.' };
+      try {
+        const res = await voteDonationCaseApi(room.code, suspectName, session.sessionToken);
+        setDonationCaseView(res.caseView);
+        applyLedgerFromCaseApi(res.myLedger);
+        return { ok: true };
+      } catch (err) {
+        return {
+          ok: false,
+          error: err instanceof Error ? err.message : 'Không thể gửi phiếu bình chọn.',
+        };
+      }
+    },
+    [session, room, applyLedgerFromCaseApi]
   );
 
   const handleRobDonationBox = useCallback(
-    (
+    async (
       requestedVnd: number
-    ): { ok: boolean; error?: string; robbedVnd?: number } => {
+    ): Promise<{ ok: boolean; error?: string; robbedVnd?: number }> => {
       if (!session || !room) {
         return { ok: false, error: 'Chưa kết nối phòng.' };
       }
       if (roomDonationBox.totalVnd <= 0) {
         return { ok: false, error: 'Hòm công đức đang trống trơn!' };
+      }
+      if (!isUsingStaticFallback()) {
+        try {
+          const outcome = await stealDonationBoxCaseApi(room.code, session.sessionToken);
+          setDonationCaseView(outcome.caseView);
+          applyLedgerFromCaseApi(outcome.myLedger);
+          const view = await refreshShop();
+          return { ok: true, robbedVnd: view ? Math.max(0, roomDonationBox.totalVnd - view.donationTotalVnd) : undefined };
+        } catch (problem) {
+          return { ok: false, error: problem instanceof Error ? problem.message : 'Chưa thể thực hiện.' };
+        }
       }
       const robAmount = Math.min(
         roomDonationBox.totalVnd,
@@ -861,7 +1028,7 @@ export function App() {
       showToast(`🥷 ${session.nickname} vừa cướp ${formatVnd(robAmount)} từ Hòm Công Đức!`);
       return { ok: true, robbedVnd: robAmount };
     },
-    [session, room, userWallet, roomDonationBox, showToast]
+    [session, room, userWallet, roomDonationBox, showToast, refreshShop, applyLedgerFromCaseApi]
   );
 
   const triggerGlobalChatAlert = useCallback(
@@ -943,8 +1110,17 @@ export function App() {
   );
 
   const handleSpendMoney = useCallback(
-    (amountVnd: number): boolean => {
+    async (amountVnd: number): Promise<boolean> => {
       if (!room || !session || amountVnd <= 0) return false;
+      if (!isUsingStaticFallback()) {
+        try {
+          await refreshShop({ action: 'spend', amount: amountVnd, id: crypto.randomUUID() });
+          return true;
+        } catch (problem) {
+          showToast(problem instanceof Error ? problem.message : 'Chưa thể thanh toán.');
+          return false;
+        }
+      }
       if (userWallet.balanceVnd < amountVnd) return false;
       const nextWallet: UserWalletState = {
         ...userWallet,
@@ -955,13 +1131,13 @@ export function App() {
       saveUserWalletState(room.code, session.userId, nextWallet);
       return true;
     },
-    [room, session, userWallet]
+    [room, session, userWallet, refreshShop, showToast]
   );
 
-  const handleUnlockDogs = useCallback((): { ok: boolean; error?: string } => {
+  const handleUnlockDogs = useCallback(async (): Promise<{ ok: boolean; error?: string }> => {
     if (!session || !room) return { ok: false, error: 'Chưa kết nối phòng.' };
     if (myPetCollection.unlockedDogs) return { ok: true };
-    if (!handleSpendMoney(DOG_UNLOCK_FEE_VND)) {
+    if (!await handleSpendMoney(DOG_UNLOCK_FEE_VND)) {
       return {
         ok: false,
         error: `Cần ${formatVnd(DOG_UNLOCK_FEE_VND)} để mở khóa mục Chó (Ví: ${formatVnd(userWallet.balanceVnd)}).`,
@@ -978,7 +1154,7 @@ export function App() {
   }, [session, room, myPetCollection, handleSpendMoney, userWallet.balanceVnd]);
 
   const handleBuyDogPet = useCallback(
-    (breedId: CatBreedId, customName: string): { ok: boolean; error?: string } => {
+    async (breedId: CatBreedId, customName: string): Promise<{ ok: boolean; error?: string }> => {
       if (!session || !room) return { ok: false, error: 'Chưa kết nối phòng.' };
       if (!myPetCollection.unlockedDogs) {
         return { ok: false, error: 'Hãy mở khóa mục Thú cưng mới (500.000đ) trước!' };
@@ -987,7 +1163,7 @@ export function App() {
       if (!meta || !meta.priceVnd) {
         return { ok: false, error: 'Giống chó không hợp lệ.' };
       }
-      if (!handleSpendMoney(meta.priceVnd)) {
+      if (!await handleSpendMoney(meta.priceVnd)) {
         return {
           ok: false,
           error: `Ví không đủ ${formatVnd(meta.priceVnd)} (hiện có ${formatVnd(userWallet.balanceVnd)}).`,
@@ -1567,6 +1743,13 @@ export function App() {
           saveRoomDonationBoxState(room.code, merged);
           return merged;
         });
+      } else if (data.type === 'donation_case_sync') {
+        fetchDonationCaseApi(room.code, session.sessionToken)
+          .then((res) => {
+            setDonationCaseView(res.caseView);
+            applyLedgerFromCaseApi(res.myLedger);
+          })
+          .catch(() => {});
       } else if (data.type === 'attendance_reminder') {
         const sender = String(data.senderNickname || 'Phòng');
         const msg = `📣 ${sender} nhắc cả phòng nhớ chấm công hôm nay (1 lần/ngày • 800.000đ)!`;
@@ -1623,6 +1806,7 @@ export function App() {
           try {
             const data = JSON.parse(event.data) as Record<string, unknown>;
             if (data.type === 'altar_updated') window.dispatchEvent(new Event(ALTAR_UPDATE_EVENT));
+            else if (data.type === 'shop_updated') window.dispatchEvent(new Event(SHOP_UPDATE_EVENT));
             else handleRealtimePayload(data);
           } catch {
             // Ignore malformed realtime messages.
@@ -1879,6 +2063,15 @@ export function App() {
 
   const handleCycleAttendanceDay = async (dateStr: string) => {
     if (!session || !room) return;
+    const todayStr = getNowInHoChiMinh().dateStr;
+    if (dateStr > todayStr) {
+      showToast('⚠️ Không được chấm công cho ngày trong tương lai!');
+      return;
+    }
+    if (dateStr < todayStr) {
+      showToast('⚠️ Chỉ được chấm công đúng ngày đi làm hôm nay!');
+      return;
+    }
     const currentStatus: AttendanceStatus = attendanceMap[dateStr] ?? 'none';
     if (currentStatus !== 'none') {
       showToast('⚠️ Mỗi ngày chỉ được chấm công 1 lần!');
@@ -2066,12 +2259,14 @@ export function App() {
       const res = await setZenRoomPresenceApi(room.code, true, session.sessionToken);
       setMembers(res.members);
       setActivePanel('zen');
+      return true;
     } catch (err) {
       showToast(
         err instanceof Error
           ? err.message
           : 'Phòng Tịnh Tâm đã đủ tối đa 10 người!'
       );
+      return false;
     }
   };
 
@@ -2103,62 +2298,47 @@ export function App() {
     setActivePanel((prev) => (prev === panel ? 'none' : panel));
   };
 
-  const shop = userWallet.shop ?? EMPTY_OFFICE_SHOP;
-  const updateShop = (next: OfficeShopState, charge = 0) => {
-    const wallet = { ...userWallet, shop: next, balanceVnd: userWallet.balanceVnd - charge, updatedAt: Date.now() };
-    saveUserWalletState(room.code, session.userId, wallet);
-    setUserWallet(wallet);
+  const shop = shopView?.shop ?? EMPTY_OFFICE_SHOP;
+  const buyItem = async (item: ShopItem, id: string) => {
+    await refreshShop({ action: 'buy', item, id });
+    showToast(`Đã mua ${OFFICE_SHOP[item].name}.`);
   };
-  const buyItem = (id: ShopItem) => {
-    const item = OFFICE_SHOP[id];
-    const quantity = shop.inventory[id] ?? 0;
-    if (userWallet.balanceVnd < item.price || (quantity && (item.kind === 'equip' || item.kind === 'action'))) return;
-    updateShop({ ...shop, inventory: { ...shop.inventory, [id]: quantity + 1 } }, item.price);
-    showToast(`Đã mua ${item.name}.`);
+  const placeItem = async (position: ScenePoint) => {
+    if (!placingItem || placingRequest.current) return;
+    placingRequest.current = true;
+    try {
+      await refreshShop({ action: 'place', item: placingItem, position, id: crypto.randomUUID() });
+      setPlacingItem(null);
+    } catch (problem) {
+      showToast(problem instanceof Error ? problem.message : 'Chưa đặt được vật phẩm.');
+    } finally {
+      placingRequest.current = false;
+    }
   };
-  const placeItem = (position: ScenePoint) => {
-    if (!placingItem || !(shop.inventory[placingItem] ?? 0)) return;
-    if (shop.decorations.some((item) => Math.hypot(...item.position.map((value, index) => value - position[index])) < 0.3)) {
-      showToast('Chỗ này đã có đồ trang trí.');
+  const useItem = async (id: ShopItem) => {
+    if (!(shop.inventory[id] ?? 0)) return;
+    const kind = OFFICE_SHOP[id].kind;
+    if (kind === 'equip') {
+      await refreshShop({ action: 'equip', item: id, id: crypto.randomUUID() });
       return;
     }
-    updateShop({
-      ...shop,
-      inventory: { ...shop.inventory, [placingItem]: (shop.inventory[placingItem] ?? 0) - 1 },
-      decorations: [...shop.decorations, { id: crypto.randomUUID(), item: placingItem, position }],
-    });
-    setPlacingItem(null);
-  };
-  const useItem = (id: ShopItem) => {
-    const quantity = shop.inventory[id] ?? 0;
-    if (!quantity) return;
-    if (id === 'outfit') {
-      updateShop({ ...shop, outfit: shop.outfit ? undefined : 'outfit' });
-      return;
-    }
-    if (id === 'dance' || id === 'headstand') {
-      setOfficeAction(id);
+    if (kind === 'action') {
+      setOfficeAction(id as OfficeAction);
       setShopOpen(false);
       return;
     }
-    if (id === 'computer' || id === 'plant' || id === 'lamp') {
-      setPlacingItem(id);
+    if (kind === 'decor') {
+      if (!mySeat) throw new Error('Hãy chọn chỗ ngồi trong văn phòng trước khi đặt vật phẩm.');
+      setPlacingItem(id as DecorationItem);
       setCameraMode('overview');
-      setActivePanel('none');
+      if (activePanel === 'zen') exitZenRoom();
+      else setActivePanel('none');
       setShopOpen(false);
       return;
     }
+    if (activePanel !== 'zen' && !(await enterZenRoom())) throw new Error('Chưa vào được Phòng Tịnh Tâm.');
+    setShopRitual(id as ShopConsumable);
     setShopOpen(false);
-    if (activePanel !== 'zen') void enterZenRoom();
-  };
-  const consumeAltarItem = (id: AltarKind) => {
-    const latest = loadUserWalletState(room.code, session.userId);
-    const currentShop = latest.shop ?? EMPTY_OFFICE_SHOP;
-    const quantity = currentShop.inventory[id] ?? 0;
-    if (!quantity) return;
-    const wallet = { ...latest, shop: { ...currentShop, inventory: { ...currentShop.inventory, [id]: quantity - 1 } }, updatedAt: Date.now() };
-    saveUserWalletState(room.code, session.userId, wallet);
-    setUserWallet(wallet);
   };
 
   return (
@@ -2167,16 +2347,18 @@ export function App() {
       <OfficeScene3D
         altar={altar}
         walkTarget={walkTarget}
-        canWalk={activePanel === 'none' && !placingItem}
+        canWalk={activePanel === 'none' && !placingItem && !shopOpen}
         onWalk={setWalkTarget}
-        decorations={shop.decorations}
-        outfit={Boolean(shop.outfit)}
+        decorations={shopView?.decorations ?? []}
+        appearances={shopView?.appearances ?? {}}
         action={officeAction}
         onFloorClick={(point, isTouch) => {
-          if (placingItem) placeItem(point);
-          else if (isTouch && activePanel === 'none' && cameraMode === 'overview') setWalkTarget(point);
+          if (!placingItem && isTouch && activePanel === 'none' && cameraMode === 'overview') setWalkTarget(point);
         }}
-        onDeskClick={placingItem ? placeItem : undefined}
+        onDeskClick={placingItem ? (point, seatId) => {
+          if (seatId !== mySeat?.seatId) showToast('Bạn chỉ có thể đặt vật phẩm tại bàn của mình.');
+          else void placeItem(point);
+        } : undefined}
         currentUserId={session.userId}
         members={members}
         seats={seats}
@@ -2208,24 +2390,18 @@ export function App() {
       />
       {activePanel === 'zen' && (
         <ZenAltarControls key={`${room.code}:${session.userId}`} roomCode={room.code} token={session.sessionToken}
-          userId={session.userId} incense={shop.inventory.incense ?? 0} offerings={shop.inventory.offering ?? 0}
-          onBuy={() => setShopOpen(true)} onCompletion={consumeAltarItem} onChange={setAltar} onToast={showToast} />
+          userId={session.userId} incense={shop.inventory.incense ?? 0} offerings={SHOP_OFFERINGS.filter((id) => (shop.inventory[id] ?? 0) > 0)}
+          requestedRitual={shopRitual} onRitualHandled={() => setShopRitual(null)}
+          onBuy={() => setShopOpen(true)} onCompletion={() => { void refreshShop(); }} onChange={setAltar} onToast={showToast} />
       )}
       {shopOpen && (
-        <OfficeShopModal balance={userWallet.balanceVnd} shop={shop} onClose={() => setShopOpen(false)}
-          onBuy={buyItem} onUse={useItem} onRemove={(id) => {
-            const decoration = shop.decorations.find((item) => item.id === id);
-            if (!decoration) return;
-            updateShop({
-              ...shop,
-              inventory: { ...shop.inventory, [decoration.item]: (shop.inventory[decoration.item] ?? 0) + 1 },
-              decorations: shop.decorations.filter((item) => item.id !== id),
-            });
-          }} />
+        <OfficeShopModal balance={shopView?.balanceVnd ?? 0} shop={shop} connectionError={shopError}
+          onClose={() => setShopOpen(false)} onBuy={buyItem} onUse={useItem}
+          onRemove={async (decorationId) => { await refreshShop({ action: 'remove', decorationId, id: crypto.randomUUID() }); }} />
       )}
       {placingItem && (
         <div className="fixed inset-x-0 top-14 z-30 mx-auto flex w-fit items-center gap-3 rounded-xl bg-slate-900 px-3 py-2 text-sm text-white">
-          Chạm vào sàn hoặc mặt bàn để đặt {OFFICE_SHOP[placingItem].name.toLowerCase()}.
+          Chọn vị trí trên bàn của bạn để đặt {OFFICE_SHOP[placingItem].name.toLowerCase()}.
           <button type="button" onClick={() => setPlacingItem(null)} className="rounded bg-white/15 px-2 py-1">Hủy</button>
         </div>
       )}
@@ -2569,6 +2745,18 @@ export function App() {
           </div>
 
           <div className="flex items-center gap-1 shrink-0">
+            {chatAlertBanner.content.includes('[VỤ ÁN CÔNG ĐỨC]') && (
+              <button
+                type="button"
+                onClick={() => {
+                  setChatAlertBanner(null);
+                  setIsDonationCaseModalOpen(true);
+                }}
+                className="rounded-xl bg-amber-400 hover:bg-amber-300 px-2.5 py-1 text-[11px] font-black text-slate-950 cursor-pointer"
+              >
+                🚓 Bảng vụ án
+              </button>
+            )}
             {chatAlertBanner.content.includes('[RỦ THIỀN]') && activePanel !== 'zen' && (
               <button
                 type="button"
@@ -2636,6 +2824,7 @@ export function App() {
         messages={messages}
         members={members}
         onSendMessage={handleSendMessage}
+        onOpenDonationCase={() => setIsDonationCaseModalOpen(true)}
       />
 
       <AttendanceDrawer
@@ -2720,6 +2909,24 @@ export function App() {
           .includes('thanh ngoc')}
         abbotAtDonationDesk={abbotAtDonationDesk}
         onToggleAbbotDesk={() => setAbbotAtDonationDesk((v) => !v)}
+        donationCaseView={donationCaseView}
+        onStealDonationBox={handleStealDonationBoxCase}
+        onReportPolice={handleReportDonationCasePolice}
+        onOpenCaseBoard={() => setIsDonationCaseModalOpen(true)}
+      />
+
+      <DonationCaseModal
+        isOpen={isDonationCaseModalOpen}
+        onClose={() => setIsDonationCaseModalOpen(false)}
+        caseView={donationCaseView}
+        isAbbotUser={session.nickname
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .toLowerCase()
+          .includes('thanh ngoc')}
+        onReportPolice={handleReportDonationCasePolice}
+        onVoteSuspect={handleVoteDonationCase}
+        onOpenChat={() => setActivePanel('chat')}
       />
 
       {/* MODAL CHẾ ĐỘ THÔNG BÁO THIẾT BỊ (Nhắc đi làm, chấm công, lạy Phật) */}

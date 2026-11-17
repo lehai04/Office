@@ -14,6 +14,7 @@ import {
   formatVnd,
   type RoomDonationBoxState,
 } from '../utils/officeEconomyData';
+import type { PublicDonationCaseView } from '../utils/donationCaseEngine';
 
 export type DeityType = 'buddha' | 'ong_dia' | 'than_tai';
 
@@ -112,19 +113,23 @@ interface ZenSanctuaryOverlayProps {
   isDonationModalOpen: boolean;
   onOpenDonationModal: () => void;
   onCloseDonationModal: () => void;
-  onDonateToBox: (amountVnd: number) => {
+  onDonateToBox: (amountVnd: number) => Promise<{
     ok: boolean;
     error?: string;
     meritAwarded?: number;
-  };
-  onRobDonationBox: (amountVnd: number) => {
+  }>;
+  onRobDonationBox: (amountVnd: number) => Promise<{
     ok: boolean;
     error?: string;
     robbedVnd?: number;
-  };
+  }>;
   isAbbotUser?: boolean;
   abbotAtDonationDesk?: boolean;
   onToggleAbbotDesk?: () => void;
+  donationCaseView?: PublicDonationCaseView | null;
+  onStealDonationBox?: () => Promise<void>;
+  onReportPolice?: () => Promise<void>;
+  onOpenCaseBoard?: () => void;
 }
 
 export const ZenSanctuaryOverlay: React.FC<ZenSanctuaryOverlayProps> = ({
@@ -160,6 +165,10 @@ export const ZenSanctuaryOverlay: React.FC<ZenSanctuaryOverlayProps> = ({
   isAbbotUser = false,
   abbotAtDonationDesk = true,
   onToggleAbbotDesk,
+  donationCaseView = null,
+  onStealDonationBox,
+  onReportPolice,
+  onOpenCaseBoard,
 }) => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -425,6 +434,47 @@ export const ZenSanctuaryOverlay: React.FC<ZenSanctuaryOverlayProps> = ({
             </button>
           )}
 
+          {/* VỤ ÁN HÒM CÔNG ĐỨC: Trộm hòm / Chủ trì Báo cảnh sát / Bảng vụ án */}
+          {onStealDonationBox &&
+            donationBox.totalVnd > 0 &&
+            (!donationCaseView ||
+              donationCaseView.status === 'caught' ||
+              donationCaseView.status === 'escaped') && (
+              <button
+                type="button"
+                data-testid="zen-steal-box-btn"
+                onClick={() => void onStealDonationBox()}
+                className={`${pillBaseClass} border-rose-400/50 bg-rose-950/90 hover:bg-rose-900/95 text-rose-200`}
+              >
+                <span className="text-base leading-none">🕵️</span>
+                <span>Trộm hòm công đức</span>
+              </button>
+            )}
+
+          {donationCaseView?.canReportPolice && onReportPolice && (
+            <button
+              type="button"
+              data-testid="zen-report-police-btn"
+              onClick={() => void onReportPolice()}
+              className={`${pillBaseClass} border-rose-400 bg-rose-600 hover:bg-rose-500 text-white animate-pulse`}
+            >
+              <span className="text-base leading-none">🚔</span>
+              <span>Báo cảnh sát</span>
+            </button>
+          )}
+
+          {donationCaseView && onOpenCaseBoard && (
+            <button
+              type="button"
+              data-testid="zen-case-board-btn"
+              onClick={onOpenCaseBoard}
+              className={`${pillBaseClass} border-sky-400/60 bg-sky-950/90 hover:bg-sky-900/95 text-sky-200`}
+            >
+              <span className="text-base leading-none">🚓</span>
+              <span>Bảng vụ án</span>
+            </button>
+          )}
+
           {/* 10. Rủ bạn bè vào ngồi chung Phòng Tịnh Tâm */}
           {onInviteToZenRoom && (
             <button
@@ -562,9 +612,9 @@ export const ZenSanctuaryOverlay: React.FC<ZenSanctuaryOverlayProps> = ({
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={async () => {
                     const amt = Math.round(Number(donationAmountDraft) || 0);
-                    const res = onDonateToBox(amt);
+                    const res = await onDonateToBox(amt);
                     if (res.ok) {
                       setDonationNotice({
                         type: 'ok',
@@ -584,17 +634,17 @@ export const ZenSanctuaryOverlay: React.FC<ZenSanctuaryOverlayProps> = ({
                 <button
                   type="button"
                   disabled={donationBox.totalVnd <= 0}
-                  onClick={() => {
+                  onClick={async () => {
                     const rawAmt = Math.round(Number(donationAmountDraft) || 0);
                     const robAmt =
                       rawAmt > 0
                         ? Math.min(rawAmt, donationBox.totalVnd)
                         : donationBox.totalVnd;
-                    const res = onRobDonationBox(robAmt);
+                    const res = await onRobDonationBox(robAmt);
                     if (res.ok) {
                       setDonationNotice({
                         type: 'err',
-                        text: `🥷 Bạn vừa cướp ${formatVnd(res.robbedVnd || robAmt)} từ Hòm Công Đức vào ví! (-5 Công đức)`,
+                        text: `🥷 Bạn vừa cướp ${formatVnd(res.robbedVnd || robAmt)} từ Hòm Công Đức!`,
                       });
                     } else {
                       setDonationNotice({

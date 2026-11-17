@@ -280,6 +280,8 @@ export const AttendanceDrawer: React.FC<AttendanceDrawerProps> = ({
               const status: AttendanceStatus = attendanceMap[cell.dateStr] ?? 'none';
               const meta = ATTENDANCE_META[status];
               const isToday = cell.dateStr === nowVn.dateStr;
+              const isFuture = cell.dateStr > nowVn.dateStr;
+              const canClickToday = isToday && !isTodayCheckedIn;
 
               return (
                 <button
@@ -288,10 +290,25 @@ export const AttendanceDrawer: React.FC<AttendanceDrawerProps> = ({
                   data-testid={`attendance-day-${cell.dayNumber}`}
                   data-date={cell.dateStr}
                   data-status={status}
+                  disabled={!canClickToday}
                   onClick={() => onCycleDay(cell.dateStr!)}
-                  title={`Ngày ${cell.dayNumber}/${viewMonth}/${viewYear}: ${meta.colorName} — ${meta.label} (Bấm để đổi)`}
-                  className={`relative flex h-12 flex-col items-center justify-center rounded-xl border transition-all active:scale-95 cursor-pointer select-none ${meta.bgClass} ${
+                  title={
+                    isFuture
+                      ? 'Không được chấm công cho ngày trong tương lai'
+                      : isToday
+                        ? isTodayCheckedIn
+                          ? 'Hôm nay đã chấm công (mỗi ngày 1 lần)'
+                          : 'Bấm để chấm công hôm nay (+800.000đ)'
+                        : `Ngày ${cell.dayNumber}/${viewMonth}/${viewYear}: ${meta.label}`
+                  }
+                  className={`relative flex h-12 flex-col items-center justify-center rounded-xl border transition-all select-none ${meta.bgClass} ${
                     isToday ? 'ring-2 ring-white' : ''
+                  } ${
+                    canClickToday
+                      ? 'active:scale-95 cursor-pointer'
+                      : isFuture
+                        ? 'opacity-35 cursor-not-allowed'
+                        : 'opacity-85 cursor-default'
                   }`}
                 >
                   <span className="text-xs leading-none">{cell.dayNumber}</span>

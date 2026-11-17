@@ -40,6 +40,7 @@ interface ChatDrawerProps {
   messages: ChatMessage[];
   members: RoomMember[];
   onSendMessage: (content: string, existingClientMsgId?: string) => Promise<void>;
+  onOpenDonationCase?: () => void;
 }
 
 export const ChatDrawer: React.FC<ChatDrawerProps> = ({
@@ -49,6 +50,7 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
   messages,
   members,
   onSendMessage,
+  onOpenDonationCase,
 }) => {
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
@@ -210,6 +212,18 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
                     </div>
                   )}
                   {parsed.body}
+                  {onOpenDonationCase &&
+                    parsed.body.includes('[VỤ ÁN CÔNG ĐỨC]') && (
+                      <div className="mt-1.5">
+                        <button
+                          type="button"
+                          onClick={onOpenDonationCase}
+                          className="inline-flex items-center gap-1 rounded-xl bg-amber-400 hover:bg-amber-300 px-2.5 py-1 text-[11px] font-black text-slate-950 shadow cursor-pointer"
+                        >
+                          🚓 Mở Bảng vụ án
+                        </button>
+                      </div>
+                    )}
                 </div>
 
                 {msg.status === 'failed' && (

@@ -1,3 +1,6 @@
+import { restoreShop, runShopCommand, type StoredShop } from './officeShop';
+import { SHOP_OFFERINGS, equippedItems, type RoomShopView, type ShopConsumable } from '../src/utils/officeShop';
+import { createDefaultWalletState, settlePastMonthsSalary } from '../src/utils/officeEconomyData';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -17,6 +20,17 @@ import type {
   PublicDiaryEntry,
   MyDiaryEntry,
 } from '../src/types/office';
+import {
+  advanceDonationCaseByTime,
+  calculateAbbotTheftMeritPenalty,
+  calculateStealAmountVnd,
+  ensureUserLedger,
+  isAbbotNickname,
+  resolveSuspectByInput,
+  toPublicDonationCaseView,
+  type DonationCaseServerRecord,
+  type RoomEconomyLedger,
+} from '../src/utils/donationCaseEngine';
 
 interface StoredAccount {
   passwordHash?: string;
@@ -58,9 +72,13 @@ interface DatabaseSchema {
   messages: ChatMessage[];
   attendance: Record<string, AttendanceRecord>; // keyed by `${roomId}:${userId}:${date}`
   diaryEntries: StoredDiaryEntry[];
+  roomDonationBoxes?: Record<string, { totalVnd: number; updatedAt: number }>;
+  roomDonationCases?: Record<string, DonationCaseServerRecord>;
+  roomEconomyLedgers?: Record<string, RoomEconomyLedger>;
   reminderDevices?: Record<string, ReminderDevice>;
   altars?: Record<string, RoomAltarState>;
   legacyRoomData?: Record<string, unknown>;
+  shops?: Record<string, Record<string, StoredShop>>;
 }
 
 export async function dispatchDailyReminders(): Promise<void> {
@@ -197,11 +215,51 @@ export function publishOfficePresence(roomId: string): void {
   if (room) broadcastToRoom(room.id, { type: 'room_state', ...buildRoomStatePayload(room) });
 }
 
+function getRoomShop(room: RoomInfo, userId: string) {
+  const shops = ((db.shops ??= {})[room.id] ??= {});
+  const roomLedger = ((db.roomEconomyLedgers ??= {})[room.code] ??= { users: {}, abbotStealCount: 0 });
+  if (!shops[userId]) {
+    const backup = db.legacyRoomData?.[room.code] as { browserData?: Record<string, unknown> } | undefined;
+    const restored = restoreShop(backup?.browserData?.[`van_phong_ao_wallet_v1:${room.code}:${userId}`]);
+    shops[userId] = restored.shop;
+    const ledger = ensureUserLedger(roomLedger, userId, restored.balance);
+    if (restored.balance !== undefined) ledger.balanceVnd = restored.balance;
+  }
+  return { shops, stored: shops[userId], ledger: ensureUserLedger(roomLedger, userId) };
+}
+
+function serverDonationBox(room: RoomInfo) {
+  const boxes = db.roomDonationBoxes ??= {};
+  const archived = db.legacyRoomData?.[room.code] as { roomDonationBoxes?: Record<string, { totalVnd?: number }> } | undefined;
+  const total = archived?.roomDonationBoxes?.[room.code]?.totalVnd;
+  return boxes[room.code] ??= { totalVnd: Number.isSafeInteger(total) && total! >= 0 ? total! : 0, updatedAt: Date.now() };
+}
+
+function roomShopView(room: RoomInfo, userId: string): RoomShopView {
+  const { shops, stored, ledger } = getRoomShop(room, userId);
+  const members = db.roomMembers.filter((member) => member.roomId === room.id);
+  const appearances = Object.fromEntries(members.flatMap((member) =>
+    shops[member.userId] ? [[member.userId, equippedItems(shops[member.userId].state)]] : []));
+  const decorations = members.flatMap((member) => {
+    const seat = db.seats.find((entry) => entry.roomId === room.id && entry.occupiedByUserId === member.userId);
+    return (shops[member.userId]?.state.decorations ?? []).filter((placed) => !placed.seatId || placed.seatId === seat?.seatId);
+  });
+  return { shop: stored.state, balanceVnd: ledger.balanceVnd, donationTotalVnd: serverDonationBox(room).totalVnd,
+    appearances, decorations };
+}
+
+function settleRoomAltar(roomId: string, altar: RoomAltarState, now: number) {
+  return settleAltar(altar, now, (userId, item) => {
+    const inventory = db.shops?.[roomId]?.[userId]?.state.inventory;
+    if (inventory?.[item]) inventory[item] = inventory[item]! - 1;
+  });
+}
+
 export async function settleOfficeAlarms(): Promise<void> {
   const now = Date.now();
   let next: number | undefined;
   for (const [roomId, altar] of Object.entries(db.altars ?? {})) {
-    if (settleAltar(altar, now)) {
+    if (settleRoomAltar(roomId, altar, now)) {
       saveDatabase(db, true);
       broadcastToRoom(roomId, { type: 'altar_updated' });
     }
@@ -530,6 +588,7 @@ export async function handleApiRequest(
   if (!rawUrl.startsWith('/api/')) {
     return false;
   }
+  if (!officeStorage) ensureServerCaseTicker();
 
   const urlObj = new URL(rawUrl, 'http://localhost');
   const pathname = urlObj.pathname;
@@ -784,6 +843,27 @@ export async function handleApiRequest(
       return true;
     }
 
+    if (subPath === 'shop' && (method === 'GET' || method === 'POST')) {
+      const body = method === 'POST' ? await readJsonBody(req) : null;
+      const initial = !db.shops?.[room.id]?.[account.userId];
+      const { stored, ledger } = getRoomShop(room, account.userId);
+      const attendance: Record<string, AttendanceStatus> = {};
+      const prefix = `${room.id}:${account.userId}:`;
+      for (const [key, value] of Object.entries(db.attendance)) {
+        if (key.startsWith(prefix)) attendance[key.slice(prefix.length)] = value.status;
+      }
+      const salary = settlePastMonthsSalary({ ...createDefaultWalletState(), settledMonths: stored.settledMonths },
+        attendance, getNowInHoChiMinh().dateStr.slice(0, 7));
+      stored.settledMonths = salary.wallet.settledMonths;
+      ledger.balanceVnd += salary.addedVnd;
+      const seat = db.seats.find((entry) => entry.roomId === room.id && entry.occupiedByUserId === account.userId);
+      const error = body ? runShopCommand(stored, ledger, body, seat?.seatId, serverDonationBox(room)) : undefined;
+      if (initial || (body && !error) || salary.addedVnd) saveDatabase(db, true);
+      if (body && !error) broadcastToRoom(room.id, { type: 'shop_updated' });
+      sendJson(res, error ? 409 : 200, error ? { message: error } : roomShopView(room, account.userId));
+      return true;
+    }
+
     if (subPath === 'altar' && (method === 'GET' || method === 'POST')) {
       const body = method === 'POST' ? await readJsonBody(req) : null;
       const now = Date.now();
@@ -795,8 +875,20 @@ export async function handleApiRequest(
       )?.userId;
       if (appointedAbbot) altar.abbotUserId = appointedAbbot;
       else if (abbot) altar.abbotUserId ??= abbot;
-      const settled = settleAltar(altar, now);
-      const error = body ? updateAltar(altar, memberRecord, body, now) : undefined;
+      const settled = settleRoomAltar(room.id, altar, now);
+      let item: ShopConsumable | undefined;
+      let error: string | undefined;
+      if (body?.action === 'start') {
+        const repeated = altar.rituals.some((ritual) => ritual.id === body.id && ritual.userId === account.userId) ||
+          altar.members[account.userId]?.results.some((result) => result.id === body.id);
+        item = body.kind === 'incense' && (body.item === undefined || body.item === 'incense') ? 'incense' :
+          body.kind === 'offering' && body.item === undefined ? 'offering' :
+          body.kind === 'offering' ? SHOP_OFFERINGS.find((offering) => offering === body.item) : undefined;
+        if (!repeated && (!item || !(getRoomShop(room, account.userId).stored.state.inventory[item] ?? 0))) {
+          error = 'Bạn không có vật phẩm này trong túi.';
+        }
+      }
+      if (body && !error) error = updateAltar(altar, memberRecord, body, now, item);
       if (settled || (body && !error)) saveDatabase(db, true);
       const started = body?.action === 'start' && !error
         ? altar.rituals.find((ritual) => ritual.id === body.id && ritual.userId === account.userId) : undefined;
@@ -809,7 +901,7 @@ export async function handleApiRequest(
         }
       } else if (started) {
         setTimeout(() => {
-          if (db.altars?.[room.id] === altar && settleAltar(altar, Date.now())) saveDatabase(db, true);
+          if (db.altars?.[room.id] === altar && settleRoomAltar(room.id, altar, Date.now())) saveDatabase(db, true);
         }, Math.max(1, started.finishAt - Date.now() + 10)).unref();
       }
       sendJson(res, error ? 409 : 200, { ...altarView(altar, account.userId, now), error });
@@ -1344,6 +1436,21 @@ export async function handleApiRequest(
         sendJson(res, 400, { error: 'INVALID_DATE', message: 'Định dạng ngày không hợp lệ (YYYY-MM-DD).' });
         return true;
       }
+      const todayStr = getNowInHoChiMinh().dateStr;
+      if (date > todayStr) {
+        sendJson(res, 400, {
+          error: 'FUTURE_DATE_NOT_ALLOWED',
+          message: 'Không được chấm công cho ngày trong tương lai!',
+        });
+        return true;
+      }
+      if (date < todayStr) {
+        sendJson(res, 400, {
+          error: 'PAST_DATE_LOCKED',
+          message: 'Chỉ được chấm công đúng ngày đi làm hôm nay!',
+        });
+        return true;
+      }
       if (!['none', 'full', 'half', 'off'].includes(status)) {
         sendJson(res, 400, { error: 'INVALID_STATUS', message: 'Trạng thái chấm công không hợp lệ.' });
         return true;
@@ -1365,6 +1472,262 @@ export async function handleApiRequest(
 
       sendJson(res, 200, { record: db.attendance[key] });
       return true;
+    }
+
+    // 9B. Vụ án Hòm Công Đức (Server-authoritative)
+    if (subPath.startsWith('donation-case')) {
+      if (!db.roomDonationBoxes) db.roomDonationBoxes = {};
+      if (!db.roomDonationCases) db.roomDonationCases = {};
+      if (!db.roomEconomyLedgers) db.roomEconomyLedgers = {};
+      if (!db.roomEconomyLedgers[room.code]) {
+        db.roomEconomyLedgers[room.code] = { users: {}, abbotStealCount: 0 };
+      }
+
+      const ledger = db.roomEconomyLedgers[room.code];
+      const box = serverDonationBox(room);
+      const roomMembersList = db.roomMembers
+        .filter((m) => m.roomId === room.id)
+        .map((m) => ({
+          userId: m.userId,
+          nickname: m.nickname,
+          memberTag: m.memberTag,
+          avatarGender: m.avatarGender,
+        }));
+
+      const postNpcChat = (content: string) => {
+        const npcMsg: ChatMessage = {
+          id: `npc_${crypto.randomBytes(6).toString('hex')}`,
+          roomId: room.id,
+          userId: 'npc_police',
+          nickname: '🚓 Cảnh sát Văn phòng (NPC)',
+          memberTag: '#NPC0',
+          clientMsgId: `npc_${Date.now()}`,
+          content,
+          createdAt: new Date().toISOString(),
+          status: 'sent',
+        };
+        db.messages.push(npcMsg);
+        if (db.messages.length > 500) {
+          db.messages = db.messages.slice(-500);
+        }
+        broadcastToRoom(room.id, { type: 'chat_message', message: npcMsg });
+      };
+
+      const curCase = db.roomDonationCases[room.code];
+      if (curCase) {
+        const changed = advanceDonationCaseByTime(curCase, Date.now(), {
+          onPostNpcChat: postNpcChat,
+          onAdjustDonationBox: (deltaVnd) => {
+            box.totalVnd = Math.max(0, box.totalVnd + deltaVnd);
+            box.updatedAt = Date.now();
+          },
+          getUserLedger: (uid) => ensureUserLedger(ledger, uid),
+        });
+        if (changed) {
+          saveDatabase(db, true);
+          broadcastToRoom(room.id, { type: 'donation_case_sync', caseId: curCase.id });
+        }
+      }
+
+      const { ledger: myLedger } = getRoomShop(room, account.userId);
+      const activeCase = db.roomDonationCases[room.code] || null;
+
+      if (subPath === 'donation-case' && method === 'GET') {
+        sendJson(res, 200, {
+          caseView: toPublicDonationCaseView(
+            activeCase,
+            account.userId,
+            memberRecord.nickname,
+            roomMembersList
+          ),
+          myLedger,
+        });
+        return true;
+      }
+
+      if (subPath === 'donation-case/tick' && method === 'POST') {
+        sendJson(res, 200, {
+          caseView: toPublicDonationCaseView(
+            activeCase,
+            account.userId,
+            memberRecord.nickname,
+            roomMembersList
+          ),
+          myLedger,
+        });
+        return true;
+      }
+
+      if (subPath === 'donation-case/steal' && method === 'POST') {
+        if (
+          activeCase &&
+          (activeCase.status === 'stolen_unreported' || activeCase.status === 'investigating')
+        ) {
+          sendJson(res, 409, {
+            error: { code: 'CASE_ALREADY_ACTIVE', message: 'Hòm công đức đang có vụ trộm chưa kết thúc!' },
+          });
+          return true;
+        }
+        if (box.totalVnd <= 0) {
+          sendJson(res, 400, {
+            error: { code: 'EMPTY_DONATION_BOX', message: 'Hòm công đức đang trống!' },
+          });
+          return true;
+        }
+
+        const stolenAmountVnd = calculateStealAmountVnd(box.totalVnd);
+        box.totalVnd = Math.max(0, box.totalVnd - stolenAmountVnd);
+        box.updatedAt = Date.now();
+
+        const thiefEntry = ensureUserLedger(ledger, account.userId);
+        if (thiefEntry.pendingDebtVnd > 0) {
+          const paid = Math.min(thiefEntry.pendingDebtVnd, stolenAmountVnd);
+          thiefEntry.pendingDebtVnd -= paid;
+          thiefEntry.balanceVnd += stolenAmountVnd - paid;
+        } else {
+          thiefEntry.balanceVnd += stolenAmountVnd;
+        }
+
+        const abbotMember = roomMembersList.find((m) => isAbbotNickname(m.nickname));
+        ledger.abbotStealCount = (ledger.abbotStealCount || 0) + 1;
+        const abbotPenalty = calculateAbbotTheftMeritPenalty(ledger.abbotStealCount);
+        if (abbotMember) {
+          const abbotEntry = ensureUserLedger(ledger, abbotMember.userId);
+          abbotEntry.meritCount = Math.max(0, abbotEntry.meritCount - abbotPenalty);
+        }
+
+        const newCase: DonationCaseServerRecord = {
+          id: `case_${crypto.randomBytes(6).toString('hex')}`,
+          roomId: room.id,
+          roomCode: room.code,
+          status: 'stolen_unreported',
+          stolenAmountVnd,
+          stolenAt: Date.now(),
+          thiefSnapshot: {
+            userId: account.userId,
+            nickname: memberRecord.nickname,
+            memberTag: memberRecord.memberTag,
+            avatarGender: memberRecord.avatarGender,
+          },
+          abbotUserId: abbotMember?.userId || null,
+          abbotMeritLostOnTheft: abbotPenalty,
+          stealSequenceNumber: ledger.abbotStealCount,
+          policeReportedAt: null,
+          currentPhase: 0,
+          publishedClues: [],
+          votesByRound: {},
+          scopeUserIds: [],
+          settlementDone: false,
+          settlementSummary: null,
+          resolvedAt: null,
+        };
+        db.roomDonationCases[room.code] = newCase;
+        saveDatabase(db, true);
+
+        postNpcChat(
+          `🚨 [VỤ ÁN CÔNG ĐỨC] Hòm công đức vừa bị trộm! Đã mất ${stolenAmountVnd.toLocaleString('vi-VN')} xu Office.`
+        );
+        broadcastToRoom(room.id, { type: 'donation_case_sync', caseId: newCase.id });
+        sendJson(res, 200, {
+          caseView: toPublicDonationCaseView(
+            newCase,
+            account.userId,
+            memberRecord.nickname,
+            roomMembersList
+          ),
+          myLedger: thiefEntry,
+          stolenAmountVnd,
+        });
+        return true;
+      }
+
+      if (subPath === 'donation-case/report' && method === 'POST') {
+        if (!isAbbotNickname(memberRecord.nickname)) {
+          sendJson(res, 403, {
+            error: {
+              code: 'FORBIDDEN_ABBOT_ONLY',
+              message: 'Chỉ Chủ trì (Trụ trì Thanh Ngọc) mới có quyền báo cảnh sát!',
+            },
+          });
+          return true;
+        }
+        if (!activeCase || activeCase.status !== 'stolen_unreported') {
+          sendJson(res, 409, {
+            error: { code: 'NO_UNREPORTED_CASE', message: 'Không có vụ trộm mới nào đang chờ báo cảnh sát.' },
+          });
+          return true;
+        }
+        const nowMs = Date.now();
+        const onlineIds = db.roomMembers
+          .filter((m) => m.roomId === room.id && nowMs - Date.parse(m.lastSeenAt) < 120_000)
+          .map((m) => m.userId);
+        if (!onlineIds.includes(account.userId)) onlineIds.push(account.userId);
+        if (activeCase.thiefSnapshot.userId && !onlineIds.includes(activeCase.thiefSnapshot.userId)) {
+          onlineIds.push(activeCase.thiefSnapshot.userId);
+        }
+
+        activeCase.status = 'investigating';
+        activeCase.policeReportedAt = nowMs;
+        activeCase.currentPhase = 0;
+        activeCase.scopeUserIds = Array.from(new Set(onlineIds));
+        saveDatabase(db, true);
+
+        postNpcChat(
+          `🚔 [VỤ ÁN CÔNG ĐỨC] Cảnh sát NPC đã tiếp nhận trình báo! Manh mối 1 sẽ được công bố sau 5 phút. Mọi người hãy thảo luận tại đây và mở Bảng vụ án để theo dõi.`
+        );
+        broadcastToRoom(room.id, { type: 'donation_case_sync', caseId: activeCase.id });
+        sendJson(res, 200, {
+          caseView: toPublicDonationCaseView(
+            activeCase,
+            account.userId,
+            memberRecord.nickname,
+            roomMembersList
+          ),
+          myLedger,
+        });
+        return true;
+      }
+
+      if (subPath === 'donation-case/vote' && method === 'POST') {
+        if (!activeCase || activeCase.status !== 'investigating') {
+          sendJson(res, 409, {
+            error: { code: 'CASE_NOT_INVESTIGATING', message: 'Vụ án chưa mở điều tra hoặc đã kết thúc.' },
+          });
+          return true;
+        }
+        if (activeCase.currentPhase < 1 || activeCase.currentPhase > 5) {
+          sendJson(res, 400, {
+            error: { code: 'VOTING_NOT_OPEN_YET', message: 'Chưa tới thời gian mở bình chọn.' },
+          });
+          return true;
+        }
+        const body = await readJsonBody(req);
+        const suspectInput = typeof body.suspectName === 'string' ? body.suspectName : '';
+        const resolved = resolveSuspectByInput(roomMembersList, suspectInput);
+        if (!resolved.ok) {
+          sendJson(res, resolved.code === 'AMBIGUOUS' ? 409 : 404, {
+            error: { code: resolved.code, message: resolved.message },
+          });
+          return true;
+        }
+
+        const round = activeCase.currentPhase;
+        if (!activeCase.votesByRound[round]) activeCase.votesByRound[round] = {};
+        activeCase.votesByRound[round][account.userId] = resolved.member.userId;
+        saveDatabase(db, true);
+
+        broadcastToRoom(room.id, { type: 'donation_case_sync', caseId: activeCase.id });
+        sendJson(res, 200, {
+          caseView: toPublicDonationCaseView(
+            activeCase,
+            account.userId,
+            memberRecord.nickname,
+            roomMembersList
+          ),
+          myLedger,
+        });
+        return true;
+      }
     }
 
     // 10. Anonymous Diary Room:
@@ -1526,5 +1889,65 @@ export async function handleApiRequest(
     });
     return true;
   }
+}
+
+// Tiến trình nền phía máy chủ: tự động chốt vòng bình chọn, công bố manh mối & thưởng phạt mỗi 5 giây
+let serverCaseTickerStarted = false;
+function ensureServerCaseTicker() {
+  if (serverCaseTickerStarted) return;
+  serverCaseTickerStarted = true;
+  setInterval(() => {
+    try {
+      if (!db.roomDonationCases) return;
+      let anyChanged = false;
+      for (const [roomCode, curCase] of Object.entries(db.roomDonationCases)) {
+        if (!curCase || curCase.status !== 'investigating') continue;
+        const room = db.rooms[roomCode];
+        if (!room) continue;
+        if (!db.roomDonationBoxes) db.roomDonationBoxes = {};
+        if (!db.roomEconomyLedgers) db.roomEconomyLedgers = {};
+        if (!db.roomDonationBoxes[roomCode]) {
+          db.roomDonationBoxes[roomCode] = { totalVnd: 0, updatedAt: Date.now() };
+        }
+        if (!db.roomEconomyLedgers[roomCode]) {
+          db.roomEconomyLedgers[roomCode] = { users: {}, abbotStealCount: 0 };
+        }
+        const box = db.roomDonationBoxes[roomCode];
+        const ledger = db.roomEconomyLedgers[roomCode];
+        const changed = advanceDonationCaseByTime(curCase, Date.now(), {
+          onPostNpcChat: (content) => {
+            const npcMsg: ChatMessage = {
+              id: `npc_${crypto.randomBytes(6).toString('hex')}`,
+              roomId: room.id,
+              userId: 'npc_police',
+              nickname: '🚓 Cảnh sát Văn phòng (NPC)',
+              memberTag: '#NPC0',
+              clientMsgId: `npc_${Date.now()}`,
+              content,
+              createdAt: new Date().toISOString(),
+              status: 'sent',
+            };
+            db.messages.push(npcMsg);
+            if (db.messages.length > 500) db.messages = db.messages.slice(-500);
+            broadcastToRoom(room.id, { type: 'chat_message', message: npcMsg });
+          },
+          onAdjustDonationBox: (deltaVnd) => {
+            box.totalVnd = Math.max(0, box.totalVnd + deltaVnd);
+            box.updatedAt = Date.now();
+          },
+          getUserLedger: (uid) => ensureUserLedger(ledger, uid),
+        });
+        if (changed) {
+          anyChanged = true;
+          broadcastToRoom(room.id, { type: 'donation_case_sync', caseId: curCase.id });
+        }
+      }
+      if (anyChanged) {
+        saveDatabase(db, true);
+      }
+    } catch {
+      // ignore background tick errors
+    }
+  }, 5000).unref();
 }
 

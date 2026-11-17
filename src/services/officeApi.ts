@@ -19,6 +19,10 @@ import {
   subscribeStaticRealtime,
   type StaticRealtimeEvent,
 } from './staticFallbackEngine';
+import type {
+  PublicDonationCaseView,
+  UserEconomyLedgerEntry,
+} from '../utils/donationCaseEngine';
 
 export {
   broadcastCatSyncEvent,
@@ -566,6 +570,69 @@ export async function updateDiaryEntry(
       method: 'PUT',
       body: JSON.stringify(payload),
     },
+    sessionToken
+  );
+}
+
+// ==================== VỤ ÁN HÒM CÔNG ĐỨC ====================
+export interface DonationCaseApiResponse {
+  caseView: PublicDonationCaseView | null;
+  myLedger: UserEconomyLedgerEntry;
+  stolenAmountVnd?: number;
+}
+
+export async function fetchDonationCaseApi(
+  roomCode: string,
+  sessionToken: string
+): Promise<DonationCaseApiResponse> {
+  return apiFetch(
+    `/api/rooms/${encodeURIComponent(roomCode)}/donation-case`,
+    { method: 'GET' },
+    sessionToken
+  );
+}
+
+export async function stealDonationBoxCaseApi(
+  roomCode: string,
+  sessionToken: string
+): Promise<DonationCaseApiResponse> {
+  return apiFetch(
+    `/api/rooms/${encodeURIComponent(roomCode)}/donation-case/steal`,
+    { method: 'POST', body: JSON.stringify({}) },
+    sessionToken
+  );
+}
+
+export async function reportDonationCasePoliceApi(
+  roomCode: string,
+  sessionToken: string
+): Promise<DonationCaseApiResponse> {
+  return apiFetch(
+    `/api/rooms/${encodeURIComponent(roomCode)}/donation-case/report`,
+    { method: 'POST', body: JSON.stringify({}) },
+    sessionToken
+  );
+}
+
+export async function voteDonationCaseApi(
+  roomCode: string,
+  suspectName: string,
+  sessionToken: string
+): Promise<DonationCaseApiResponse> {
+  return apiFetch(
+    `/api/rooms/${encodeURIComponent(roomCode)}/donation-case/vote`,
+    { method: 'POST', body: JSON.stringify({ suspectName }) },
+    sessionToken
+  );
+}
+
+export async function tickDonationCaseApi(
+  roomCode: string,
+  sessionToken: string
+): Promise<DonationCaseApiResponse> {
+  return apiFetch(
+    `/api/rooms/${encodeURIComponent(roomCode)}/donation-case/tick`,
+    { method: 'POST', body: JSON.stringify({}) },
     sessionToken
   );
 }

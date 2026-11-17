@@ -1,3 +1,4 @@
+import { OFFICE_SHOP, type ShopConsumable, type ShopOffering } from '../utils/officeShop';
 import { useEffect, useRef, useState } from 'react';
 import { ALTAR_UPDATE_EVENT, requestAltar, USE_OFFICE_WEBSOCKET, type AltarCommand } from '../services/zenAltar';
 import { isUsingStaticFallback } from '../services/officeApi';
@@ -8,17 +9,20 @@ interface Props {
   token: string;
   userId: string;
   incense: number;
-  offerings: number;
+  offerings: ShopOffering[];
+  requestedRitual?: ShopConsumable | null;
+  onRitualHandled?: () => void;
   onBuy: () => void;
   onCompletion: (kind: AltarKind) => void;
   onChange: (view: AltarView | null) => void;
   onToast: (message: string) => void;
 }
 
-export function ZenAltarControls({ roomCode, token, userId, incense, offerings, onBuy, onCompletion, onChange, onToast }: Props) {
+export function ZenAltarControls({ roomCode, token, userId, incense, offerings, requestedRitual, onRitualHandled, onBuy, onCompletion, onChange, onToast }: Props) {
   const [view, setView] = useState<AltarView | null>(null);
   const [error, setError] = useState('');
   const [chooseTray, setChooseTray] = useState(false);
+  const [offeringChoice, setOfferingChoice] = useState<ShopOffering>('offering');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const inFlight = useRef(false);
@@ -130,15 +134,27 @@ export function ZenAltarControls({ roomCode, token, userId, incense, offerings, 
     }
   };
 
-  const begin = (kind: AltarKind, targetId?: string) => {
+  const begin = (item: ShopConsumable, targetId?: string) => {
     if (busy || !view) return;
-    if ((kind === 'incense' ? incense : offerings) < 1) return onBuy();
-    if (kind === 'offering' && full && !targetId) {
+    const kind = item === 'incense' ? 'incense' : 'offering';
+    if (item === 'incense' ? incense < 1 : !offerings.includes(item)) return onBuy();
+    if (item !== 'incense' && full && !targetId) {
+      setOfferingChoice(item);
       setChooseTray(true);
       return;
     }
-    void send({ action: 'start', kind, targetId, id: crypto.randomUUID() });
+    void send({ action: 'start', kind, item, targetId, id: crypto.randomUUID() });
   };
+
+  useEffect(() => {
+    if (!requestedRitual || (!view && !error)) return;
+    onRitualHandled?.();
+    if (busy) {
+      callbacks.current.onToast('Bạn đang thực hiện nghi thức.');
+      return;
+    }
+    begin(requestedRitual);
+  }, [requestedRitual, view, error, busy, onRitualHandled, begin]);
 
   const button = 'rounded-lg bg-white/10 px-2.5 py-1.5 font-semibold hover:bg-white/20 disabled:opacity-50';
   return (
@@ -149,9 +165,14 @@ export function ZenAltarControls({ roomCode, token, userId, incense, offerings, 
       </div>
       <div className="mt-2 flex flex-wrap gap-2">
         <button type="button" className={button} disabled={!view || busy} onClick={() => begin('incense')}>Thắp nhang ({incense})</button>
-        <button type="button" className={button} disabled={!view || busy} onClick={() => begin('offering')}>Dâng lễ ({offerings})</button>
+        <button type="button" className={button} disabled={!view || busy} onClick={() => begin(offerings.includes(offeringChoice) ? offeringChoice : offerings[0] ?? 'offering')}>Dâng lễ</button>
         {view?.canClear && full && <button type="button" className={button} disabled={busy} onClick={() => void send({ action: 'clear' })}>Dọn mâm lễ</button>}
       </div>
+      {offerings.length > 1 && !chooseTray && <select aria-label="Chọn món dâng lễ" className="mt-2 w-full rounded bg-slate-800 p-1"
+        value={offerings.includes(offeringChoice) ? offeringChoice : offerings[0]}
+        onChange={(event) => setOfferingChoice(event.target.value as ShopOffering)}>
+        {offerings.map((item) => <option value={item} key={item}>{OFFICE_SHOP[item].name}</option>)}
+      </select>}
       {full && view?.canClear && <p role="status" className="mt-2 text-amber-300">Bàn thờ đã đủ 5 mâm lễ. Trụ trì có thể dọn mâm.</p>}
       {chooseTray && full && (
         <div className="mt-2 space-y-2 border-t border-white/10 pt-2">
@@ -170,7 +191,7 @@ export function ZenAltarControls({ roomCode, token, userId, incense, offerings, 
           {selected && (
             <div className="flex flex-wrap gap-2">
               <button type="button" className={button} disabled={busy || (view?.merit ?? 0) < REPLACE_MERIT}
-                onClick={() => begin('offering', selected.id)}>Xác nhận đá mâm lễ (−50 công đức)</button>
+                onClick={() => begin(offeringChoice, selected.id)}>Xác nhận đá mâm lễ (−50 công đức)</button>
               <button type="button" className={button} onClick={() => setSelectedId(null)}>Hủy</button>
               {(view?.merit ?? 0) < REPLACE_MERIT && <p className="text-amber-300">Bạn cần ít nhất 50 công đức.</p>}
             </div>

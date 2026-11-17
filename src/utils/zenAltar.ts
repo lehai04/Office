@@ -1,3 +1,5 @@
+import type { ShopConsumable, ShopOffering } from './officeShop';
+
 export const ALTAR_CAPACITY = 5;
 export const REPLACE_MERIT = 50;
 export const ALTAR_WALK_MS = 1400;
@@ -10,6 +12,7 @@ export type AltarKind = 'incense' | 'offering';
 export interface AltarTray {
   id: string;
   slot: number;
+  item?: ShopOffering;
   userId: string;
   nickname: string;
 }
@@ -20,6 +23,7 @@ export interface AltarRitual {
   nickname: string;
   avatarGender: 'male' | 'female';
   kind: AltarKind;
+  item?: ShopConsumable;
   targetId?: string;
   slot?: number;
   startAt: number;

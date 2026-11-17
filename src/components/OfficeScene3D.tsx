@@ -1,8 +1,9 @@
+import { EXTRA_VOXELS } from '../utils/shopVoxels';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { isUsingStaticFallback } from '../services/officeApi';
 import { uniqueStaticRoomMembers } from '../utils/roomMemberDisplay';
 import { ALTAR_BOW_MS, ALTAR_KICK_MS, ALTAR_PLACE_MS, ALTAR_WALK_MS, type AltarRitual, type AltarView } from '../utils/zenAltar';
-import type { OfficeAction, OfficeDecoration, ScenePoint } from '../utils/officeShop';
+import type { OfficeAction, OfficeDecoration, ScenePoint, ShopOutfit, ShopOffering, ShopItem } from '../utils/officeShop';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Html, OrbitControls, ContactShadows } from '@react-three/drei';
 import * as THREE from 'three';
@@ -35,11 +36,11 @@ interface OfficeScene3DProps {
   canWalk: boolean;
   onWalk: (point: ScenePoint) => void;
   decorations: OfficeDecoration[];
-  outfit: boolean;
+  appearances: Record<string, ShopOutfit>;
   action: OfficeAction | null;
   altar: AltarView | null;
   onFloorClick: (point: ScenePoint, isTouch: boolean) => void;
-  onDeskClick?: (point: ScenePoint) => void;
+  onDeskClick?: (point: ScenePoint, seatId: string) => void;
   currentUserId: string;
   members: RoomMember[];
   seats: WorkSeat[];
@@ -427,7 +428,7 @@ const LowPolyCharacter: React.FC<{
   position: [number, number, number];
   rotationY: number;
   bubbleText?: string;
-  outfit?: boolean;
+  outfit?: ShopOutfit;
   action?: OfficeAction | null;
   duplicateNicknameCount: number;
 }> = ({
@@ -450,6 +451,9 @@ const LowPolyCharacter: React.FC<{
   const upperBodyRef = useRef<THREE.Group>(null);
   const bowStartRef = useRef<number>(0);
   const actorRef = useRef<THREE.Group>(null);
+  const leftArm = useRef<THREE.Mesh>(null);
+  const rightArm = useRef<THREE.Mesh>(null);
+  const confetti = useRef<THREE.Group>(null);
   const startPosition = useRef(position);
 
   useEffect(() => {
@@ -469,7 +473,20 @@ const LowPolyCharacter: React.FC<{
       actor.position.x += (x - actor.position.x) * step;
       actor.position.y += (y - actor.position.y) * step;
       actor.position.z += (z - actor.position.z) * step;
+      if (action === 'dance') actor.position.y += Math.abs(Math.sin(clock.elapsedTime * 8)) * 0.08;
       actor.rotation.z = action === 'dance' ? Math.sin(clock.elapsedTime * 9) * 0.18 : action === 'headstand' ? Math.PI : 0;
+    }
+    if (leftArm.current && rightArm.current) {
+      const base = isBowing ? -1.1 : isSeated ? -0.55 : 0;
+      const beat = Math.sin(clock.elapsedTime * 14);
+      leftArm.current.rotation.x = action === 'clap' ? -1.35 : action === 'confetti' ? -2.2 : base;
+      rightArm.current.rotation.x = action === 'clap' ? -1.35 : action === 'wave' ? -2.45 : action === 'confetti' ? -2.2 : base;
+      leftArm.current.rotation.z = action === 'clap' ? -0.67 - beat * 0.31 : isBowing ? -0.35 : 0.08;
+      rightArm.current.rotation.z = action === 'clap' ? 0.67 + beat * 0.31 : action === 'wave' ? -0.47 + beat * 0.36 : isBowing ? 0.35 : -0.08;
+    }
+    if (confetti.current) {
+      confetti.current.rotation.y = clock.elapsedTime * 3;
+      confetti.current.position.y = 0.13 + (Math.sin(clock.elapsedTime * 6) + 1) * 0.18;
     }
     if (!upperBodyRef.current) return;
     if (isBowing) {
@@ -482,7 +499,7 @@ const LowPolyCharacter: React.FC<{
   });
 
   const shirtColor =
-    outfit ? '#a855f7' : gender === 'male'
+    outfit?.shirt === 'hoodie' ? '#668bea' : outfit?.shirt === 'outfit' ? '#a855f7' : gender === 'male'
       ? isCurrentUser
         ? '#10b981'
         : '#3b82f6'
@@ -512,6 +529,11 @@ const LowPolyCharacter: React.FC<{
 
   return (
     <group ref={actorRef} position={startPosition.current} rotation={[0, rotationY, 0]}>
+      {action === 'confetti' && <group ref={confetti}>
+        {Array.from({ length: 12 }, (_, i) => <AltarBlock key={i}
+          at={[Math.cos(i * 2.4) * (0.25 + i * 0.037), 1.12 + i * 0.037, Math.sin(i * 2.4) * (0.25 + i * 0.037)]}
+          size={[0.053, 0.015, 0.045]} color={['#f883ba', '#ffd562', '#62d9d0'][i % 3]} />)}
+      </group>}
       <group position-y={action === 'headstand' ? -1.65 : 0}>
       {!hideMeshInFpv && (
         <>
@@ -639,6 +661,7 @@ const LowPolyCharacter: React.FC<{
 
             {/* Hai tay (Chắp tay trước ngực khi đang lạy khấn) */}
             <mesh
+              ref={leftArm}
               position={[-0.24, 0.38, isBowing ? 0.18 : isSeated ? 0.1 : 0]}
               rotation={[isBowing ? -1.1 : isSeated ? -0.55 : 0, 0, isBowing ? -0.35 : 0.08]}
               castShadow
@@ -647,6 +670,7 @@ const LowPolyCharacter: React.FC<{
               <meshStandardMaterial color={shirtColor} roughness={0.65} />
             </mesh>
             <mesh
+              ref={rightArm}
               position={[0.24, 0.38, isBowing ? 0.18 : isSeated ? 0.1 : 0]}
               rotation={[isBowing ? -1.1 : isSeated ? -0.55 : 0, 0, isBowing ? 0.35 : -0.08]}
               castShadow
@@ -675,6 +699,9 @@ const LowPolyCharacter: React.FC<{
                 <meshBasicMaterial color="#0f172a" />
               </mesh>
 
+              {outfit?.eyes === 'glasses' && <group position={[0, -0.07, 0.18]} scale={0.16}><VoxelObject item="glasses" /></group>}
+              {outfit?.head === 'cap' && <group position={[0, 0.085, 0.02]} scale={0.34}><VoxelObject item="cap" /></group>}
+              {outfit?.shirt === 'hoodie' && <AltarBlock at={[0,-0.11,-0.1]} size={[0.42,0.23,0.31]} color="#5579cc" />}
               {gender === 'male' ? (
                 <mesh position={[0, 0.16, -0.01]} castShadow>
                   <boxGeometry args={[0.37, 0.11, 0.37]} />
@@ -767,19 +794,67 @@ const LowPolyCharacter: React.FC<{
  */
 const TRAY_SLOT_X = [-1.45, -0.95, 0.48, 1.0, 1.49];
 
-function FruitTray() {
+function AltarBlock({ at, size, color }: { at: ScenePoint; size: ScenePoint; color: string }) {
+  return (
+    <mesh position={at} castShadow receiveShadow>
+      <boxGeometry args={size} />
+      <meshStandardMaterial color={color} roughness={0.62} />
+    </mesh>
+  );
+}
+
+function VoxelObject({ item }: { item: ShopItem }) {
+  return <>{EXTRA_VOXELS[item]?.map(([x, y, z, w, h, d, color], index) => (
+    <AltarBlock key={index} at={[x, y, z]} size={[w, h, d]} color={color} />
+  ))}</>;
+}
+
+function OfferingTower() {
+  const red = '#ae252e';
+  const gold = '#ffc45b';
+  const wood = '#641d35';
   return (
     <group>
-      <mesh><cylinderGeometry args={[0.19, 0.16, 0.035, 16]} /><meshStandardMaterial color="#fde68a" /></mesh>
-      {[-0.09, 0, 0.09].map((x, index) => (
-        <mesh key={x} position={[x, 0.072, 0]}><sphereGeometry args={[0.055, 10, 8]} />
-          <meshStandardMaterial color={['#ef4444', '#fb923c', '#84cc16'][index]} /></mesh>
+      <AltarBlock at={[0, 0.24, 0]} size={[3.58, 0.34, 1.25]} color={red} />
+      {[-1.52, 1.52].map((x) => (
+        <group key={x}>
+          <AltarBlock at={[x, 0.1, 0.44]} size={[0.33, 0.2, 0.34]} color={wood} />
+          <AltarBlock at={[x, 0.65, 0]} size={[0.25, 0.53, 0.83]} color={wood} />
+        </group>
+      ))}
+      <AltarBlock at={[0, 0.43, 0]} size={[3.62, 0.07, 1.3]} color={gold} />
+      <AltarBlock at={[0, 0.95, 0]} size={[3.6, 0.14, 1.35]} color={red} />
+      <AltarBlock at={[0, 0.975, 0.682]} size={[3.62, 0.07, 0.045]} color={gold} />
+      {[-0.68, 0.68].map((x) => (
+        <AltarBlock key={x} at={[x, 1.17, -0.28]} size={[0.19, 0.31, 0.52]} color={wood} />
+      ))}
+      <AltarBlock at={[0, 1.36, -0.28]} size={[1.6, 0.14, 0.75]} color={red} />
+      <AltarBlock at={[0, 1.38, 0.105]} size={[1.62, 0.065, 0.035]} color={gold} />
+      {[-1, 1].map((side) => (
+        <group key={side} position={[side * 1.55, 0.9, 0.71]}>
+          <AltarBlock at={[0, 0, 0]} size={[0.24, 0.04, 0.045]} color={gold} />
+          <AltarBlock at={[-side * 0.1, -0.045, 0]} size={[0.04, 0.08, 0.045]} color={gold} />
+        </group>
       ))}
     </group>
   );
 }
 
-function PlacedTray({ slot, replacing }: { slot: number; replacing?: AltarRitual }) {
+function FruitTray({ item = 'offering' }: { item?: ShopOffering }) {
+  return (
+    <group>
+      <AltarBlock at={[0, 0, 0]} size={[0.38, 0.04, 0.27]} color="#b72d3b" />
+      {item !== 'offering' ? <group scale={0.21}><VoxelObject item={item} /></group> : <>
+      <AltarBlock at={[-0.081, 0.075, 0.04]} size={[0.13, 0.11, 0.115]} color="#ed5844" />
+      <AltarBlock at={[0.075, 0.073, 0.025]} size={[0.135, 0.105, 0.125]} color="#f4a634" />
+      <AltarBlock at={[0, 0.089, -0.065]} size={[0.12, 0.135, 0.095]} color="#eb6240" />
+      <AltarBlock at={[0, 0.166, -0.065]} size={[0.06, 0.035, 0.055]} color="#76a43a" />
+      </>}
+    </group>
+  );
+}
+
+function PlacedTray({ slot, item, replacing }: { slot: number; item?: ShopOffering; replacing?: AltarRitual }) {
   const mesh = useRef<THREE.Group>(null);
   useFrame(() => {
     if (!mesh.current) return;
@@ -788,12 +863,13 @@ function PlacedTray({ slot, replacing }: { slot: number; replacing?: AltarRitual
     mesh.current.position.set(TRAY_SLOT_X[slot], 1.045 - movement * movement * 0.95, 0.49 + movement * 0.85);
     mesh.current.rotation.x = -movement * Math.PI;
   });
-  return <group ref={mesh} position={[TRAY_SLOT_X[slot], 1.045, 0.49]}><FruitTray /></group>;
+  return <group ref={mesh} position={[TRAY_SLOT_X[slot], 1.045, 0.49]}><FruitTray item={item} /></group>;
 }
 
-function RitualCharacter({ ritual, origin }: {
+function RitualCharacter({ ritual, origin, outfit }: {
   ritual: AltarRitual;
   origin: ScenePoint;
+  outfit?: ShopOutfit;
 }) {
   const actor = useRef<THREE.Group>(null);
   const carried = useRef<THREE.Group>(null);
@@ -828,14 +904,14 @@ function RitualCharacter({ ritual, origin }: {
     <group ref={actor} position={origin}>
       <LowPolyCharacter gender={ritual.avatarGender} nickname={ritual.nickname} memberTag=""
         isCurrentUser={false} isOnline isSeated={false} position={[0, 0, 0]} rotationY={0}
-        duplicateNicknameCount={1} />
+        duplicateNicknameCount={1} outfit={outfit} />
       <group ref={carried} position={[0, 1.04, 0.35]}>
         {([-0.19, 0.19] as const).map((x) => (
           <mesh key={x} position={[x, -0.035, -0.10]} rotation={[Math.PI / 2, 0, 0]}>
             <boxGeometry args={[0.09, 0.25, 0.09]} /><meshStandardMaterial color="#fcd34d" />
           </mesh>
         ))}
-        {ritual.kind === 'offering' ? <FruitTray /> : (
+        {ritual.kind === 'offering' ? <FruitTray item={ritual.item as ShopOffering | undefined} /> : (
           <mesh position={[0, 0.15, 0]}>
             <cylinderGeometry args={[0.012, 0.012, 0.34, 8]} /><meshStandardMaterial color="#dc2626" />
           </mesh>
@@ -1031,28 +1107,10 @@ const ZenSanctuaryRoom3D: React.FC<{
       {/* BÀN THỜ GỖ CHẠM KHẮC TRANG NGHIÊM */}
       <group position={[0, 0, -1.55]}>
         {altar?.trays.map((tray) => (
-          <PlacedTray key={tray.id} slot={tray.slot}
+          <PlacedTray key={tray.id} slot={tray.slot} item={tray.item}
             replacing={altar.rituals.find((ritual) => ritual.targetId === tray.id)} />
         ))}
-        {/* Mặt bàn thờ chính */}
-        <mesh position={[0, 0.95, 0]} castShadow receiveShadow>
-          <boxGeometry args={[3.6, 0.14, 1.35]} />
-          <meshStandardMaterial color="#7c2d12" roughness={0.5} />
-        </mesh>
-        {/* Bệ thờ tầng cao đặt Tôn Tượng */}
-        <mesh position={[0, 1.22, -0.25]} castShadow receiveShadow>
-          <boxGeometry args={[1.6, 0.42, 0.75]} />
-          <meshStandardMaterial color="#9a3412" roughness={0.5} />
-        </mesh>
-        {/* Chân bàn thờ */}
-        <mesh position={[-1.55, 0.46, 0]} castShadow>
-          <boxGeometry args={[0.24, 0.92, 1.15]} />
-          <meshStandardMaterial color="#451a03" />
-        </mesh>
-        <mesh position={[1.55, 0.46, 0]} castShadow>
-          <boxGeometry args={[0.24, 0.92, 1.15]} />
-          <meshStandardMaterial color="#451a03" />
-        </mesh>
+        <OfferingTower />
 
         {/* Đèn hoa sen hai bên bàn thờ */}
         {[-1.35, 1.35].map((xPos, idx) => (
@@ -1199,10 +1257,12 @@ const ZenSanctuaryRoom3D: React.FC<{
         {/* ==================== LƯ HƯƠNG & 3 NÉN NHANG ==================== */}
         <group position={[0, 1.02, 0.28]}>
           {/* Bát hương đồng */}
-          <mesh position={[0, 0.14, 0]} castShadow>
-            <cylinderGeometry args={[0.22, 0.18, 0.26, 16]} />
-            <meshStandardMaterial color="#d97706" metalness={0.6} roughness={0.35} />
-          </mesh>
+          <AltarBlock at={[0, 0.12, 0]} size={[0.35, 0.24, 0.27]} color="#6c2c42" />
+          <AltarBlock at={[0, 0.245, 0]} size={[0.4, 0.06, 0.32]} color="#ffbe4e" />
+          <AltarBlock at={[0, 0.277, 0]} size={[0.3, 0.015, 0.22]} color="#704533" />
+          {[-0.22, 0.22].map((x) => (
+            <AltarBlock key={x} at={[x, 0.17, 0]} size={[0.11, 0.14, 0.12]} color="#81344d" />
+          ))}
           {/* 3 nén nhang cháy đỏ khi thắp nhang */}
           {incenseLit && (
             <group>
@@ -1411,7 +1471,7 @@ const EntertainmentRoom3D: React.FC<{
  * Bàn và ghế làm việc cố định (8 vị trí đăng ký)
  */
 const WorkDeskUnit: React.FC<{
-  onDeskClick?: (point: ScenePoint) => void;
+  onDeskClick?: (point: ScenePoint, seatId: string) => void;
   layout: SeatTransform;
   seatData?: WorkSeat;
   currentUserId: string;
@@ -1436,7 +1496,7 @@ const WorkDeskUnit: React.FC<{
       <group position={layout.deskPosition} rotation={[0, layout.deskRotationY, 0]}>
         <mesh position={[0, 0.72, 0]} castShadow receiveShadow onClick={onDeskClick ? (e) => {
           e.stopPropagation();
-          onDeskClick([e.point.x, layout.deskPosition[1] + 0.755, e.point.z]);
+          onDeskClick([e.point.x, layout.deskPosition[1] + 0.755, e.point.z], layout.seatId);
         } : undefined}>
           <boxGeometry args={[1.72, 0.07, 0.85]} />
           <meshStandardMaterial color="#f8fafc" roughness={0.5} />
@@ -2129,7 +2189,7 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
   canWalk,
   onWalk,
   decorations,
-  outfit,
+  appearances,
   action,
   altar,
   onFloorClick,
@@ -2419,7 +2479,9 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
             <boxGeometry args={[16.0, 0.16, 10.8]} />
             <meshStandardMaterial color="#f1f5f9" roughness={0.88} />
           </mesh>
-          {decorations.map(({ id, item, position }) => (
+          {decorations.map(({ id, item, position }) => EXTRA_VOXELS[item] ? (
+            <group key={id} position={position} scale={0.29}><VoxelObject item={item} /></group>
+          ) : (
             <group key={id} position={position}>
               <mesh position={[0, item === 'plant' ? 0.13 : 0.045, 0]} castShadow>
                 <boxGeometry args={item === 'computer' ? [0.44, 0.09, 0.3] : [0.23, item === 'plant' ? 0.26 : 0.09, 0.23]} />
@@ -2677,7 +2739,7 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
                 isOnline={member.online}
                 isSeated={isSeated}
                 isBowing={isMe && isBowing}
-                outfit={isMe && outfit}
+                outfit={appearances[member.userId]}
                 action={isMe ? action : null}
                 hideMeshInFpv={isMe && cameraMode === 'first_person'}
                 position={position}
@@ -2688,7 +2750,7 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
             );
           })}
           {altar?.rituals.map((ritual) => (
-            <RitualCharacter key={ritual.id} ritual={ritual}
+            <RitualCharacter key={ritual.id} ritual={ritual} outfit={appearances[ritual.userId]}
               origin={characterPlacements.find((placement) => placement.member.userId === ritual.userId)?.position ?? [0, 0, -8.25]} />
           ))}
 

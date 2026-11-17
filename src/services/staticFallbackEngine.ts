@@ -29,9 +29,22 @@ import {
   type RoomPuzzleState,
 } from '../utils/officePuzzleData';
 import {
+  loadRoomDonationBoxState,
   saveRoomDonationBoxState,
   type RoomDonationBoxState,
 } from '../utils/officeEconomyData';
+import {
+  advanceDonationCaseByTime,
+  calculateAbbotTheftMeritPenalty,
+  calculateStealAmountVnd,
+  ensureUserLedger,
+  isAbbotNickname,
+  resolveSuspectByInput,
+  toPublicDonationCaseView,
+  type DonationCaseServerRecord,
+  type RoomEconomyLedger,
+} from '../utils/donationCaseEngine';
+import { getNowInHoChiMinh } from '../utils/dateVn';
 
 interface StoredAccount {
   userId: string;
@@ -49,6 +62,7 @@ interface StoredRoomMember {
   nickname: string;
   avatarGender: AvatarGender;
   memberTag: string;
+  hasPassword?: boolean;
   joinedAt: string;
   lastSeenAt: string;
 }
@@ -81,6 +95,8 @@ interface StaticDatabaseSchema {
   roomGiftRequests?: Record<string, CatGiftRequest[]>;
   roomPuzzles?: Record<string, RoomPuzzleState>;
   roomDonationBoxes?: Record<string, RoomDonationBoxState>;
+  roomDonationCases?: Record<string, DonationCaseServerRecord>;
+  roomEconomyLedgers?: Record<string, RoomEconomyLedger>;
 }
 
 const STATIC_DB_KEY = 'van_phong_ao_static_db_v3';
@@ -330,6 +346,46 @@ function purgeDeprecatedAccounts(db: StaticDatabaseSchema): void {
     }
   }
 
+  // Chỉ giữ những tài khoản đã đăng ký có mật khẩu; xóa tài khoản không có mật khẩu khỏi phòng
+  const passwordProtectedUserIds = new Set<string>();
+  for (const [token, acc] of Object.entries(db.accounts || {})) {
+    if (!acc.password || !acc.password.trim()) {
+      removedUserIds.add(acc.userId);
+      delete db.accounts[token];
+    } else {
+      passwordProtectedUserIds.add(acc.userId);
+    }
+  }
+  for (const m of db.roomMembers || []) {
+    if (m.hasPassword === true) {
+      passwordProtectedUserIds.add(m.userId);
+    } else if (!passwordProtectedUserIds.has(m.userId)) {
+      removedUserIds.add(m.userId);
+    }
+  }
+
+  // Mỗi phòng chỉ cho phép tên nhân vật duy nhất (xóa các bản ghi trùng tên)
+  for (const room of Object.values(db.rooms || {})) {
+    const seenNicks = new Set<string>();
+    const roomList = (db.roomMembers || []).filter(
+      (m) => m.roomId === room.id && !removedUserIds.has(m.userId)
+    );
+    // Ưu tiên giữ trưởng phòng trước
+    roomList.sort((a, b) => {
+      if (a.userId === room.managerUserId) return -1;
+      if (b.userId === room.managerUserId) return 1;
+      return a.joinedAt.localeCompare(b.joinedAt);
+    });
+    for (const m of roomList) {
+      const nickKey = m.nickname.trim().toLowerCase();
+      if (seenNicks.has(nickKey)) {
+        removedUserIds.add(m.userId);
+      } else {
+        seenNicks.add(nickKey);
+      }
+    }
+  }
+
   if (removedUserIds.size === 0) return;
 
   db.roomMembers = db.roomMembers.filter((m) => !removedUserIds.has(m.userId));
@@ -551,6 +607,33 @@ function mergeRemoteDatabase(
         };
       }
       saveRoomDonationBoxState(rCode, local.roomDonationBoxes[rCode]);
+    }
+  }
+
+  if (remoteDb.roomDonationCases) {
+    if (!local.roomDonationCases) local.roomDonationCases = {};
+    for (const [rCode, remoteCase] of Object.entries(remoteDb.roomDonationCases)) {
+      if (!remoteCase) continue;
+      const cur = local.roomDonationCases[rCode];
+      if (
+        !cur ||
+        remoteCase.id !== cur.id ||
+        remoteCase.currentPhase > cur.currentPhase ||
+        (remoteCase.status !== 'investigating' && cur.status === 'investigating') ||
+        (remoteCase.policeReportedAt && !cur.policeReportedAt)
+      ) {
+        local.roomDonationCases[rCode] = remoteCase;
+      }
+    }
+  }
+
+  if (remoteDb.roomEconomyLedgers) {
+    if (!local.roomEconomyLedgers) local.roomEconomyLedgers = {};
+    for (const [rCode, remoteLedger] of Object.entries(remoteDb.roomEconomyLedgers)) {
+      if (!remoteLedger) continue;
+      if (!local.roomEconomyLedgers[rCode]) {
+        local.roomEconomyLedgers[rCode] = remoteLedger;
+      }
     }
   }
 
@@ -1231,6 +1314,7 @@ export async function handleStaticFallbackRequest<T>(
         nickname: account.nickname,
         avatarGender: account.avatarGender,
         memberTag: account.memberTag,
+        hasPassword: Boolean(account.password?.trim()),
         joinedAt: nowIso,
         lastSeenAt: nowIso,
       };
@@ -1238,6 +1322,7 @@ export async function handleStaticFallbackRequest<T>(
     } else {
       member.nickname = account.nickname;
       member.avatarGender = account.avatarGender;
+      member.hasPassword = Boolean(account.password?.trim()) || member.hasPassword;
       member.lastSeenAt = nowIso;
     }
 
@@ -1533,10 +1618,6 @@ export async function handleStaticFallbackRequest<T>(
     db.roomMembers = db.roomMembers.filter(
       (m) => !(m.roomId === room.id && m.userId === account.userId)
     );
-    if (room.managerUserId === account.userId) {
-      const nextMgr = db.roomMembers.find((m) => m.roomId === room.id);
-      room.managerUserId = nextMgr ? nextMgr.userId : null;
-    }
     saveStaticDb(db);
 
     const roomState = buildRoomStatePayload(db, room);
@@ -1725,6 +1806,21 @@ export async function handleStaticFallbackRequest<T>(
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       throw createApiError(400, 'INVALID_DATE', 'Định dạng ngày không hợp lệ (YYYY-MM-DD).');
     }
+    const todayStr = getNowInHoChiMinh().dateStr;
+    if (date > todayStr) {
+      throw createApiError(
+        400,
+        'FUTURE_DATE_NOT_ALLOWED',
+        'Không được chấm công cho ngày trong tương lai!'
+      );
+    }
+    if (date < todayStr) {
+      throw createApiError(
+        400,
+        'PAST_DATE_LOCKED',
+        'Chỉ được chấm công đúng ngày đi làm hôm nay!'
+      );
+    }
     if (!['none', 'full', 'half', 'off'].includes(status)) {
       throw createApiError(400, 'INVALID_STATUS', 'Trạng thái chấm công không hợp lệ.');
     }
@@ -1742,6 +1838,292 @@ export async function handleStaticFallbackRequest<T>(
     }
 
     return { record: db.attendance[key] } as unknown as T;
+  }
+
+  // ==================== VỤ ÁN HÒM CÔNG ĐỨC ====================
+  if (subPath.startsWith('donation-case')) {
+    if (!db.roomDonationBoxes) db.roomDonationBoxes = {};
+    if (!db.roomDonationCases) db.roomDonationCases = {};
+    if (!db.roomEconomyLedgers) db.roomEconomyLedgers = {};
+    if (!db.roomDonationBoxes[room.code]) {
+      db.roomDonationBoxes[room.code] = loadRoomDonationBoxState(room.code);
+    }
+    if (!db.roomEconomyLedgers[room.code]) {
+      db.roomEconomyLedgers[room.code] = { users: {}, abbotStealCount: 0 };
+    }
+
+    const ledger = db.roomEconomyLedgers[room.code];
+    const box = db.roomDonationBoxes[room.code];
+    const roomMembersList = db.roomMembers
+      .filter((m) => m.roomId === room.id)
+      .map((m) => ({
+        userId: m.userId,
+        nickname: m.nickname,
+        memberTag: m.memberTag,
+        avatarGender: m.avatarGender,
+        inZenRoom: Boolean(db.activeZenMembers?.[`${room.id}:${m.userId}`]),
+      }));
+
+    const postNpcChat = (content: string, dedupKey?: string) => {
+      const msgId = dedupKey || `npc_${randomHex(6)}`;
+      if (db.messages.some((m) => m.id === msgId)) return;
+      const npcMsg: ChatMessage = {
+        id: msgId,
+        roomId: room.id,
+        userId: 'npc_police',
+        nickname: '🚓 Cảnh sát Văn phòng (NPC)',
+        memberTag: '#NPC0',
+        clientMsgId: msgId,
+        content,
+        createdAt: new Date().toISOString(),
+        status: 'sent',
+      };
+      db.messages.push(npcMsg);
+      if (db.messages.length > 500) {
+        db.messages = db.messages.slice(-500);
+      }
+      emitRealtimeEvent(db, room, {
+        type: 'chat_message',
+        message: npcMsg,
+      });
+    };
+
+    const runTick = (): boolean => {
+      const curCase = db.roomDonationCases?.[room.code];
+      if (!curCase) return false;
+      const changed = advanceDonationCaseByTime(curCase, Date.now(), {
+        onPostNpcChat: (text) => postNpcChat(text),
+        onAdjustDonationBox: (deltaVnd) => {
+          box.totalVnd = Math.max(0, box.totalVnd + deltaVnd);
+          box.updatedAt = Date.now();
+          saveRoomDonationBoxState(room.code, box);
+          emitRealtimeEvent(db, room, {
+            type: 'donation_box_sync',
+            donationBox: box,
+          });
+        },
+        getUserLedger: (uid) => ensureUserLedger(ledger, uid),
+      });
+      if (changed) {
+        saveStaticDb(db);
+        emitRealtimeEvent(db, room, {
+          type: 'donation_case_sync',
+          caseId: curCase.id,
+          status: curCase.status,
+          currentPhase: curCase.currentPhase,
+        });
+      }
+      return changed;
+    };
+
+    runTick();
+    const myLedger = ensureUserLedger(ledger, account.userId);
+    const activeCase = db.roomDonationCases[room.code] || null;
+
+    if (subPath === 'donation-case' && method === 'GET') {
+      return {
+        caseView: toPublicDonationCaseView(
+          activeCase,
+          account.userId,
+          memberRecord.nickname,
+          roomMembersList
+        ),
+        myLedger,
+      } as unknown as T;
+    }
+
+    if (subPath === 'donation-case/tick' && method === 'POST') {
+      return {
+        caseView: toPublicDonationCaseView(
+          activeCase,
+          account.userId,
+          memberRecord.nickname,
+          roomMembersList
+        ),
+        myLedger,
+      } as unknown as T;
+    }
+
+    if (subPath === 'donation-case/steal' && method === 'POST') {
+      const isInZen = Boolean(db.activeZenMembers?.[`${room.id}:${account.userId}`]);
+      if (!isInZen) {
+        throw createApiError(
+          403,
+          'NOT_IN_ZEN_ROOM',
+          'Bạn phải đang ở trong Phòng Tịnh Tâm mới có thể trộm hòm công đức!'
+        );
+      }
+      if (
+        activeCase &&
+        (activeCase.status === 'stolen_unreported' || activeCase.status === 'investigating')
+      ) {
+        throw createApiError(
+          409,
+          'CASE_ALREADY_ACTIVE',
+          'Hòm công đức đang có một vụ trộm chưa kết thúc!'
+        );
+      }
+      if (box.totalVnd <= 0) {
+        throw createApiError(400, 'EMPTY_DONATION_BOX', 'Hòm công đức đang trống!');
+      }
+
+      const stolenAmountVnd = calculateStealAmountVnd(box.totalVnd);
+      box.totalVnd = Math.max(0, box.totalVnd - stolenAmountVnd);
+      box.updatedAt = Date.now();
+      saveRoomDonationBoxState(room.code, box);
+
+      // Cộng xu vào ví kẻ trộm (khấu trừ nợ trước nếu có)
+      const thiefEntry = ensureUserLedger(ledger, account.userId);
+      if (thiefEntry.pendingDebtVnd > 0) {
+        const paid = Math.min(thiefEntry.pendingDebtVnd, stolenAmountVnd);
+        thiefEntry.pendingDebtVnd -= paid;
+        thiefEntry.balanceVnd += stolenAmountVnd - paid;
+      } else {
+        thiefEntry.balanceVnd += stolenAmountVnd;
+      }
+
+      // Tìm chủ trì của phòng và trừ công đức nhân đôi theo số lần bị trộm
+      const abbotMember = roomMembersList.find((m) => isAbbotNickname(m.nickname));
+      ledger.abbotStealCount = (ledger.abbotStealCount || 0) + 1;
+      const abbotPenalty = calculateAbbotTheftMeritPenalty(ledger.abbotStealCount);
+      if (abbotMember) {
+        const abbotEntry = ensureUserLedger(ledger, abbotMember.userId);
+        abbotEntry.meritCount = Math.max(0, abbotEntry.meritCount - abbotPenalty);
+      }
+
+      const newCase: DonationCaseServerRecord = {
+        id: `case_${randomHex(6)}`,
+        roomId: room.id,
+        roomCode: room.code,
+        status: 'stolen_unreported',
+        stolenAmountVnd,
+        stolenAt: Date.now(),
+        thiefSnapshot: {
+          userId: account.userId,
+          nickname: memberRecord.nickname,
+          memberTag: memberRecord.memberTag,
+          avatarGender: memberRecord.avatarGender,
+        },
+        abbotUserId: abbotMember?.userId || null,
+        abbotMeritLostOnTheft: abbotPenalty,
+        stealSequenceNumber: ledger.abbotStealCount,
+        policeReportedAt: null,
+        currentPhase: 0,
+        publishedClues: [],
+        votesByRound: {},
+        scopeUserIds: [],
+        settlementDone: false,
+        settlementSummary: null,
+        resolvedAt: null,
+      };
+      db.roomDonationCases[room.code] = newCase;
+      saveStaticDb(db);
+
+      postNpcChat(
+        `🚨 [VỤ ÁN CÔNG ĐỨC] Hòm công đức vừa bị trộm! Đã mất ${stolenAmountVnd.toLocaleString('vi-VN')} xu Office.`,
+        `npc_stolen_${newCase.id}`
+      );
+      emitRealtimeEvent(db, room, { type: 'donation_box_sync', donationBox: box });
+      emitRealtimeEvent(db, room, { type: 'donation_case_sync', caseId: newCase.id });
+
+      return {
+        caseView: toPublicDonationCaseView(
+          newCase,
+          account.userId,
+          memberRecord.nickname,
+          roomMembersList
+        ),
+        myLedger: thiefEntry,
+        stolenAmountVnd,
+      } as unknown as T;
+    }
+
+    if (subPath === 'donation-case/report' && method === 'POST') {
+      if (!isAbbotNickname(memberRecord.nickname)) {
+        throw createApiError(
+          403,
+          'FORBIDDEN_ABBOT_ONLY',
+          'Chỉ Chủ trì (Trụ trì Thanh Ngọc) mới có quyền báo cảnh sát!'
+        );
+      }
+      if (!activeCase || activeCase.status !== 'stolen_unreported') {
+        throw createApiError(
+          409,
+          'NO_UNREPORTED_CASE',
+          'Không có vụ trộm mới nào đang chờ báo cảnh sát.'
+        );
+      }
+
+      // Chốt phạm vi những người đang có mặt trong Office lúc chủ trì báo cảnh sát (gồm cả chủ trì)
+      const nowMs = Date.now();
+      const onlineIds = db.roomMembers
+        .filter((m) => m.roomId === room.id && nowMs - Date.parse(m.lastSeenAt) < 120_000)
+        .map((m) => m.userId);
+      if (!onlineIds.includes(account.userId)) onlineIds.push(account.userId);
+      if (activeCase.thiefSnapshot.userId && !onlineIds.includes(activeCase.thiefSnapshot.userId)) {
+        onlineIds.push(activeCase.thiefSnapshot.userId);
+      }
+
+      activeCase.status = 'investigating';
+      activeCase.policeReportedAt = nowMs;
+      activeCase.currentPhase = 0;
+      activeCase.scopeUserIds = Array.from(new Set(onlineIds));
+      saveStaticDb(db);
+
+      postNpcChat(
+        `🚔 [VỤ ÁN CÔNG ĐỨC] Cảnh sát NPC đã tiếp nhận trình báo! Manh mối 1 sẽ được công bố sau 5 phút. Mọi người hãy thảo luận tại đây và mở Bảng vụ án để theo dõi.`,
+        `npc_reported_${activeCase.id}`
+      );
+      emitRealtimeEvent(db, room, { type: 'donation_case_sync', caseId: activeCase.id });
+
+      return {
+        caseView: toPublicDonationCaseView(
+          activeCase,
+          account.userId,
+          memberRecord.nickname,
+          roomMembersList
+        ),
+        myLedger,
+      } as unknown as T;
+    }
+
+    if (subPath === 'donation-case/vote' && method === 'POST') {
+      if (!activeCase || activeCase.status !== 'investigating') {
+        throw createApiError(409, 'CASE_NOT_INVESTIGATING', 'Vụ án chưa mở điều tra hoặc đã kết thúc.');
+      }
+      if (activeCase.currentPhase < 1 || activeCase.currentPhase > 5) {
+        throw createApiError(400, 'VOTING_NOT_OPEN_YET', 'Chưa tới thời gian mở bình chọn (Manh mối 1 mở ở phút thứ 5).');
+      }
+      const suspectInput = typeof body.suspectName === 'string' ? body.suspectName : '';
+      const resolved = resolveSuspectByInput(roomMembersList, suspectInput);
+      if (!resolved.ok) {
+        throw createApiError(
+          resolved.code === 'AMBIGUOUS' ? 409 : 404,
+          resolved.code,
+          resolved.message
+        );
+      }
+
+      const round = activeCase.currentPhase;
+      if (!activeCase.votesByRound[round]) activeCase.votesByRound[round] = {};
+      activeCase.votesByRound[round][account.userId] = resolved.member.userId;
+      saveStaticDb(db);
+
+      emitRealtimeEvent(db, room, {
+        type: 'donation_case_sync',
+        caseId: activeCase.id,
+      });
+
+      return {
+        caseView: toPublicDonationCaseView(
+          activeCase,
+          account.userId,
+          memberRecord.nickname,
+          roomMembersList
+        ),
+        myLedger,
+      } as unknown as T;
+    }
   }
 
   if (subPath === 'diary' && method === 'GET') {

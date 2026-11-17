@@ -427,11 +427,11 @@ interface EntertainmentRoomModalProps {
   meritCount: number;
   onSpendMerit: (amount: number) => boolean;
   walletBalanceVnd: number;
-  onSpendMoney: (amountVnd: number) => boolean;
+  onSpendMoney: (amountVnd: number) => Promise<boolean>;
   unlockedDogs: boolean;
   ownedPets: OfficeCatProfile[];
-  onUnlockDogs: () => { ok: boolean; error?: string };
-  onBuyDogPet: (breedId: CatBreedId, petName: string) => { ok: boolean; error?: string };
+  onUnlockDogs: () => Promise<{ ok: boolean; error?: string }>;
+  onBuyDogPet: (breedId: CatBreedId, petName: string) => Promise<{ ok: boolean; error?: string }>;
   onSwitchActivePet: (petId: string) => void;
   roomCats: Record<string, OfficeCatProfile>;
   myCatInventory: Record<string, number>;
@@ -1748,7 +1748,7 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
     setCatNotice(`🧶 Chơi đùa cùng ${myCat.catName} (+18% Vui)!`);
   };
 
-  const handleConfirmBuyShopItem = () => {
+  const handleConfirmBuyShopItem = async () => {
     if (!pendingShopBuyItem) return;
     const item = pendingShopBuyItem;
     if (item.isPremium && item.priceVnd && item.priceVnd > 0) {
@@ -1757,7 +1757,7 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
         setPendingShopBuyItem(null);
         return;
       }
-      const ok = onSpendMoney(item.priceVnd);
+      const ok = await onSpendMoney(item.priceVnd);
       if (!ok) return;
     } else {
       if (meritCount < item.priceMerit) {
@@ -2532,8 +2532,8 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
                         {!unlockedDogs ? (
                           <button
                             type="button"
-                            onClick={() => {
-                              const res = onUnlockDogs();
+                            onClick={async () => {
+                              const res = await onUnlockDogs();
                               if (res.ok) {
                                 setCatNotice('🎉 Đã mở khóa mục Chó! Bạn có thể mua các giống chó bên dưới.');
                               } else {
@@ -2578,8 +2578,8 @@ export const EntertainmentRoomModal: React.FC<EntertainmentRoomModalProps> = ({
                               </div>
                               <button
                                 type="button"
-                                onClick={() => {
-                                  const res = onBuyDogPet(previewPet.id, dogNameDraft);
+                                onClick={async () => {
+                                  const res = await onBuyDogPet(previewPet.id, dogNameDraft);
                                   if (res.ok) {
                                     setDogNameDraft('');
                                     setCatNotice(
