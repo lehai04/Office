@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import type { OfficeAction, OfficeDecoration, ScenePoint } from '../utils/officeShop';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Html, OrbitControls, ContactShadows } from '@react-three/drei';
 import * as THREE from 'three';
@@ -27,6 +28,13 @@ export interface ActiveSpeechBubble {
 }
 
 interface OfficeScene3DProps {
+  walkTarget: ScenePoint | null;
+  decorations: OfficeDecoration[];
+  outfit: boolean;
+  action: OfficeAction | null;
+  offeringVisible: boolean;
+  onFloorClick: (point: ScenePoint) => void;
+  onDeskClick?: (point: ScenePoint) => void;
   currentUserId: string;
   members: RoomMember[];
   seats: WorkSeat[];
@@ -389,6 +397,8 @@ const LowPolyCharacter: React.FC<{
   position: [number, number, number];
   rotationY: number;
   bubbleText?: string;
+  outfit?: boolean;
+  action?: OfficeAction | null;
   duplicateNicknameCount: number;
 }> = ({
   gender,
@@ -403,10 +413,14 @@ const LowPolyCharacter: React.FC<{
   position,
   rotationY,
   bubbleText,
+  outfit,
+  action,
   duplicateNicknameCount,
 }) => {
   const upperBodyRef = useRef<THREE.Group>(null);
   const bowStartRef = useRef<number>(0);
+  const actorRef = useRef<THREE.Group>(null);
+  const startPosition = useRef(position);
 
   useEffect(() => {
     if (isBowing) {
@@ -416,7 +430,17 @@ const LowPolyCharacter: React.FC<{
     }
   }, [isBowing]);
 
-  useFrame(() => {
+  useFrame(({ clock }, delta) => {
+    const actor = actorRef.current;
+    if (actor) {
+      const [x, y, z] = position;
+      const distance = Math.hypot(x - actor.position.x, y - actor.position.y, z - actor.position.z);
+      const step = action || isSeated || distance > 18 ? 1 : Math.min(1, (delta * 5) / Math.max(distance, 0.001));
+      actor.position.x += (x - actor.position.x) * step;
+      actor.position.y += (y - actor.position.y) * step;
+      actor.position.z += (z - actor.position.z) * step;
+      actor.rotation.z = action === 'dance' ? Math.sin(clock.elapsedTime * 9) * 0.18 : action === 'headstand' ? Math.PI : 0;
+    }
     if (!upperBodyRef.current) return;
     if (isBowing) {
       const elapsed = (performance.now() - bowStartRef.current) / 1000;
@@ -428,7 +452,7 @@ const LowPolyCharacter: React.FC<{
   });
 
   const shirtColor =
-    gender === 'male'
+    outfit ? '#a855f7' : gender === 'male'
       ? isCurrentUser
         ? '#10b981'
         : '#3b82f6'
@@ -457,7 +481,8 @@ const LowPolyCharacter: React.FC<{
       : normalizedNickname;
 
   return (
-    <group position={position} rotation={[0, rotationY, 0]}>
+    <group ref={actorRef} position={startPosition.current} rotation={[0, rotationY, 0]}>
+      <group position-y={action === 'headstand' ? -1.65 : 0}>
       {!hideMeshInFpv && (
         <>
           {/* Đài sen hồng 2 tầng cánh nở dưới chân Trụ trì Thanh Ngọc */}
@@ -702,6 +727,7 @@ const LowPolyCharacter: React.FC<{
           </div>
         </Html>
       )}
+      </group>
     </group>
   );
 };
@@ -712,6 +738,7 @@ const LowPolyCharacter: React.FC<{
 const ZenSanctuaryRoom3D: React.FC<{
   selectedDeity: DeityType;
   incenseLit: boolean;
+  offeringVisible: boolean;
   moPulseKey: number;
   floatingMeritText: string | null;
   onStrikeMo: () => void;
@@ -721,6 +748,7 @@ const ZenSanctuaryRoom3D: React.FC<{
 }> = ({
   selectedDeity,
   incenseLit,
+  offeringVisible,
   moPulseKey,
   floatingMeritText,
   onStrikeMo,
@@ -1057,6 +1085,15 @@ const ZenSanctuaryRoom3D: React.FC<{
             <meshStandardMaterial color="#d97706" metalness={0.6} roughness={0.35} />
           </mesh>
           {/* 3 nén nhang cháy đỏ khi thắp nhang */}
+          {offeringVisible && (
+            <group position={[0.38, 0.05, 0]}>
+              <mesh><cylinderGeometry args={[0.17, 0.14, 0.035, 16]} /><meshStandardMaterial color="#fde68a" /></mesh>
+              {[-0.09, 0, 0.09].map((x, index) => (
+                <mesh key={x} position={[x, 0.072, 0]}><sphereGeometry args={[0.055, 10, 8]} />
+                  <meshStandardMaterial color={['#ef4444', '#fb923c', '#84cc16'][index]} /></mesh>
+              ))}
+            </group>
+          )}
           {incenseLit && (
             <group>
               {[-0.06, 0, 0.06].map((xOffset, idx) => (
@@ -1264,12 +1301,13 @@ const EntertainmentRoom3D: React.FC<{
  * Bàn và ghế làm việc cố định (8 vị trí đăng ký)
  */
 const WorkDeskUnit: React.FC<{
+  onDeskClick?: (point: ScenePoint) => void;
   layout: SeatTransform;
   seatData?: WorkSeat;
   currentUserId: string;
   onSelectSeat: (seatId: string) => void;
   isClaiming: boolean;
-}> = ({ layout, seatData, currentUserId, onSelectSeat, isClaiming }) => {
+}> = ({ layout, seatData, currentUserId, onSelectSeat, isClaiming, onDeskClick }) => {
   const [hovered, setHovered] = useState(false);
   const occupiedBy = seatData?.occupiedByUserId ?? null;
   const isMine = occupiedBy === currentUserId;
@@ -1286,7 +1324,10 @@ const WorkDeskUnit: React.FC<{
   return (
     <group>
       <group position={layout.deskPosition} rotation={[0, layout.deskRotationY, 0]}>
-        <mesh position={[0, 0.72, 0]} castShadow receiveShadow>
+        <mesh position={[0, 0.72, 0]} castShadow receiveShadow onClick={onDeskClick ? (e) => {
+          e.stopPropagation();
+          onDeskClick([e.point.x, layout.deskPosition[1] + 0.755, e.point.z]);
+        } : undefined}>
           <boxGeometry args={[1.72, 0.07, 0.85]} />
           <meshStandardMaterial color="#f8fafc" roughness={0.5} />
         </mesh>
@@ -1974,6 +2015,13 @@ const OutdoorCatCourtyard3D: React.FC<{
 };
 
 export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
+  walkTarget,
+  decorations,
+  outfit,
+  action,
+  offeringVisible,
+  onFloorClick,
+  onDeskClick,
   currentUserId,
   members,
   seats,
@@ -2075,6 +2123,9 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
         };
       }
 
+      if (member.userId === currentUserId && walkTarget) {
+        return { member, isSeated: false, position: walkTarget, rotationY: 0 };
+      }
       if (member.meetingChairId && meetingChairMap.has(member.meetingChairId)) {
         const mChair = meetingChairMap.get(member.meetingChairId)!;
         return {
@@ -2112,7 +2163,7 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
         rotationY: slot.rotationY,
       };
     });
-  }, [members, currentUserId, inZenRoom, inGameRoom, abbotAtDonationDesk]);
+  }, [members, currentUserId, inZenRoom, inGameRoom, abbotAtDonationDesk, walkTarget]);
 
   const myPlacement = useMemo(() => {
     const found = characterPlacements.find((p) => p.member.userId === currentUserId);
@@ -2224,6 +2275,7 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
           <ZenSanctuaryRoom3D
             selectedDeity={selectedDeity}
             incenseLit={incenseLit}
+            offeringVisible={offeringVisible}
             moPulseKey={moPulseKey}
             floatingMeritText={floatingMeritText}
             onStrikeMo={onStrikeMo}
@@ -2245,10 +2297,26 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
           />
 
           {/* SÀN PHÒNG VĂN PHÒNG CHÍNH (16.0m x 10.8m) */}
-          <mesh position={[0, -0.08, 0]} receiveShadow>
+          <mesh position={[0, -0.08, 0]} receiveShadow onClick={(e) => {
+            e.stopPropagation();
+            onFloorClick([e.point.x, 0, e.point.z]);
+          }}>
             <boxGeometry args={[16.0, 0.16, 10.8]} />
             <meshStandardMaterial color="#f1f5f9" roughness={0.88} />
           </mesh>
+          {decorations.map(({ id, item, position }) => (
+            <group key={id} position={position}>
+              <mesh position={[0, item === 'plant' ? 0.13 : 0.045, 0]} castShadow>
+                <boxGeometry args={item === 'computer' ? [0.44, 0.09, 0.3] : [0.23, item === 'plant' ? 0.26 : 0.09, 0.23]} />
+                <meshStandardMaterial color={item === 'plant' ? '#92400e' : '#334155'} />
+              </mesh>
+              <mesh position={[0, item === 'plant' ? 0.42 : 0.27, item === 'computer' ? -0.12 : 0]} castShadow>
+                {item === 'plant' ? <sphereGeometry args={[0.21, 10, 8]} /> :
+                  item === 'lamp' ? <coneGeometry args={[0.15, 0.2, 12]} /> : <boxGeometry args={[0.46, 0.33, 0.045]} />}
+                <meshStandardMaterial color={item === 'plant' ? '#15803d' : item === 'lamp' ? '#fbbf24' : '#0284c7'} />
+              </mesh>
+            </group>
+          ))}
 
           {/* TƯỜNG BAO QUANH MẢNH */}
           <mesh position={[0, 0.9, -5.35]} receiveShadow castShadow>
@@ -2470,6 +2538,7 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
                 seatData={seatData}
                 currentUserId={currentUserId}
                 onSelectSeat={onSelectSeat}
+                onDeskClick={onDeskClick}
                 isClaiming={claimingSeatId === layout.seatId}
               />
             );
@@ -2492,6 +2561,8 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
                 isOnline={member.online}
                 isSeated={isSeated}
                 isBowing={isMe && isBowing}
+                outfit={isMe && outfit}
+                action={isMe ? action : null}
                 hideMeshInFpv={isMe && cameraMode === 'first_person'}
                 position={position}
                 rotationY={rotationY}

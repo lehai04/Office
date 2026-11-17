@@ -18,6 +18,8 @@ import {
   ChevronUp,
 } from 'lucide-react';
 import { OfficeScene3D, type ActiveSpeechBubble } from './components/OfficeScene3D';
+import { OfficeShopModal } from './components/OfficeShopModal';
+import { EMPTY_OFFICE_SHOP, OFFICE_SHOP, type DecorationItem, type OfficeAction, type OfficeShopState, type ScenePoint, type ShopItem } from './utils/officeShop';
 import { EntryModal } from './components/EntryModal';
 import { SeatSelectorModal } from './components/SeatSelectorModal';
 import { ChatDrawer, formatChatPreviewText } from './components/ChatDrawer';
@@ -167,7 +169,12 @@ export function App() {
       return 30;
     }
   });
-  const [incenseLit, setIncenseLit] = useState<boolean>(true);
+  const [incenseLit, setIncenseLit] = useState(false);
+  const [shopOpen, setShopOpen] = useState(false);
+  const [placingItem, setPlacingItem] = useState<DecorationItem | null>(null);
+  const [walkTarget, setWalkTarget] = useState<ScenePoint | null>(null);
+  const [officeAction, setOfficeAction] = useState<OfficeAction | null>(null);
+  const [offeringUntil, setOfferingUntil] = useState(0);
   const [isBowing, setIsBowing] = useState<boolean>(false);
   const [autoMo, setAutoMo] = useState<boolean>(false);
   // Game mặc định tắt âm thanh theo yêu cầu
@@ -249,8 +256,26 @@ export function App() {
 
   // State tạo mật khẩu cho tài khoản cũ chưa có mật khẩu
   const [newPasswordDraft, setNewPasswordDraft] = useState<string>('');
+  const [changingPassword, setChangingPassword] = useState(false);
   const [savingPassword, setSavingPassword] = useState<boolean>(false);
   const [passwordPromptError, setPasswordPromptError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!incenseLit) return;
+    const timer = window.setTimeout(() => setIncenseLit(false), 60_000);
+    return () => window.clearTimeout(timer);
+  }, [incenseLit]);
+
+  useEffect(() => {
+    if (!offeringUntil) return;
+    const timer = window.setTimeout(() => setOfferingUntil(0), Math.max(0, offeringUntil - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [offeringUntil]);
+
+  useEffect(() => {
+    if (!officeAction) return;
+    const timer = window.setTimeout(() => setOfficeAction(null), 3_000);
+    return () => window.clearTimeout(timer);
+  }, [officeAction]);
 
   // Thông báo tin nhắn nổi toàn cục (hiện dù đang ở bất kỳ phòng/game/tab nào)
   const [chatAlertBanner, setChatAlertBanner] = useState<{
@@ -1662,6 +1687,7 @@ export function App() {
       await setAccountPasswordApi(room.code, trimmed, session.sessionToken);
       setSession({ ...session, hasPassword: true });
       setNewPasswordDraft('');
+      setChangingPassword(false);
       showToast('🔐 Đã lưu mật khẩu & ghi nhớ trên thiết bị của bạn!');
     } catch (err) {
       setPasswordPromptError(
@@ -1954,6 +1980,13 @@ export function App() {
   };
 
   const handleLogoutOrSwitch = async () => {
+    setChangingPassword(false);
+    setShopOpen(false);
+    setPlacingItem(null);
+    setWalkTarget(null);
+    setOfficeAction(null);
+    setIncenseLit(false);
+    setOfferingUntil(0);
     setPushConnected(false);
     setPushStatus('');
     const subscription = await swRegistrationRef.current?.pushManager?.getSubscription().catch(() => null);
@@ -2050,16 +2083,86 @@ export function App() {
     setActivePanel((prev) => (prev === panel ? 'none' : panel));
   };
 
+  const shop = userWallet.shop ?? EMPTY_OFFICE_SHOP;
+  const updateShop = (next: OfficeShopState, charge = 0) => {
+    const wallet = { ...userWallet, shop: next, balanceVnd: userWallet.balanceVnd - charge, updatedAt: Date.now() };
+    saveUserWalletState(room.code, session.userId, wallet);
+    setUserWallet(wallet);
+  };
+  const buyItem = (id: ShopItem) => {
+    const item = OFFICE_SHOP[id];
+    const quantity = shop.inventory[id] ?? 0;
+    if (userWallet.balanceVnd < item.price || (quantity && (item.kind === 'equip' || item.kind === 'action'))) return;
+    updateShop({ ...shop, inventory: { ...shop.inventory, [id]: quantity + 1 } }, item.price);
+    showToast(`Đã mua ${item.name}.`);
+  };
+  const placeItem = (position: ScenePoint) => {
+    if (!placingItem || !(shop.inventory[placingItem] ?? 0)) return;
+    if (shop.decorations.some((item) => Math.hypot(...item.position.map((value, index) => value - position[index])) < 0.3)) {
+      showToast('Chỗ này đã có đồ trang trí.');
+      return;
+    }
+    updateShop({
+      ...shop,
+      inventory: { ...shop.inventory, [placingItem]: (shop.inventory[placingItem] ?? 0) - 1 },
+      decorations: [...shop.decorations, { id: crypto.randomUUID(), item: placingItem, position }],
+    });
+    setPlacingItem(null);
+  };
+  const useItem = (id: ShopItem) => {
+    const quantity = shop.inventory[id] ?? 0;
+    if (!quantity) return;
+    if (id === 'outfit') {
+      updateShop({ ...shop, outfit: shop.outfit ? undefined : 'outfit' });
+      return;
+    }
+    if (id === 'dance' || id === 'headstand') {
+      setOfficeAction(id);
+      setShopOpen(false);
+      return;
+    }
+    if (id === 'computer' || id === 'plant' || id === 'lamp') {
+      setPlacingItem(id);
+      setCameraMode('overview');
+      setActivePanel('none');
+      setShopOpen(false);
+      return;
+    }
+    if (activePanel !== 'zen') {
+      showToast('Vào phòng Tịnh Tâm để sử dụng vật phẩm này.');
+      return;
+    }
+    if (id === 'incense' && incenseLit) {
+      showToast('Nhang đang cháy.');
+      return;
+    }
+    updateShop({ ...shop, inventory: { ...shop.inventory, [id]: quantity - 1 } });
+    if (id === 'incense') setIncenseLit(true);
+    else setOfferingUntil(Date.now() + 45_000);
+    setShopOpen(false);
+    showToast(id === 'incense' ? 'Đã thắp một cây nhang.' : 'Đã dâng mâm trái cây.');
+  };
+
   return (
     <main className="relative h-[100dvh] w-screen overflow-hidden select-none bg-slate-950">
       {/* CẢNH PHÒNG 3D CHÍNH & GIAN PHÒNG TỊNH TÂM 3D */}
       <OfficeScene3D
+        walkTarget={walkTarget}
+        decorations={shop.decorations}
+        outfit={Boolean(shop.outfit)}
+        action={officeAction}
+        offeringVisible={offeringUntil > 0}
+        onFloorClick={(point) => {
+          if (placingItem) placeItem(point);
+          else if (activePanel === 'none' && cameraMode === 'overview') setWalkTarget(point);
+        }}
+        onDeskClick={placingItem ? placeItem : undefined}
         currentUserId={session.userId}
         members={members}
         seats={seats}
         activeBubbles={activeBubbles}
-        onSelectSeat={handleSelectSeat}
-        onSelectMeetingChair={handleSelectMeetingChair}
+        onSelectSeat={(seatId) => { setWalkTarget(null); void handleSelectSeat(seatId); }}
+        onSelectMeetingChair={(chairId) => { setWalkTarget(null); void handleSelectMeetingChair(chairId); }}
         claimingSeatId={claimingSeatId}
         cameraMode={cameraMode}
         inZenRoom={activePanel === 'zen'}
@@ -2084,6 +2187,24 @@ export function App() {
         roomCats={roomCats}
         onPetCatIn3D={handlePetCatIn3D}
       />
+      {shopOpen && (
+        <OfficeShopModal balance={userWallet.balanceVnd} shop={shop} onClose={() => setShopOpen(false)}
+          onBuy={buyItem} onUse={useItem} onRemove={(id) => {
+            const decoration = shop.decorations.find((item) => item.id === id);
+            if (!decoration) return;
+            updateShop({
+              ...shop,
+              inventory: { ...shop.inventory, [decoration.item]: (shop.inventory[decoration.item] ?? 0) + 1 },
+              decorations: shop.decorations.filter((item) => item.id !== id),
+            });
+          }} />
+      )}
+      {placingItem && (
+        <div className="fixed inset-x-0 top-14 z-30 mx-auto flex w-fit items-center gap-3 rounded-xl bg-slate-900 px-3 py-2 text-sm text-white">
+          Chạm vào sàn hoặc mặt bàn để đặt {OFFICE_SHOP[placingItem].name.toLowerCase()}.
+          <button type="button" onClick={() => setPlacingItem(null)} className="rounded bg-white/15 px-2 py-1">Hủy</button>
+        </div>
+      )}
 
       {/* THANH TRÊN CÙNG SIÊU GỌN (Click vào nút Menu góc phải để xổ thêm chức năng, click lại để đóng) */}
       <header className="pointer-events-none fixed top-2 left-2 right-2 z-20 flex items-start justify-between gap-1.5">
@@ -2128,6 +2249,10 @@ export function App() {
             title="Cài đặt thông báo thiết bị (nhắc đi làm, chấm công, lạy Phật)"
           >
             {notificationPermission === 'granted' ? '🔔 Thông báo' : '🔔 Bật thông báo'}
+          </button>
+          <button type="button" onClick={() => setShopOpen(true)}
+            className="shrink-0 rounded-full bg-violet-500/25 px-2 py-1 text-[10px] font-bold text-violet-100">
+            🛒 Cửa hàng
           </button>
         </div>
 
@@ -2253,6 +2378,18 @@ export function App() {
                 type="button"
                 onClick={() => {
                   setTopMenuOpen(false);
+                  setNewPasswordDraft('');
+                  setPasswordPromptError(null);
+                  setChangingPassword(true);
+                }}
+                className="flex w-full items-center rounded-xl bg-white/5 px-2.5 py-1.5 text-slate-200 hover:bg-white/10"
+              >
+                Đổi mật khẩu tài khoản
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setTopMenuOpen(false);
                   handleLogoutOrSwitch();
                 }}
                 className="flex w-full items-center gap-1.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 px-2.5 py-1.5 font-semibold text-rose-300 cursor-pointer"
@@ -2266,7 +2403,7 @@ export function App() {
       </header>
 
       {/* THÔNG BÁO YÊU CẦU TẠO MẬT KHẨU RIÊNG CHO TÀI KHOẢN CHƯA CÓ MẬT KHẨU */}
-      {!session.hasPassword && (
+      {(!session.hasPassword || changingPassword) && (
         <div
           data-testid="create-password-prompt-modal"
           className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-md"
@@ -2276,6 +2413,10 @@ export function App() {
             className="w-full max-w-sm rounded-3xl border-2 border-amber-400/60 bg-slate-900 p-5 text-slate-100 shadow-2xl space-y-3.5"
           >
             <div className="space-y-1">
+              {changingPassword && (
+                <button type="button" onClick={() => setChangingPassword(false)}
+                  className="float-right rounded-lg bg-white/10 px-2 py-1 text-xs">Hủy</button>
+              )}
               <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-400/20 px-2.5 py-0.5 text-[11px] font-bold text-amber-300">
                 🔐 Cập nhật bảo mật tài khoản
               </div>
@@ -2533,7 +2674,10 @@ export function App() {
         onStrikeMo={handleStrikeMo}
         onRingBell={handleRingBell}
         onBow={handleBowToDeity}
-        onLightIncense={() => setIncenseLit((v) => !v)}
+        onLightIncense={() => {
+          if (shop.inventory.incense || incenseLit) useItem('incense');
+          else setShopOpen(true);
+        }}
         onToggleAutoMo={() => setAutoMo((v) => !v)}
         onToggleSound={() => setSoundEnabled((v) => !v)}
         zenCount={zenMembersCount}

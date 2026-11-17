@@ -1,5 +1,6 @@
 // Hệ thống Ví Tiền, Lương Chấm Công & Hòm Công Đức (src/utils/officeEconomyData.ts)
 import type { AttendanceStatus } from '../types/office';
+import type { OfficeShopState } from './officeShop';
 
 export const INITIAL_WALLET_BALANCE_VND = 5_000_000;
 export const WORK_HOURS_PER_DAY = 8;
@@ -9,6 +10,7 @@ export const HALF_DAY_WAGE_VND = FULL_DAY_WAGE_VND / 2; // 400.000đ/nửa ngày
 export const MIN_DONATION_MERIT = 10;
 
 export interface UserWalletState {
+  shop?: OfficeShopState;
   balanceVnd: number;
   settledMonths: string[]; // các tháng 'YYYY-MM' đã trả lương vào ví
   totalDonatedVnd: number;
