@@ -9,6 +9,12 @@ dist-ssr/
 .env
 .env.local
 .env.*.local
+.dev.vars
+.dev.vars.*
+
+# Cloudflare local state and rotating migration backups
+.wrangler/
+*.officebackup
 
 # Runtime database state
 server/data/db.json

@@ -1,6 +1,9 @@
 import { isUsingStaticFallback, officeApiUrl } from './officeApi';
 import type { AltarView } from '../utils/zenAltar';
 
+export const USE_OFFICE_WEBSOCKET = import.meta.env.VITE_OFFICE_WEBSOCKET === 'true';
+export const ALTAR_UPDATE_EVENT = 'office-altar-updated';
+
 export type AltarCommand =
   | { action: 'start'; kind: 'incense' | 'offering'; id: string; targetId?: string }
   | { action: 'clear' }

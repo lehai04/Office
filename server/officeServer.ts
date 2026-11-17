@@ -60,10 +60,12 @@ interface DatabaseSchema {
   diaryEntries: StoredDiaryEntry[];
   reminderDevices?: Record<string, ReminderDevice>;
   altars?: Record<string, RoomAltarState>;
+  legacyRoomData?: Record<string, unknown>;
 }
 
 export async function dispatchDailyReminders(): Promise<void> {
   if (!pushPublicKey) return;
+  db ??= loadDatabase();
   const hour = new Intl.DateTimeFormat('en-GB', {
     timeZone: VN_TIMEZONE, hour: '2-digit', hourCycle: 'h23',
   }).format(new Date());
@@ -107,6 +109,114 @@ interface SseClient {
   res: ServerResponse;
 }
 
+export type OfficeRealtimeMember = Pick<SseClient, 'roomId' | 'userId'>;
+
+interface OfficeStorage {
+  save: (database: string) => void;
+  broadcast: (roomId: string, event: Record<string, unknown>, filter?: (member: OfficeRealtimeMember) => boolean) => void;
+  isOnline: (roomId: string, userId: string) => boolean;
+  zenStatus: (roomId: string, userId: string, active?: boolean) => boolean;
+  schedule: (time: number | undefined) => Promise<void>;
+}
+
+let officeStorage: OfficeStorage | undefined;
+
+export function configureOfficeStorage(storage: OfficeStorage, snapshot?: string): void {
+  officeStorage = storage;
+  if (snapshot) {
+    const parsed = JSON.parse(snapshot) as DatabaseSchema;
+    if (parsed.dbVersion !== CURRENT_DB_VERSION || !parsed.rooms || !parsed.accounts || !parsed.seats) {
+      throw new Error('Invalid Office database snapshot');
+    }
+    db = parsed;
+  } else {
+    db = loadDatabase();
+  }
+}
+
+export function authorizeOfficeRealtime(roomCode: string, token: string): OfficeRealtimeMember | null {
+  const room = db.rooms[roomCode];
+  const account = db.accounts[token];
+  if (!room || !account || !db.roomMembers.some((member) => member.roomId === room.id && member.userId === account.userId)) return null;
+  return { roomId: room.id, userId: account.userId };
+}
+
+interface VggImport {
+  format: string;
+  room: RoomInfo;
+  accounts: Omit<StoredAccount, 'sessionToken'>[];
+  roomMembers: StoredRoomMember[];
+  seats: WorkSeat[];
+  attendance: Record<string, AttendanceRecord>;
+  messages: ChatMessage[];
+  diaryEntries: StoredDiaryEntry[];
+  legacyRoomData?: unknown;
+}
+
+export function importVggRoom(data: VggImport): { members: number; accounts: number; messages: number } {
+  if (db.rooms.VGG) throw new Error('VGG_ALREADY_EXISTS');
+  const room = data.room;
+  if (data.format !== 'office-room-import-v1' || room?.code !== 'VGG' ||
+      !/^[\w-]{1,100}$/.test(room.id) ||
+      Object.values(db.rooms).some((existing) => existing.id === room.id) ||
+      ![data.accounts, data.roomMembers, data.seats, data.messages, data.diaryEntries].every(Array.isArray) ||
+      !data.attendance || typeof data.attendance !== 'object') throw new Error('INVALID_OFFICE_BACKUP');
+  const ids = new Set(data.roomMembers.map((member) => member.userId));
+  if (ids.size !== data.roomMembers.length || (room.managerUserId && !ids.has(room.managerUserId)) ||
+      data.roomMembers.some((member) => member.roomId !== room.id || !member.userId || typeof member.nickname !== 'string') ||
+      new Set(data.accounts.map((account) => account.userId)).size !== data.accounts.length ||
+      data.accounts.some((account) => !ids.has(account.userId) ||
+        !/^[0-9a-f]{32}:[0-9a-f]{64}$/.test(account.passwordHash ?? '') ||
+        Object.values(db.accounts).some((existing) => existing.userId === account.userId)) ||
+      [...data.seats, ...data.messages, ...data.diaryEntries].some((item) => item.roomId !== room.id) ||
+      Object.keys(data.attendance).some((key) => !key.startsWith(`${room.id}:`))) throw new Error('INVALID_OFFICE_BACKUP');
+
+  const accounts = { ...db.accounts };
+  for (const { userId, nickname, avatarGender, memberTag, createdAt, passwordHash } of data.accounts) {
+    const sessionToken = `tok_${crypto.randomBytes(18).toString('hex')}`;
+    accounts[sessionToken] = { userId, nickname, avatarGender, memberTag, createdAt, passwordHash, sessionToken };
+  }
+  const next = {
+    ...db,
+    rooms: { ...db.rooms, VGG: room },
+    accounts,
+    roomMembers: [...db.roomMembers, ...data.roomMembers],
+    seats: [...db.seats, ...data.seats],
+    messages: [...db.messages, ...data.messages],
+    attendance: { ...db.attendance, ...data.attendance },
+    diaryEntries: [...db.diaryEntries, ...data.diaryEntries],
+    legacyRoomData: { ...db.legacyRoomData, VGG: data.legacyRoomData },
+  };
+  saveDatabase(next, true);
+  db = next;
+  return { members: data.roomMembers.length, accounts: data.accounts.length, messages: data.messages.length };
+}
+
+export function publishOfficePresence(roomId: string): void {
+  const room = Object.values(db.rooms).find((item) => item.id === roomId);
+  if (room) broadcastToRoom(room.id, { type: 'room_state', ...buildRoomStatePayload(room) });
+}
+
+export async function settleOfficeAlarms(): Promise<void> {
+  const now = Date.now();
+  let next: number | undefined;
+  for (const [roomId, altar] of Object.entries(db.altars ?? {})) {
+    if (settleAltar(altar, now)) {
+      saveDatabase(db, true);
+      broadcastToRoom(roomId, { type: 'altar_updated' });
+    }
+    if (altar.incenseUntil && altar.incenseUntil <= now) {
+      altar.incenseUntil = 0;
+      saveDatabase(db, true);
+      broadcastToRoom(roomId, { type: 'altar_updated' });
+    }
+    const times = altar.rituals.map((ritual) => ritual.finishAt);
+    if (altar.incenseUntil > now) times.push(altar.incenseUntil);
+    for (const time of times) next = next === undefined ? time : Math.min(next, time);
+  }
+  await officeStorage?.schedule(next);
+}
+
 const DATA_DIR = path.resolve(process.env.OFFICE_DATA_DIR || path.join('server', 'data'));
 const DB_FILE = path.join(DATA_DIR, 'db.json');
 
@@ -123,10 +233,10 @@ function createInitialSeatsForRoom(roomId: string): WorkSeat[] {
 
 function loadDatabase(): DatabaseSchema {
   try {
-    if (!fs.existsSync(DATA_DIR)) {
+    if (!officeStorage && !fs.existsSync(DATA_DIR)) {
       fs.mkdirSync(DATA_DIR, { recursive: true });
     }
-    if (fs.existsSync(DB_FILE)) {
+    if (!officeStorage && fs.existsSync(DB_FILE)) {
       const raw = fs.readFileSync(DB_FILE, 'utf-8');
       const parsed = JSON.parse(raw) as DatabaseSchema;
       if (parsed && parsed.dbVersion === CURRENT_DB_VERSION && parsed.rooms && parsed.seats) {
@@ -169,9 +279,13 @@ function loadDatabase(): DatabaseSchema {
 }
 
 let saveTimer: NodeJS.Timeout | null = null;
-let db: DatabaseSchema = loadDatabase();
+let db: DatabaseSchema;
 
 function saveDatabase(state: DatabaseSchema = db, immediate = false): void {
+  if (officeStorage) {
+    officeStorage.save(JSON.stringify(state));
+    return;
+  }
   try {
     if (!fs.existsSync(DATA_DIR)) {
       fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -264,6 +378,7 @@ function getAuthenticatedAccount(req: IncomingMessage, urlObj?: URL): StoredAcco
 }
 
 function isUserOnlineInRoom(roomId: string, userId: string): boolean {
+  if (officeStorage) return officeStorage.isOnline(roomId, userId);
   for (const client of sseClients.values()) {
     if (client.roomId === roomId && client.userId === userId) {
       return true;
@@ -309,7 +424,7 @@ function buildRoomStatePayload(room: RoomInfo) {
       memberTag: m.memberTag,
       seatId: mySeat ? mySeat.seatId : null,
       meetingChairId: currentMeetingChair,
-      inZenRoom: zenPresence.has(`${room.id}:${m.userId}`),
+      inZenRoom: officeStorage?.zenStatus(room.id, m.userId) ?? zenPresence.has(`${room.id}:${m.userId}`),
       isManager: room.managerUserId === m.userId,
       online: isUserOnlineInRoom(room.id, m.userId),
       joinedAt: m.joinedAt,
@@ -327,8 +442,12 @@ function buildRoomStatePayload(room: RoomInfo) {
 function broadcastToRoom(
   roomId: string,
   event: Record<string, unknown>,
-  predicate?: (client: SseClient) => boolean
+  predicate?: (client: OfficeRealtimeMember) => boolean
 ): void {
+  if (officeStorage) {
+    officeStorage.broadcast(roomId, event, predicate);
+    return;
+  }
   const data = `data: ${JSON.stringify(event)}\n\n`;
   for (const client of sseClients.values()) {
     if (client.roomId === roomId && (!predicate || predicate(client))) {
@@ -406,6 +525,7 @@ export async function handleApiRequest(
   req: IncomingMessage,
   res: ServerResponse
 ): Promise<boolean> {
+  db ??= loadDatabase();
   const rawUrl = req.url || '/';
   if (!rawUrl.startsWith('/api/')) {
     return false;
@@ -646,14 +766,17 @@ export async function handleApiRequest(
       const body = await readJsonBody(req);
       const key = `${room.id}:${account.userId}`;
       if (body.active === true) {
-        const count = db.roomMembers.filter((member) => member.roomId === room.id && zenPresence.has(`${room.id}:${member.userId}`)).length;
-        if (!zenPresence.has(key) && count >= 10) {
+        const inZen = (userId: string) => officeStorage?.zenStatus(room.id, userId) ?? zenPresence.has(`${room.id}:${userId}`);
+        const count = db.roomMembers.filter((member) => member.roomId === room.id && inZen(member.userId)).length;
+        if (!inZen(account.userId) && count >= 10) {
           sendJson(res, 409, { error: 'ZEN_ROOM_FULL', message: 'Phòng Tịnh Tâm đã đủ 10 người.' });
           return true;
         }
         zenPresence.add(key);
+        officeStorage?.zenStatus(room.id, account.userId, true);
       } else {
         zenPresence.delete(key);
+        officeStorage?.zenStatus(room.id, account.userId, false);
       }
       const roomState = buildRoomStatePayload(room);
       broadcastToRoom(room.id, { type: 'room_state', ...roomState });
@@ -677,7 +800,14 @@ export async function handleApiRequest(
       if (settled || (body && !error)) saveDatabase(db, true);
       const started = body?.action === 'start' && !error
         ? altar.rituals.find((ritual) => ritual.id === body.id && ritual.userId === account.userId) : undefined;
-      if (started) {
+      if (officeStorage) {
+        if (settled || started || (body?.action === 'clear' && !error)) {
+          broadcastToRoom(room.id, { type: 'altar_updated' });
+          await settleOfficeAlarms();
+        } else if (body?.action === 'merit' && !error) {
+          broadcastToRoom(room.id, { type: 'altar_updated' }, (client) => client.userId === account.userId);
+        }
+      } else if (started) {
         setTimeout(() => {
           if (db.altars?.[room.id] === altar && settleAltar(altar, Date.now())) saveDatabase(db, true);
         }, Math.max(1, started.finishAt - Date.now() + 10)).unref();

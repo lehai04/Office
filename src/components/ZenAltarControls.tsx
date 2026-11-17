@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { requestAltar, type AltarCommand } from '../services/zenAltar';
+import { ALTAR_UPDATE_EVENT, requestAltar, USE_OFFICE_WEBSOCKET, type AltarCommand } from '../services/zenAltar';
 import { isUsingStaticFallback } from '../services/officeApi';
 import { ALTAR_CAPACITY, REPLACE_MERIT, type AltarKind, type AltarView } from '../utils/zenAltar';
 
@@ -58,19 +58,35 @@ export function ZenAltarControls({ roomCode, token, userId, incense, offerings, 
     }
     const controller = new AbortController();
     let timer: number | undefined;
+    let refreshing = false;
+    let refreshAgain = false;
     const poll = async () => {
+      if (refreshing) {
+        refreshAgain = true;
+        return;
+      }
+      refreshing = true;
       try {
         const state = await requestAltar(roomCode, token, undefined, controller.signal);
         if (!controller.signal.aborted) accept(state);
       } catch (problem) {
         if (!controller.signal.aborted) setError(problem instanceof Error ? problem.message : 'Chưa kết nối được bàn thờ.');
       } finally {
-        if (!controller.signal.aborted) timer = window.setTimeout(poll, 500);
+        refreshing = false;
+        if (controller.signal.aborted) return;
+        if (refreshAgain) {
+          refreshAgain = false;
+          void poll();
+        } else if (!USE_OFFICE_WEBSOCKET) {
+          timer = window.setTimeout(poll, 500);
+        }
       }
     };
+    if (USE_OFFICE_WEBSOCKET) window.addEventListener(ALTAR_UPDATE_EVENT, poll);
     void poll();
     return () => {
       controller.abort();
+      window.removeEventListener(ALTAR_UPDATE_EVENT, poll);
       window.clearTimeout(timer);
       callbacks.current.onChange(null);
     };

@@ -20,7 +20,7 @@ import {
 import { OfficeScene3D, type ActiveSpeechBubble } from './components/OfficeScene3D';
 import { OfficeShopModal } from './components/OfficeShopModal';
 import { ZenAltarControls } from './components/ZenAltarControls';
-import { requestAltar } from './services/zenAltar';
+import { ALTAR_UPDATE_EVENT, requestAltar, USE_OFFICE_WEBSOCKET } from './services/zenAltar';
 import type { AltarKind, AltarView } from './utils/zenAltar';
 import { EMPTY_OFFICE_SHOP, OFFICE_SHOP, type DecorationItem, type OfficeAction, type OfficeShopState, type ScenePoint, type ShopItem } from './utils/officeShop';
 import { EntryModal } from './components/EntryModal';
@@ -1609,6 +1609,38 @@ export function App() {
     const url = `/api/rooms/${encodeURIComponent(room.code)}/events?token=${encodeURIComponent(
       session.sessionToken
     )}`;
+    if (USE_OFFICE_WEBSOCKET) {
+      const target = new URL(officeApiUrl(url), window.location.origin);
+      target.protocol = target.protocol === 'https:' ? 'wss:' : 'ws:';
+      let socket: WebSocket | undefined;
+      let retry: number | undefined;
+      let closed = false;
+      let delay = 500;
+      const connect = () => {
+        socket = new WebSocket(target.href);
+        socket.onopen = () => { delay = 500; };
+        socket.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data) as Record<string, unknown>;
+            if (data.type === 'altar_updated') window.dispatchEvent(new Event(ALTAR_UPDATE_EVENT));
+            else handleRealtimePayload(data);
+          } catch {
+            // Ignore malformed realtime messages.
+          }
+        };
+        socket.onclose = () => {
+          if (closed) return;
+          retry = window.setTimeout(connect, delay);
+          delay = Math.min(delay * 2, 10_000);
+        };
+      };
+      connect();
+      return () => {
+        closed = true;
+        window.clearTimeout(retry);
+        socket?.close();
+      };
+    }
     const es = new EventSource(officeApiUrl(url));
 
     es.onmessage = (evt) => {
