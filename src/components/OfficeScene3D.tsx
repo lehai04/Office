@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { isUsingStaticFallback } from '../services/officeApi';
+import { uniqueStaticRoomMembers } from '../utils/roomMemberDisplay';
 import type { OfficeAction, OfficeDecoration, ScenePoint } from '../utils/officeShop';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Html, OrbitControls, ContactShadows } from '@react-three/drei';
@@ -2023,7 +2025,7 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
   onFloorClick,
   onDeskClick,
   currentUserId,
-  members,
+  members: roomMembers,
   seats,
   activeBubbles,
   onSelectSeat,
@@ -2047,6 +2049,10 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
   roomCats,
   onPetCatIn3D,
 }) => {
+  const staticRoom = isUsingStaticFallback();
+  const members = useMemo(() => staticRoom
+    ? uniqueStaticRoomMembers(roomMembers, currentUserId)
+    : roomMembers, [staticRoom, roomMembers, currentUserId]);
   const nicknameCounts = useMemo(() => {
     const map = new Map<string, number>();
     for (const m of members) {
