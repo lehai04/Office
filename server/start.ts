@@ -1,5 +1,5 @@
 import { createServer } from 'node:http';
-import { handleApiRequest } from './officeServer';
+import { dispatchDailyReminders, handleApiRequest } from './officeServer';
 
 const port = Number(process.env.PORT || 8080);
 const allowedOrigin = process.env.OFFICE_WEB_ORIGIN || 'https://lehai04.github.io';
@@ -29,3 +29,18 @@ export const officeServer = createServer(async (req, res) => {
 }).listen(port, '0.0.0.0', () => {
   console.log(`Office API listening on port ${port}`);
 });
+
+let sendingReminders = false;
+const reminderTimer = setInterval(async () => {
+  if (sendingReminders) return;
+  sendingReminders = true;
+  try {
+    await dispatchDailyReminders();
+  } catch (error) {
+    console.error('Daily reminder check failed:', error);
+  } finally {
+    sendingReminders = false;
+  }
+}, 60_000);
+reminderTimer.unref();
+officeServer.on('close', () => clearInterval(reminderTimer));

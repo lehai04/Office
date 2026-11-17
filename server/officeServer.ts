@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { getNowInHoChiMinh, VN_TIMEZONE } from '../src/utils/dateVn';
+import { pushPublicKey, parseReminderDevice, sendReminder, type ReminderDevice } from './reminderPush';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { WORK_SEAT_LAYOUTS, MEETING_CHAIRS, DEFAULT_ROOM_CODE, DEFAULT_ROOM_NAME } from '../src/constants/officeLayout';
 import type {
@@ -54,6 +56,42 @@ interface DatabaseSchema {
   messages: ChatMessage[];
   attendance: Record<string, AttendanceRecord>; // keyed by `${roomId}:${userId}:${date}`
   diaryEntries: StoredDiaryEntry[];
+  reminderDevices?: Record<string, ReminderDevice>;
+}
+
+export async function dispatchDailyReminders(): Promise<void> {
+  if (!pushPublicKey) return;
+  const hour = new Intl.DateTimeFormat('en-GB', {
+    timeZone: VN_TIMEZONE, hour: '2-digit', hourCycle: 'h23',
+  }).format(new Date());
+  if (hour < '09' || hour >= '21') return;
+  const { dateStr } = getNowInHoChiMinh();
+  const devices = db.reminderDevices;
+  if (!devices) return;
+  for (const [id, device] of Object.entries(devices)) {
+    if (device.lastSent === dateStr) continue;
+    const room = Object.values(db.rooms).find((item) => item.id === device.roomId);
+    if (!room || !db.roomMembers.some((m) => m.roomId === room.id && m.userId === device.userId)) continue;
+    const attendance = db.attendance[`${room.id}:${device.userId}:${dateStr}`]?.status;
+    const worked = device.workDate === dateStr;
+    const lines = [
+      device.enableWork && !worked && 'Hôm nay bạn đã đi làm chưa?',
+      device.enableAttendance && (!attendance || attendance === 'none') && 'Hôm nay bạn đã chấm công chưa?',
+      device.enableBuddha && device.bowDate !== dateStr && 'Hôm nay bạn đã lạy Phật chưa?',
+    ].filter(Boolean);
+    if (!lines.length) continue;
+    try {
+      await sendReminder(device, lines.join('\n'), dateStr);
+      if (devices[id]?.userId === device.userId) devices[id].lastSent = dateStr;
+      saveDatabase(db, true);
+    } catch (error) {
+      const status = (error as {statusCode?: number}).statusCode;
+      if ((status === 404 || status === 410) && devices[id] === device) {
+        delete devices[id];
+        saveDatabase(db, true);
+      }
+    }
+  }
 }
 
 const CURRENT_DB_VERSION = 3;
@@ -373,6 +411,10 @@ export async function handleApiRequest(
 
   try {
     // 1. Health / Reset for starting a fresh game
+    if (pathname === '/api/reminders/push-key' && method === 'GET') {
+      sendJson(res, 200, { publicKey: pushPublicKey });
+      return true;
+    }
     if (pathname === '/api/health' && method === 'GET') {
       sendJson(res, 200, { ok: true, mode: 'local_server' });
       return true;
@@ -549,6 +591,31 @@ export async function handleApiRequest(
     }
 
     memberRecord.lastSeenAt = new Date().toISOString();
+
+    if (subPath === 'reminders/device' && method === 'POST') {
+      if (!pushPublicKey) {
+        sendJson(res, 503, { message: 'Máy chủ chưa bật thông báo nền.' });
+        return true;
+      }
+      const body = await readJsonBody(req);
+      const device = parseReminderDevice(body, account.userId, room.id);
+      if (!device) {
+        sendJson(res, 400, { message: 'Thiết bị thông báo không hợp lệ.' });
+        return true;
+      }
+      const id = crypto.createHash('sha256').update(device.subscription.endpoint).digest('hex');
+      const devices = db.reminderDevices ??= {};
+      const previous = devices[id];
+      if (previous?.userId === device.userId && previous.roomId === device.roomId) {
+        device.lastSent = previous.lastSent;
+        device.workDate ||= previous.workDate;
+        device.bowDate ||= previous.bowDate;
+      }
+      devices[id] = device;
+      saveDatabase(db, true);
+      sendJson(res, 200, { ok: true });
+      return true;
+    }
 
     // 3. SSE Realtime Stream: GET /api/rooms/:roomCode/events
     if (subPath === 'events' && method === 'GET') {
@@ -864,6 +931,11 @@ export async function handleApiRequest(
         }
 
         targetSeat.occupiedByUserId = account.userId;
+        for (const device of Object.values(db.reminderDevices ?? {})) {
+          if (device.userId === account.userId && device.roomId === room.id) {
+            device.workDate = getNowInHoChiMinh().dateStr;
+          }
+        }
         targetSeat.claimedAt = new Date().toISOString();
         activeMeetingChairs.delete(`${room.id}:${account.userId}`);
         saveDatabase(db, true);

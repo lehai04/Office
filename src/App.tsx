@@ -83,6 +83,7 @@ import {
   stopZenBackgroundMusic,
   type ZenTrackId,
 } from './utils/zenSound';
+import { syncReminderPush } from './services/reminderPush';
 import {
   broadcastCatSyncEvent,
   broadcastDonationBoxSyncEvent,
@@ -214,6 +215,32 @@ export function App() {
   const [updateAvailableBanner, setUpdateAvailableBanner] = useState<boolean>(false);
   const [attendanceReminderBanner, setAttendanceReminderBanner] = useState<string | null>(null);
   const [diaryAlertBanner, setDiaryAlertBanner] = useState<string | null>(null);
+  const [isNotificationModalOpen, setIsNotificationModalOpen] = useState<boolean>(false);
+  const [pushStatus, setPushStatus] = useState('');
+  const [pushConnected, setPushConnected] = useState(false);
+  const [pushRetry, setPushRetry] = useState(0);
+  const [workerReady, setWorkerReady] = useState(false);
+  const [reminderPrefs, setReminderPrefs] = useState<{
+    enableWork: boolean;
+    enableAttendance: boolean;
+    enableBuddha: boolean;
+  }>(() => {
+    try {
+      const raw = window.localStorage.getItem('van_phong_ao_reminder_prefs_v1');
+      if (raw) return JSON.parse(raw);
+    } catch {
+      // ignore
+    }
+    return { enableWork: true, enableAttendance: true, enableBuddha: true };
+  });
+  const [lastBowedDate, setLastBowedDate] = useState<string>(() => {
+    try {
+      return window.localStorage.getItem('van_phong_ao_last_bowed_date_v1') || '';
+    } catch {
+      return '';
+    }
+  });
+  const swRegistrationRef = useRef<ServiceWorkerRegistration | null>(null);
   const initialScriptSrcRef = useRef<string | null>(null);
 
   // State đóng/mở menu gọn trên màn hình (Click để xổ chức năng, click để đóng menu)
@@ -336,6 +363,13 @@ export function App() {
       }
       return next;
     });
+    const todayStr = getNowInHoChiMinh().dateStr;
+    setLastBowedDate(todayStr);
+    try {
+      window.localStorage.setItem('van_phong_ao_last_bowed_date_v1', todayStr);
+    } catch {
+      // ignore
+    }
 
     window.setTimeout(() => {
       setIsBowing(false);
@@ -484,11 +518,61 @@ export function App() {
     return () => window.clearInterval(timer);
   }, [session, room, Boolean(session && roomCats[session.userId])]);
 
+  // Đăng ký Service Worker & đồng bộ trạng thái nhắc nhở hàng ngày (kể cả khi đóng tab nếu trình duyệt chạy nền)
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
+    navigator.serviceWorker
+      .register('./sw.js')
+      .then((reg) => {
+        swRegistrationRef.current = reg;
+        void navigator.serviceWorker.ready.then(() => setWorkerReady(true));
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        'van_phong_ao_reminder_prefs_v1',
+        JSON.stringify(reminderPrefs)
+      );
+    } catch {
+      // ignore
+    }
+  }, [reminderPrefs]);
+
+  const reminderRoomCode = room?.code;
+  useEffect(() => {
+    if (!session || !reminderRoomCode || notificationPermission !== 'granted' || !workerReady) return;
+    let active = true;
+    void syncReminderPush(reminderRoomCode, session.sessionToken, {
+      ...reminderPrefs,
+      bowDate: lastBowedDate,
+    }).then(() => {
+      if (active) setPushConnected(true);
+      if (active) setPushStatus(Object.values(reminderPrefs).some(Boolean)
+        ? 'Đã bật nhắc hằng ngày lúc 9 giờ (giờ Việt Nam), kể cả khi đóng trang.'
+        : 'Đã tắt các lời nhắc hằng ngày.');
+    }).catch((error: unknown) => {
+      if (active) setPushConnected(false);
+      if (active) setPushStatus(error instanceof Error ? error.message : 'Chưa kết nối được thông báo nền.');
+    });
+    return () => { active = false; };
+  }, [session, reminderRoomCode, notificationPermission, workerReady, reminderPrefs, lastBowedDate, pushRetry]);
+
   const sendDesktopNotification = useCallback(
     (params: { title: string; body: string; tag?: string; onClick?: () => void }) => {
       if (typeof window === 'undefined' || !('Notification' in window)) return;
       if (window.Notification.permission !== 'granted') return;
       try {
+        if (swRegistrationRef.current && swRegistrationRef.current.showNotification) {
+          void swRegistrationRef.current.showNotification(params.title, {
+            body: params.body,
+            tag: params.tag,
+            data: { url: window.location.href },
+          });
+          return;
+        }
         const notif = new window.Notification(params.title, {
           body: params.body,
           tag: params.tag,
@@ -514,7 +598,7 @@ export function App() {
       const perm = await window.Notification.requestPermission();
       setNotificationPermission(perm);
       if (perm === 'granted') {
-        showToast('🔔 Đã bật thông báo ngoài màn hình (khi ở tab/app khác vẫn thấy)!');
+        setPushRetry((attempt) => attempt + 1);
       }
     } catch {
       // ignore
@@ -548,15 +632,30 @@ export function App() {
     const checkAttendanceReminder = () => {
       const todayStr = getNowInHoChiMinh().dateStr;
       const st = attendanceMap[todayStr] ?? 'none';
-      if (st === 'none') {
-        const msg = `⏰ Nhắc nhở: Bạn chưa chấm công hôm nay (${todayStr}) — 8h × 100k = 800.000đ!`;
-        setAttendanceReminderBanner(msg);
-        sendDesktopNotification({
-          title: '⏰ Nhắc nhở chấm công hôm nay',
-          body: `Hôm nay (${todayStr}) bạn chưa chấm công. Mỗi ngày chỉ chấm 1 lần!`,
-          tag: `attendance-reminder-${todayStr}`,
-          onClick: () => setActivePanel('attendance'),
-        });
+      const lines: string[] = [];
+      if (reminderPrefs.enableWork && !seats.some((s) => s.occupiedByUserId === session.userId)) {
+        lines.push('💼 Hôm nay bạn đã đi làm (vào bàn làm việc) chưa?');
+      }
+      if (reminderPrefs.enableAttendance && st === 'none') {
+        lines.push('⏰ Hôm nay bạn đã chấm công chưa? (8h × 100k = 800.000đ)');
+      }
+      if (reminderPrefs.enableBuddha && lastBowedDate !== todayStr) {
+        lines.push('🪷 Hôm nay bạn đã lạy Phật tích Công đức chưa?');
+      }
+      if (lines.length > 0) {
+        if (st === 'none' && reminderPrefs.enableAttendance) {
+          setAttendanceReminderBanner(
+            `⏰ Nhắc nhở: Bạn chưa chấm công hôm nay (${todayStr}) — 8h × 100k = 800.000đ!`
+          );
+        }
+        if (!pushConnected) {
+          sendDesktopNotification({
+            title: `🔔 Nhắc nhở Văn phòng 3D (${session.nickname})`,
+            body: lines.join('\n'),
+            tag: `daily-reminder-${todayStr}`,
+            onClick: () => setActivePanel(st === 'none' ? 'attendance' : 'zen'),
+          });
+        }
       }
     };
     const initialTimer = window.setTimeout(checkAttendanceReminder, 5000);
@@ -565,7 +664,7 @@ export function App() {
       window.clearTimeout(initialTimer);
       window.clearInterval(intervalTimer);
     };
-  }, [session, room, attendanceMap, sendDesktopNotification]);
+  }, [session, room, attendanceMap, seats, lastBowedDate, reminderPrefs, pushConnected, sendDesktopNotification]);
 
   // Kiểm tra phiên bản / chỉnh sửa mới mỗi 60s để nhắc Refresh tự động
   useEffect(() => {
@@ -1855,6 +1954,10 @@ export function App() {
   };
 
   const handleLogoutOrSwitch = async () => {
+    setPushConnected(false);
+    setPushStatus('');
+    const subscription = await swRegistrationRef.current?.pushManager?.getSubscription().catch(() => null);
+    await subscription?.unsubscribe().catch(() => {});
     if (session && room) {
       try {
         await leaveRoomApi(room.code, session.sessionToken);
@@ -2014,16 +2117,18 @@ export function App() {
           >
             💰 {formatVnd(userWallet.balanceVnd)}
           </span>
-          {notificationPermission === 'default' && (
-            <button
-              type="button"
-              onClick={() => void requestDesktopNotificationPermission()}
-              className="rounded-full bg-amber-400 hover:bg-amber-300 px-2 py-0.5 text-[10px] font-black text-slate-950 cursor-pointer shrink-0"
-              title="Bật thông báo ngoài màn hình (hiện ngay cả khi không mở tab game)"
-            >
-              🔔 Bật thông báo
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => setIsNotificationModalOpen(true)}
+            className={`rounded-full px-2 py-0.5 text-[10px] font-black cursor-pointer shrink-0 transition ${
+              notificationPermission === 'granted'
+                ? 'bg-emerald-500/25 border border-emerald-400/50 text-emerald-200 hover:bg-emerald-500/35'
+                : 'bg-amber-400 hover:bg-amber-300 text-slate-950'
+            }`}
+            title="Cài đặt thông báo thiết bị (nhắc đi làm, chấm công, lạy Phật)"
+          >
+            {notificationPermission === 'granted' ? '🔔 Thông báo' : '🔔 Bật thông báo'}
+          </button>
         </div>
 
         {/* Cụm phải: Góc nhìn & Nút xổ Menu cá nhân (Click để mở, click để đóng) */}
@@ -2453,6 +2558,120 @@ export function App() {
         abbotAtDonationDesk={abbotAtDonationDesk}
         onToggleAbbotDesk={() => setAbbotAtDonationDesk((v) => !v)}
       />
+
+      {/* MODAL CHẾ ĐỘ THÔNG BÁO THIẾT BỊ (Nhắc đi làm, chấm công, lạy Phật) */}
+      {isNotificationModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-3 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-3xl border border-emerald-400/40 bg-slate-900 p-4 text-slate-100 shadow-2xl space-y-3">
+            <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
+              <div>
+                <h3 className="text-sm font-black text-emerald-300">
+                  🔔 Chế độ Thông báo thiết bị
+                </h3>
+                <p className="text-[11px] text-slate-400">
+                  Nhắc nhở đi làm, chấm công, lạy Phật & tin nhắn mới về thiết bị
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsNotificationModalOpen(false)}
+                className="rounded-xl bg-white/10 hover:bg-white/20 px-2.5 py-1 text-xs font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-slate-800/70 p-3 flex items-center justify-between gap-2 text-xs">
+              <div>
+                <div className="font-bold text-white">Trạng thái quyền trình duyệt:</div>
+                <div className="text-[11px] text-slate-300 mt-0.5">
+                  {notificationPermission === 'granted' && (pushStatus || 'Đang kết nối thông báo nền…')}
+                  {notificationPermission === 'default' && '⚠️ Chưa bật — bấm nút bên cạnh để cho phép'}
+                  {notificationPermission === 'denied' && '❌ Đang bị chặn trong cài đặt trình duyệt'}
+                  {notificationPermission === 'unsupported' && 'Trình duyệt hiện tại không hỗ trợ'}
+                </div>
+              </div>
+              {(notificationPermission === 'default' || notificationPermission === 'granted') && (
+                <button
+                  type="button"
+                  onClick={() => void requestDesktopNotificationPermission()}
+                  className="shrink-0 rounded-xl bg-emerald-500 hover:bg-emerald-400 px-3 py-1.5 text-xs font-black text-slate-950 cursor-pointer"
+                >
+                  {notificationPermission === 'granted' ? 'Thử lại' : 'Bật ngay'}
+                </button>
+              )}
+            </div>
+
+            <div className="space-y-2 text-xs">
+              <label className="flex items-center justify-between rounded-2xl border border-white/10 bg-slate-800/50 px-3 py-2 cursor-pointer">
+                <span>💼 Nhắc &ldquo;Hôm nay bạn đã đi làm chưa?&rdquo;</span>
+                <input
+                  type="checkbox"
+                  checked={reminderPrefs.enableWork}
+                  onChange={(e) =>
+                    setReminderPrefs((p) => ({ ...p, enableWork: e.target.checked }))
+                  }
+                  className="h-4 w-4 accent-emerald-500"
+                />
+              </label>
+              <label className="flex items-center justify-between rounded-2xl border border-white/10 bg-slate-800/50 px-3 py-2 cursor-pointer">
+                <span>⏰ Nhắc &ldquo;Hôm nay bạn đã chấm công chưa?&rdquo;</span>
+                <input
+                  type="checkbox"
+                  checked={reminderPrefs.enableAttendance}
+                  onChange={(e) =>
+                    setReminderPrefs((p) => ({ ...p, enableAttendance: e.target.checked }))
+                  }
+                  className="h-4 w-4 accent-emerald-500"
+                />
+              </label>
+              <label className="flex items-center justify-between rounded-2xl border border-white/10 bg-slate-800/50 px-3 py-2 cursor-pointer">
+                <span>🪷 Nhắc &ldquo;Hôm nay bạn đã lạy Phật chưa?&rdquo;</span>
+                <input
+                  type="checkbox"
+                  checked={reminderPrefs.enableBuddha}
+                  onChange={(e) =>
+                    setReminderPrefs((p) => ({ ...p, enableBuddha: e.target.checked }))
+                  }
+                  className="h-4 w-4 accent-emerald-500"
+                />
+              </label>
+            </div>
+
+            <div className="rounded-2xl border border-amber-400/25 bg-amber-500/10 p-2.5 text-[11px] text-amber-200/90 leading-relaxed">
+              💡 <strong>Mẹo nhận thông báo khi không mở web:</strong> Hãy cài trang này thành App trên thiết bị (Chrome/Edge: <em>Cài đặt Văn phòng ảo</em> • Điện thoại: <em>Thêm vào màn hình chính</em>) và bật chạy nền của trình duyệt.
+            </div>
+
+            <button
+              type="button"
+              onClick={async () => {
+                if (notificationPermission !== 'granted') {
+                  await requestDesktopNotificationPermission();
+                }
+                const todayStr = getNowInHoChiMinh().dateStr;
+                const sampleLines = [
+                  '💼 Hôm nay bạn đã đi làm chưa?',
+                  (attendanceMap[todayStr] ?? 'none') === 'none'
+                    ? '⏰ Hôm nay bạn đã chấm công chưa? (8h × 100k = 800k)'
+                    : '✅ Hôm nay bạn đã chấm công rồi!',
+                  lastBowedDate === todayStr
+                    ? '🪷 Hôm nay bạn đã lạy Phật tích Công đức!'
+                    : '🪷 Hôm nay bạn đã lạy Phật chưa?',
+                ];
+                sendDesktopNotification({
+                  title: `🔔 Nhắc nhở Văn phòng 3D (${session.nickname})`,
+                  body: sampleLines.join('\n'),
+                  tag: 'office-test-notification',
+                });
+                showToast('🔔 Đã gửi thông báo thử ra màn hình thiết bị!');
+              }}
+              className="w-full rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:brightness-105 py-2.5 text-xs font-black text-slate-950 shadow-lg cursor-pointer"
+            >
+              🧪 Gửi thông báo thử ngay
+            </button>
+          </div>
+        </div>
+      )}
 
       <EntertainmentRoomModal
         isOpen={activePanel === 'games'}
