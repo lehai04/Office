@@ -2167,12 +2167,14 @@ export function App() {
       <OfficeScene3D
         altar={altar}
         walkTarget={walkTarget}
+        canWalk={activePanel === 'none' && !placingItem}
+        onWalk={setWalkTarget}
         decorations={shop.decorations}
         outfit={Boolean(shop.outfit)}
         action={officeAction}
-        onFloorClick={(point) => {
+        onFloorClick={(point, isTouch) => {
           if (placingItem) placeItem(point);
-          else if (activePanel === 'none' && cameraMode === 'overview') setWalkTarget(point);
+          else if (isTouch && activePanel === 'none' && cameraMode === 'overview') setWalkTarget(point);
         }}
         onDeskClick={placingItem ? placeItem : undefined}
         currentUserId={session.userId}

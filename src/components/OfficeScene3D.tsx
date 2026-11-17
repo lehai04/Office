@@ -32,11 +32,13 @@ export interface ActiveSpeechBubble {
 
 interface OfficeScene3DProps {
   walkTarget: ScenePoint | null;
+  canWalk: boolean;
+  onWalk: (point: ScenePoint) => void;
   decorations: OfficeDecoration[];
   outfit: boolean;
   action: OfficeAction | null;
   altar: AltarView | null;
-  onFloorClick: (point: ScenePoint) => void;
+  onFloorClick: (point: ScenePoint, isTouch: boolean) => void;
   onDeskClick?: (point: ScenePoint) => void;
   currentUserId: string;
   members: RoomMember[];
@@ -79,7 +81,10 @@ const SceneCameraController: React.FC<{
   myPosition: [number, number, number];
   myRotationY: number;
   isMyCharacterSeated: boolean;
+  hasWalkTarget: boolean;
   virtualKeysRef: React.MutableRefObject<Set<string>>;
+  canWalk: boolean;
+  onWalk: (point: ScenePoint) => void;
 }> = ({
   cameraMode,
   inZenRoom,
@@ -88,25 +93,60 @@ const SceneCameraController: React.FC<{
   myPosition,
   myRotationY,
   isMyCharacterSeated,
+  hasWalkTarget,
   virtualKeysRef,
+  canWalk,
+  onWalk,
 }) => {
   const { camera, gl, size } = useThree();
   const yawRef = useRef(0);
   const pitchRef = useRef(-0.06);
   const walkOffsetRef = useRef<{ x: number; z: number }>({ x: 0, z: 0 });
   const keysPressedRef = useRef<Set<string>>(new Set());
+  const cameraDirection = useRef(new THREE.Vector3());
   const draggingRef = useRef(false);
   const prevPointerRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const bowStartRef = useRef<number>(0);
 
   const isPortraitMobile = size.width < size.height * 0.85;
+  const inOffice = !inZenRoom && !inGameRoom;
 
   // Khi chuyển vị trí ghế / vào phòng tịnh tâm / phòng giải trí / đổi chế độ camera, đặt hướng nhìn mắt nhân vật theo hướng nhân vật đang quay
   useEffect(() => {
-    yawRef.current = myRotationY;
-    pitchRef.current = inZenRoom || inGameRoom ? 0.08 : -0.05;
+    if (!hasWalkTarget || !inOffice) {
+      yawRef.current = myRotationY;
+      pitchRef.current = inOffice ? -0.05 : 0.08;
+    }
     walkOffsetRef.current = { x: 0, z: 0 };
-  }, [myPosition[0], myPosition[2], myRotationY, inZenRoom, inGameRoom, cameraMode]);
+  }, [myRotationY, hasWalkTarget, inOffice, inZenRoom, inGameRoom, cameraMode]);
+
+  useEffect(() => {
+    const keys = keysPressedRef.current;
+    const movementKeys = { KeyW: 'w', KeyA: 'a', KeyS: 's', KeyD: 'd' };
+    const movementKey = (event: KeyboardEvent) => movementKeys[event.code as keyof typeof movementKeys];
+    const onKeyDown = (event: KeyboardEvent) => {
+      const key = movementKey(event);
+      if (!key || (!canWalk && (inOffice || cameraMode !== 'first_person')) ||
+          event.defaultPrevented || event.isComposing || event.ctrlKey || event.metaKey || event.altKey ||
+          (event.target instanceof HTMLElement &&
+            (event.target.isContentEditable || event.target.closest('input, textarea, select, [role="textbox"]')))) return;
+      event.preventDefault();
+      keys.add(key);
+    };
+    const onKeyUp = (event: KeyboardEvent) => keys.delete(movementKey(event));
+    const clearKeys = () => { keys.clear(); virtualKeysRef.current.clear(); };
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', clearKeys);
+    window.addEventListener('focusin', clearKeys);
+    return () => {
+      clearKeys();
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', clearKeys);
+      window.removeEventListener('focusin', clearKeys);
+    };
+  }, [cameraMode, canWalk, inOffice, virtualKeysRef]);
 
   useEffect(() => {
     if (isBowing) {
@@ -173,8 +213,6 @@ const SceneCameraController: React.FC<{
     const onKeyDown = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-      keysPressedRef.current.add(e.key.toLowerCase());
-
       if (e.key === 'ArrowLeft') yawRef.current += 0.08;
       if (e.key === 'ArrowRight') yawRef.current -= 0.08;
       if (e.key === 'ArrowUp') {
@@ -185,53 +223,43 @@ const SceneCameraController: React.FC<{
       }
     };
 
-    const onKeyUp = (e: KeyboardEvent) => {
-      keysPressedRef.current.delete(e.key.toLowerCase());
-    };
-
     dom.addEventListener('pointerdown', onPointerDown);
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
     window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('keyup', onKeyUp);
 
     return () => {
       dom.removeEventListener('pointerdown', onPointerDown);
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('keyup', onKeyUp);
     };
   }, [cameraMode, gl]);
 
   useFrame((_, delta) => {
-    if (cameraMode !== 'first_person') return;
-
-    const speed = 3.2 * delta;
     const keys = keysPressedRef.current;
     const vKeys = virtualKeysRef.current;
-    const forwardX = Math.sin(yawRef.current);
-    const forwardZ = Math.cos(yawRef.current);
-    const rightX = Math.cos(yawRef.current);
-    const rightZ = -Math.sin(yawRef.current);
-
-    if (keys.has('w') || vKeys.has('w')) {
-      walkOffsetRef.current.x += forwardX * speed;
-      walkOffsetRef.current.z += forwardZ * speed;
-    }
-    if (keys.has('s') || vKeys.has('s')) {
-      walkOffsetRef.current.x -= forwardX * speed;
-      walkOffsetRef.current.z -= forwardZ * speed;
-    }
-    if (keys.has('a') || vKeys.has('a')) {
-      walkOffsetRef.current.x += rightX * speed;
-      walkOffsetRef.current.z += rightZ * speed;
-    }
-    if (keys.has('d') || vKeys.has('d')) {
-      walkOffsetRef.current.x -= rightX * speed;
-      walkOffsetRef.current.z -= rightZ * speed;
+    const pressed = (key: string) => Number(keys.has(key) || vKeys.has(key));
+    const forward = pressed('w') - pressed('s');
+    const right = pressed('d') - pressed('a');
+    if ((forward || right) && (inOffice ? canWalk : cameraMode === 'first_person')) {
+      const direction = cameraDirection.current;
+      if (cameraMode === 'first_person') direction.set(Math.sin(yawRef.current), 0, Math.cos(yawRef.current));
+      else camera.getWorldDirection(direction).setY(0).normalize();
+      const step = (3.2 * Math.min(delta, 0.05)) / Math.hypot(forward, right);
+      const dx = (forward * direction.x - right * direction.z) * step;
+      const dz = (forward * direction.z + right * direction.x) * step;
+      if (inOffice) {
+        const x = THREE.MathUtils.clamp(myPosition[0] + dx, -7.65, 7.65);
+        const z = THREE.MathUtils.clamp(myPosition[2] + dz, -5.1, 5.1);
+        if (x !== myPosition[0] || z !== myPosition[2]) onWalk([x, 0, z]);
+      } else {
+        walkOffsetRef.current.x += dx;
+        walkOffsetRef.current.z += dz;
+      }
     }
 
+    if (cameraMode !== 'first_person') return;
     // Độ cao mắt nhân vật (ngồi ghế, quỳ bồ đoàn hoặc đứng)
     const baseEyeY = inZenRoom ? 0.92 : isMyCharacterSeated ? 1.04 : 1.24;
 
@@ -2098,6 +2126,8 @@ const OutdoorCatCourtyard3D: React.FC<{
 
 export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
   walkTarget,
+  canWalk,
+  onWalk,
   decorations,
   outfit,
   action,
@@ -2384,7 +2414,7 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
           {/* SÀN PHÒNG VĂN PHÒNG CHÍNH (16.0m x 10.8m) */}
           <mesh position={[0, -0.08, 0]} receiveShadow onClick={(e) => {
             e.stopPropagation();
-            onFloorClick([e.point.x, 0, e.point.z]);
+            onFloorClick([e.point.x, 0, e.point.z], (e.nativeEvent as PointerEvent).pointerType === 'touch');
           }}>
             <boxGeometry args={[16.0, 0.16, 10.8]} />
             <meshStandardMaterial color="#f1f5f9" roughness={0.88} />
@@ -2703,7 +2733,10 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
             myPosition={myPlacement.position}
             myRotationY={myPlacement.rotationY}
             isMyCharacterSeated={myPlacement.isSeated}
+            hasWalkTarget={Boolean(walkTarget)}
             virtualKeysRef={virtualKeysRef}
+            canWalk={canWalk}
+            onWalk={onWalk}
           />
         </group>
       </Canvas>
