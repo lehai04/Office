@@ -1,7 +1,7 @@
 import { OfficeActionWheel } from './components/OfficeActionWheel';
 import { BOXING_UPDATE_EVENT, useBoxing } from './services/boxing';
 import type { BoxingZone } from './utils/boxing';
-import { requestRoomShop, SHOP_UPDATE_EVENT } from './services/officeShop';
+import { performOfficeAction, requestRoomShop, SHOP_UPDATE_EVENT } from './services/officeShop';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Armchair,
@@ -26,7 +26,7 @@ import { OfficeShopModal } from './components/OfficeShopModal';
 import { ZenAltarControls } from './components/ZenAltarControls';
 import { ALTAR_UPDATE_EVENT, requestAltar, USE_OFFICE_WEBSOCKET } from './services/zenAltar';
 import type { AltarKind, AltarView } from './utils/zenAltar';
-import { EMPTY_OFFICE_SHOP, OFFICE_SHOP, type DecorationItem, type OfficeAction, SHOP_OFFERINGS, type RoomShopView, type ScenePoint, type ShopItem, type ShopConsumable, type ShopCommand } from './utils/officeShop';
+import { EMPTY_OFFICE_SHOP, OFFICE_SHOP, OFFICE_ACTION_DURATION_MS, isOfficeAction, type OfficeActionEvent, type DecorationItem, type OfficeAction, SHOP_OFFERINGS, type RoomShopView, type ScenePoint, type ShopItem, type ShopConsumable, type ShopCommand } from './utils/officeShop';
 import { EntryModal } from './components/EntryModal';
 import { SeatSelectorModal } from './components/SeatSelectorModal';
 import { ChatDrawer, formatChatPreviewText } from './components/ChatDrawer';
@@ -195,7 +195,10 @@ export function App() {
   const [shopRitual, setShopRitual] = useState<ShopConsumable | null>(null);
   const [placingItem, setPlacingItem] = useState<DecorationItem | null>(null);
   const [walkTarget, setWalkTarget] = useState<ScenePoint | null>(null);
-  const [officeAction, setOfficeAction] = useState<{ id: OfficeAction } | null>(null);
+  const [officeActions, setOfficeActions] = useState<Record<string, OfficeActionEvent>>({});
+  const actionTimers = useRef<Record<string, number>>({});
+  const actionRoom = useRef('');
+  actionRoom.current = session?.userId && room?.id ? room.id + ':' + session.userId : '';
   const [actionWheelOpen, setActionWheelOpen] = useState(false);
   const [isBowing, setIsBowing] = useState<boolean>(false);
   const [autoMo, setAutoMo] = useState<boolean>(false);
@@ -283,11 +286,41 @@ export function App() {
   const [changingPassword, setChangingPassword] = useState(false);
   const [savingPassword, setSavingPassword] = useState<boolean>(false);
   const [passwordPromptError, setPasswordPromptError] = useState<string | null>(null);
+  const acceptOfficeAction = useCallback((message: Record<string, unknown>) => {
+    const { userId, action, eventId, startedAt } = message;
+    if (typeof userId !== 'string' || typeof eventId !== 'string' || typeof startedAt !== 'number' ||
+        !Number.isFinite(startedAt) || !isOfficeAction(action)) return;
+    const event: OfficeActionEvent = { type: 'office_action', userId, action, eventId, startedAt };
+    setOfficeActions((current) => {
+      const previous = current[userId];
+      if (previous && previous.startedAt >= startedAt) return current;
+      return { ...current, [userId]: event };
+    });
+  }, []);
+
   useEffect(() => {
-    if (!officeAction) return;
-    const timer = window.setTimeout(() => setOfficeAction(null), 3_000);
-    return () => window.clearTimeout(timer);
-  }, [officeAction]);
+    for (const { userId, eventId } of Object.values(officeActions)) {
+      if (actionTimers.current[eventId] !== undefined) continue;
+      actionTimers.current[eventId] = window.setTimeout(() => {
+        delete actionTimers.current[eventId];
+        setOfficeActions((current) => {
+          if (current[userId]?.eventId !== eventId) return current;
+          const updated = { ...current };
+          delete updated[userId];
+          return updated;
+        });
+      }, OFFICE_ACTION_DURATION_MS);
+    }
+  }, [officeActions]);
+
+  useEffect(() => {
+    setOfficeActions({});
+    const timers = actionTimers.current;
+    return () => {
+      Object.values(timers).forEach((timer) => window.clearTimeout(timer));
+      actionTimers.current = {};
+    };
+  }, [room?.id, session?.userId]);
 
   // Thông báo tin nhắn nổi toàn cục (hiện dù đang ở bất kỳ phòng/game/tab nào)
   const [chatAlertBanner, setChatAlertBanner] = useState<{
@@ -1565,6 +1598,10 @@ export function App() {
     if (!session || !room) return;
 
     const handleRealtimePayload = (data: Record<string, unknown>) => {
+      if (data.type === 'office_action') {
+        if (actionRoom.current === room.id + ':' + session.userId) acceptOfficeAction(data);
+        return;
+      }
       if (data.type === 'boxing_updated') {
         window.dispatchEvent(new CustomEvent(BOXING_UPDATE_EVENT, { detail: data }));
         return;
@@ -2212,7 +2249,7 @@ export function App() {
     setShopOpen(false);
     setPlacingItem(null);
     setWalkTarget(null);
-    setOfficeAction(null);
+    setOfficeActions({});
     setActionWheelOpen(false);
     setAltar(null);
     setPushConnected(false);
@@ -2321,10 +2358,16 @@ export function App() {
   const ownedActions = (Object.keys(OFFICE_SHOP) as ShopItem[]).filter(
     (id): id is OfficeAction => OFFICE_SHOP[id].kind === 'action' && (shop.inventory[id] ?? 0) > 0
   );
-  const playOwnedAction = (id: OfficeAction) => {
+  const playOwnedAction = async (id: OfficeAction) => {
     if (!ownedActions.includes(id)) return;
-    setOfficeAction({ id });
     setActionWheelOpen(false);
+    const scope = actionRoom.current;
+    try {
+      const event = await performOfficeAction(room.code, session.sessionToken, id);
+      if (actionRoom.current === scope) acceptOfficeAction({ ...event });
+    } catch (problem) {
+      if (actionRoom.current === scope) showToast(problem instanceof Error ? problem.message : 'Chưa thực hiện được hiệu ứng.');
+    }
   };
   const buyItem = async (item: ShopItem, id: string) => {
     await refreshShop({ action: 'buy', item, id });
@@ -2350,7 +2393,7 @@ export function App() {
       return;
     }
     if (kind === 'action') {
-      playOwnedAction(id as OfficeAction);
+      void playOwnedAction(id as OfficeAction);
       setShopOpen(false);
       return;
     }
@@ -2386,7 +2429,7 @@ export function App() {
         onWalk={setWalkTarget}
         decorations={shopView?.decorations ?? []}
         appearances={shopView?.appearances ?? {}}
-        action={officeAction?.id ?? null}
+        actions={officeActions}
         onOpenActionWheel={shopOpen || placingItem || actionWheelOpen ? undefined : () => setActionWheelOpen(true)}
         onFloorClick={(point, isTouch) => {
           if (!placingItem && isTouch && (activePanel === 'none' || activePanel === 'boxing') && cameraMode === 'overview') setWalkTarget(point);

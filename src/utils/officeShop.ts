@@ -80,3 +80,17 @@ export interface RoomShopView {
   appearances: Record<string, ShopOutfit>;
   decorations: OfficeDecoration[];
 }
+
+export const OFFICE_ACTION_DURATION_MS = 3000;
+
+export interface OfficeActionEvent {
+  type: 'office_action';
+  eventId: string;
+  userId: string;
+  action: OfficeAction;
+  startedAt: number;
+}
+
+export function isOfficeAction(value: unknown): value is OfficeAction {
+  return isShopItem(value) && OFFICE_SHOP[value].kind === 'action';
+}

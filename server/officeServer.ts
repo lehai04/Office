@@ -1,3 +1,4 @@
+import { isOfficeAction, type OfficeActionEvent } from '../src/utils/officeShop';
 import { BOXING } from '../src/utils/boxing';
 import { activeFighters, boxingView, createBoxingState, punch, recoverFish, updateFighter, type BoxingState } from './boxing';
 import { restoreShop, runShopCommand, type StoredShop } from './officeShop';
@@ -257,6 +258,8 @@ function settleRoomAltar(roomId: string, altar: RoomAltarState, now: number) {
     if (inventory?.[item]) inventory[item] = inventory[item]! - 1;
   });
 }
+
+const currentOfficeActions = new Map<string, OfficeActionEvent>();
 
 const boxingPresence = new Map<string, Parameters<typeof updateFighter>[0]>();
 
@@ -866,6 +869,31 @@ export async function handleApiRequest(
       const roomState = buildRoomStatePayload(room);
       broadcastToRoom(room.id, { type: 'room_state', ...roomState });
       sendJson(res, 200, roomState);
+      return true;
+    }
+
+    if (subPath === 'actions' && method === 'POST') {
+      const body = await readJsonBody(req);
+      const item = body.action;
+      if (!isOfficeAction(item) || !getRoomShop(room, account.userId).stored.state.inventory[item]) {
+        sendJson(res, 403, { message: 'Bạn chưa sở hữu hiệu ứng này.' });
+        return true;
+      }
+      const now = Date.now();
+      const key = room.id + ':' + account.userId;
+      for (const [id, active] of currentOfficeActions) {
+        if (now - active.startedAt >= 3000) currentOfficeActions.delete(id);
+      }
+      const previous = currentOfficeActions.get(key);
+      if (previous && now - previous.startedAt < 220) {
+        sendJson(res, 429, { message: 'Vui lòng chờ một chút trước khi dùng hiệu ứng tiếp.' });
+        return true;
+      }
+      const event: OfficeActionEvent = { type: 'office_action', eventId: crypto.randomUUID(), userId: account.userId,
+        action: item, startedAt: now };
+      currentOfficeActions.set(key, event);
+      broadcastToRoom(room.id, { ...event });
+      sendJson(res, 200, event);
       return true;
     }
 

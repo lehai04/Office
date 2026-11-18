@@ -5,7 +5,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { isUsingStaticFallback } from '../services/officeApi';
 import { uniqueStaticRoomMembers } from '../utils/roomMemberDisplay';
 import { ALTAR_BOW_MS, ALTAR_KICK_MS, ALTAR_PLACE_MS, ALTAR_WALK_MS, type AltarRitual, type AltarView } from '../utils/zenAltar';
-import type { OfficeAction, OfficeDecoration, ScenePoint, ShopOutfit, ShopOffering, ShopItem } from '../utils/officeShop';
+import type { OfficeAction, OfficeActionEvent, OfficeDecoration, ScenePoint, ShopOutfit, ShopOffering, ShopItem } from '../utils/officeShop';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Html, OrbitControls, ContactShadows } from '@react-three/drei';
 import * as THREE from 'three';
@@ -47,7 +47,7 @@ interface OfficeScene3DProps {
   onWalk: (point: ScenePoint) => void;
   decorations: OfficeDecoration[];
   appearances: Record<string, ShopOutfit>;
-  action: OfficeAction | null;
+  actions: Record<string, OfficeActionEvent>;
   onOpenActionWheel?: () => void;
   altar: AltarView | null;
   onFloorClick: (point: ScenePoint, isTouch: boolean) => void;
@@ -2240,7 +2240,7 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
   onWalk,
   decorations,
   appearances,
-  action,
+  actions,
   onOpenActionWheel,
   altar,
   onFloorClick,
@@ -2862,7 +2862,7 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
                 isSeated={isSeated}
                 isBowing={isMe && isBowing}
                 outfit={appearances[member.userId]}
-                action={isMe ? action : null}
+                action={actions[member.userId]?.action ?? null}
                 hideMeshInFpv={isMe && cameraMode === 'first_person'}
                 position={position}
                 rotationY={heading}
