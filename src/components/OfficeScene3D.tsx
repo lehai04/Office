@@ -511,12 +511,12 @@ const LowPolyCharacter: React.FC<{
     if (actor) {
       const [x, y, z] = position;
       const distance = Math.hypot(x - actor.position.x, y - actor.position.y, z - actor.position.z);
-      const step = action || isSeated || distance > 18 ? 1 : Math.min(1, (delta * 5) / Math.max(distance, 0.001));
+      const step = sleeping || action || isSeated || distance > 18 ? 1 : Math.min(1, (delta * 5) / Math.max(distance, 0.001));
       actor.position.x += (x - actor.position.x) * step;
       actor.position.y += (y - actor.position.y) * step;
       actor.position.z += (z - actor.position.z) * step;
-      if (action === 'dance') actor.position.y += Math.abs(Math.sin(clock.elapsedTime * 8)) * 0.08;
-      actor.rotation.z = action === 'dance' ? Math.sin(clock.elapsedTime * 9) * 0.18 : action === 'headstand' ? Math.PI : boxingHit && Date.now() - boxingHit.at < 240 ? 0.23 : 0;
+      if (!sleeping && action === 'dance') actor.position.y += Math.abs(Math.sin(clock.elapsedTime * 8)) * 0.08;
+      actor.rotation.z = sleeping ? 0 : action === 'dance' ? Math.sin(clock.elapsedTime * 9) * 0.18 : action === 'headstand' ? Math.PI : boxingHit && Date.now() - boxingHit.at < 240 ? 0.23 : 0;
     }
     if (leftArm.current && rightArm.current) {
       const base = isBowing ? -1.1 : isSeated ? -0.55 : 0;
@@ -557,6 +557,7 @@ const LowPolyCharacter: React.FC<{
   const torsoY = hipY + 0.36;
   const headY = torsoY + 0.44;
   const labelY = headY + 0.48;
+  const bodyOffsetY = !sleeping && action === 'headstand' ? -1.65 : 0;
 
   const normalizedNickname =
     nickname.trim() === 'Người Ngoài Phòng' ? 'Kẻ lạ' : nickname;
@@ -580,16 +581,21 @@ const LowPolyCharacter: React.FC<{
         event.stopPropagation();
         onSelectCharacter();
       } : undefined}>
-      {action === 'confetti' && <group ref={confetti}>
+      {!sleeping && action === 'confetti' && <group ref={confetti}>
         {Array.from({ length: 12 }, (_, i) => <AltarBlock key={i}
           at={[Math.cos(i * 2.4) * (0.25 + i * 0.037), 1.12 + i * 0.037, Math.sin(i * 2.4) * (0.25 + i * 0.037)]}
           size={[0.053, 0.015, 0.045]} color={['#f883ba', '#ffd562', '#62d9d0'][i % 3]} />)}
       </group>}
-      <group position-y={action === 'headstand' ? -1.65 : 0} rotation-x={sleeping ? -Math.PI / 2 : 0}>
+      {sleeping && !hideMeshInFpv && <group position={[0, 0, -1.25]}>
+        <AltarBlock at={[-0.19, 0.02, 0.035]} size={[0.105, 0.10, 0.18]} color={shirtColor} />
+        <AltarBlock at={[-0.13, 0.0375, 0.103]} size={[0.19, 0.085, 0.096]} color={shirtColor} />
+        <AltarBlock at={[-0.014, 0.0375, 0.103]} size={[0.065, 0.075, 0.085]} color={skinColor} />
+      </group>}
+      <group position-y={bodyOffsetY} rotation-x={sleeping ? -Math.PI / 2 : 0}>
       {!hideMeshInFpv && (
         <>
           {/* Đài sen hồng 2 tầng cánh nở dưới chân Trụ trì Thanh Ngọc */}
-          {isAbbotThanhNgoc && (
+          {!sleeping && isAbbotThanhNgoc && (
             <group position={[0, 0.02, 0]}>
               <mesh position={[0, 0.03, 0]} castShadow receiveShadow>
                 <cylinderGeometry args={[0.38, 0.44, 0.06, 20]} />
@@ -635,7 +641,7 @@ const LowPolyCharacter: React.FC<{
               })}
             </group>
           )}
-          {isCurrentUser && (
+          {!sleeping && isCurrentUser && (
             <mesh position={[0, 0.03, 0]} rotation={[-Math.PI / 2, 0, 0]}>
               <ringGeometry args={[0.42, 0.54, 24]} />
               <meshBasicMaterial color="#10b981" transparent opacity={0.85} />
@@ -643,7 +649,7 @@ const LowPolyCharacter: React.FC<{
           )}
 
           {/* Chân */}
-          {isSeated ? (
+          {!sleeping && (isSeated ? (
             <group>
               <mesh position={[-0.11, 0.46, 0.16]} rotation={[Math.PI / 2, 0, 0]} castShadow>
                 <boxGeometry args={[0.13, 0.34, 0.13]} />
@@ -673,10 +679,11 @@ const LowPolyCharacter: React.FC<{
                 <meshStandardMaterial color={pantsColor} roughness={0.8} />
               </mesh>
             </group>
-          )}
+          ))}
 
           {/* Phần thân trên & đầu (Có thể cúi lạy khi ở Phòng Tịnh Tâm) */}
-          <group ref={upperBodyRef} position={[0, hipY, 0]}>
+          <group ref={sleeping ? undefined : upperBodyRef} position={[0, hipY, 0]}>
+            {!sleeping && <>
             {gender === 'male' ? (
               <mesh position={[0, 0.36, 0]} castShadow>
                 <boxGeometry args={[0.42, 0.52, 0.24]} />
@@ -730,8 +737,9 @@ const LowPolyCharacter: React.FC<{
               <meshStandardMaterial color={shirtColor} roughness={0.65} />
             </mesh>
 
+            </>}
             {/* Đầu */}
-            <group position={[0, 0.8, 0]}>
+            <group position={sleeping ? [0, 0.8, gender === 'male' ? 0.24 : 0.29] : [0, 0.8, 0]}>
               <mesh castShadow>
                 <boxGeometry args={[0.34, 0.34, 0.34]} />
                 <meshStandardMaterial
@@ -741,7 +749,11 @@ const LowPolyCharacter: React.FC<{
                   opacity={isOnline ? 1 : 0.6}
                 />
               </mesh>
-              <AvatarMoodFace mood={mood} eyebrowColor={hairColor} />
+              {sleeping ? <>
+                <AltarBlock at={[-0.08, 0.02, 0.178]} size={[0.055, 0.012, 0.012]} color="#0f172a" />
+                <AltarBlock at={[0.08, 0.02, 0.178]} size={[0.055, 0.012, 0.012]} color="#0f172a" />
+                <AltarBlock at={[0, -0.071, 0.178]} size={[0.036, 0.01, 0.012]} color="#582b3e" />
+              </> : <AvatarMoodFace mood={mood} eyebrowColor={hairColor} />}
               {outfit?.eyes === 'glasses' && <group position={[0, -0.07, 0.18]} scale={0.16}><VoxelObject item="glasses" /></group>}
               {outfit?.head === 'cap' && <group position={[0, 0.085, 0.02]} scale={0.34}><VoxelObject item="cap" /></group>}
               {outfit?.shirt === 'hoodie' && <AltarBlock at={[0,-0.11,-0.1]} size={[0.42,0.23,0.31]} color="#5579cc" />}
@@ -782,16 +794,17 @@ const LowPolyCharacter: React.FC<{
               )}
 
               {/* Vầng hào quang phát sáng tia vàng sau đầu Trụ trì Thanh Ngọc */}
-              {isAbbotThanhNgoc && <RadiantHaloAura3D />}
+              {!sleeping && isAbbotThanhNgoc && <RadiantHaloAura3D />}
             </group>
           </group>
         </>
       )}
 
+      </group>
       {/* Nhãn Biệt danh & Bong bóng Chat */}
       {!hideMeshInFpv && (
         <Html
-          position={[0, labelY, 0]}
+          position={sleeping ? [0, 0.76, -1.48] : [0, labelY + bodyOffsetY, 0]}
           center
           zIndexRange={[20, 0]}
           style={{ pointerEvents: 'none' }}
@@ -839,7 +852,6 @@ const LowPolyCharacter: React.FC<{
           </div>
         </Html>
       )}
-      </group>
     </group>
   );
 };
@@ -2427,9 +2439,14 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
         };
       }
 
-      if (sleeping[member.userId]) {
-        const [bx, , bz] = sleeping[member.userId];
-        return { member, isSeated: false, position: [bx, 0.45, bz + 0.58] as ScenePoint, rotationY: 0 };
+      const bedPosition = sleeping[member.userId];
+      if (bedPosition && !member.inZenRoom) {
+        const [bx, by, bz] = bedPosition;
+        const bed = decorations.find(({ item, position }) => item === 'bed' && position.every((axis, i) => axis === bedPosition[i]));
+        const rotationY = bed?.rotationY ?? 0;
+        // The head is 1.48 units behind the avatar origin; the pillow is at bed-local z = -0.51.
+        const offset = 0.97;
+        return { member, isSeated: false, sleeping: true, position: [bx + Math.sin(rotationY) * offset, by + 0.65, bz + Math.cos(rotationY) * offset] as ScenePoint, rotationY };
       }
       if (member.userId === currentUserId && walkTarget) {
         return { member, isSeated: false, position: walkTarget, rotationY: 0 };
@@ -2479,7 +2496,7 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
         rotationY: slot.rotationY,
       };
     }
-  }, [members, currentUserId, inZenRoom, inGameRoom, inBoxingRoom, abbotAtDonationDesk, walkTarget, boxingView?.fighters, sleeping]);
+  }, [members, currentUserId, inZenRoom, inGameRoom, inBoxingRoom, abbotAtDonationDesk, walkTarget, boxingView?.fighters, sleeping, decorations]);
 
   const myPlacement = useMemo(() => {
     const found = characterPlacements.find((p) => p.member.userId === currentUserId);
@@ -2854,7 +2871,7 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
 
           {/* 8. CÁC NHÂN VẬT 3D TRONG PHÒNG */}
           </group>
-          {characterPlacements.map(({ member, isSeated, position, rotationY }) => {
+          {characterPlacements.map(({ member, isSeated, position, rotationY, sleeping: isSleeping }) => {
             if (altar?.rituals.some((ritual) => ritual.userId === member.userId)) return null;
             const isMe = member.userId === currentUserId;
             const bubble = activeBubbles[member.userId];
@@ -2871,7 +2888,7 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
             const facing = opponent === FISH_ID ? { x: BOXING.fishX, z: BOXING.fishZ }
               : opponent ? boxingView?.fighters[opponent]
               : inBoxingMap && inBoxingRing(actor) ? nearTarget : undefined;
-            const heading = facing && Math.hypot(facing.x - actor.x, facing.z - actor.z) > 0.05
+            const heading = !isSleeping && facing && Math.hypot(facing.x - actor.x, facing.z - actor.z) > 0.05
               ? Math.atan2(facing.x - actor.x, facing.z - actor.z) : rotationY;
             const dupCount =
               nicknameCounts.get(member.nickname.trim().toLowerCase()) ?? 1;
@@ -2881,7 +2898,7 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
                 boxingHit={hit} boxingPunch={strike}
                 onSelectCharacter={isMe ? onOpenActionWheel : undefined}
                 presence={member.presence}
-                sleeping={Boolean(sleeping[member.userId] && !inBoxingMap && !member.inZenRoom)}
+                sleeping={isSleeping}
                 gender={member.avatarGender}
                 nickname={member.nickname}
                 memberTag={member.memberTag}
