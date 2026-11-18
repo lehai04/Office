@@ -31,7 +31,7 @@ export const DonationCaseModal: React.FC<DonationCaseModalProps> = ({
   onOpenChat,
 }) => {
   const [suspectDraft, setSuspectDraft] = useState('');
-  const [voteNotice, setVoteNotice] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+  const [voteError, setVoteError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
 
@@ -42,25 +42,24 @@ export const DonationCaseModal: React.FC<DonationCaseModalProps> = ({
     return () => window.clearInterval(timer);
   }, [isOpen]);
 
+  useEffect(() => {
+    setSuspectDraft('');
+    setVoteError(null);
+  }, [caseView?.id]);
+
   if (!isOpen) return null;
 
   const handleSubmitVote = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!suspectDraft.trim() || submitting) return;
     setSubmitting(true);
-    setVoteNotice(null);
+    setVoteError(null);
     const res = await onVoteSuspect(suspectDraft.trim());
     setSubmitting(false);
     if (res.ok) {
-      setVoteNotice({
-        type: 'ok',
-        text: '🗳️ Đã ghi nhận phiếu bình chọn kín của bạn trong vòng này!',
-      });
+      setSuspectDraft('');
     } else {
-      setVoteNotice({
-        type: 'err',
-        text: res.error || 'Không thể gửi phiếu bình chọn.',
-      });
+      setVoteError(res.error || 'Không thể gửi phiếu bình chọn.');
     }
   };
 
@@ -104,11 +103,11 @@ export const DonationCaseModal: React.FC<DonationCaseModalProps> = ({
                 <div className="rounded-2xl border border-amber-500/25 bg-black/30 p-2.5">
                   <div className="text-[10px] text-amber-200/70">Trạng thái</div>
                   <div className="mt-0.5 font-black text-amber-300">
-                    {caseView.status === 'stolen_unreported' && '🚨 Chờ chủ trì báo án'}
+                    {caseView.status === 'stolen_unreported' && '🚨 Chưa báo cảnh sát'}
                     {caseView.status === 'investigating' &&
                       (caseView.currentPhase === 0
                         ? '🚓 NPC đang tiếp nhận'
-                        : `🔎 Vòng bình chọn ${caseView.currentPhase}/5`)}
+                        : `🔎 Manh mối ${caseView.currentPhase}/5`)}
                     {caseView.status === 'caught' && '✅ Đã bắt được kẻ trộm'}
                     {caseView.status === 'escaped' && '💨 Kẻ trộm đã thoát'}
                   </div>
@@ -130,7 +129,7 @@ export const DonationCaseModal: React.FC<DonationCaseModalProps> = ({
                       : '--:--'}
                   </div>
                   <div className="text-[10px] text-amber-200/80 font-bold">
-                    Phiếu vòng này: {caseView.currentRoundVoteCount}
+                    {caseView.queuedCaseCount > 0 && `${caseView.queuedCaseCount} vụ đang chờ`}
                   </div>
                 </div>
               </div>
@@ -139,7 +138,7 @@ export const DonationCaseModal: React.FC<DonationCaseModalProps> = ({
               {caseView.status === 'stolen_unreported' && (
                 <div className="rounded-2xl border border-rose-400/40 bg-rose-500/15 p-3 text-center space-y-2">
                   <div className="text-xs font-bold text-rose-200">
-                    Hòm công đức vừa bị trộm! {isAbbotUser ? 'Chủ trì hãy báo cảnh sát NPC để mở điều tra.' : 'Đang chờ Chủ trì Thanh Ngọc báo cảnh sát NPC.'}
+                    Hòm công đức vừa bị trộm! Mọi người có thể bình chọn ngay. {isAbbotUser && 'Trụ trì có thể báo cảnh sát NPC để nhận manh mối.'}
                   </div>
                   {caseView.canReportPolice && (
                     <button
@@ -195,7 +194,7 @@ export const DonationCaseModal: React.FC<DonationCaseModalProps> = ({
               </div>
 
               {/* Khu vực Bình chọn kẻ trộm (Không có danh sách gợi ý nghi phạm) */}
-              {caseView.status === 'investigating' && (
+              {(caseView.status === 'stolen_unreported' || caseView.status === 'investigating') && (
                 <form
                   onSubmit={(e) => void handleSubmitVote(e)}
                   className="rounded-2xl border border-emerald-400/30 bg-black/30 p-3 space-y-2"
@@ -203,7 +202,7 @@ export const DonationCaseModal: React.FC<DonationCaseModalProps> = ({
                   <div className="flex items-center justify-between">
                     <span className="flex items-center gap-1.5 text-xs font-black text-emerald-300">
                       <Vote className="h-3.5 w-3.5" />
-                      Bình chọn kẻ trộm (Vòng {caseView.currentPhase}/5)
+                      Bình chọn kẻ trộm
                     </span>
                     {caseView.myCurrentVoteLabel && (
                       <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-200">
@@ -212,12 +211,18 @@ export const DonationCaseModal: React.FC<DonationCaseModalProps> = ({
                     )}
                   </div>
 
-                  {caseView.currentPhase === 0 ? (
-                    <div className="text-[11px] text-amber-200/75">
-                      Phút 0–5: NPC đang tiếp nhận vụ án, bình chọn sẽ mở khi Manh mối 1 được công bố.
-                    </div>
-                  ) : (
-                    <>
+                  {caseView.quickVoteEndsAt !== null && (
+                    <p className="text-[11px] text-amber-200" role="status">
+                      {nowMs >= caseView.quickVoteEndsAt
+                        ? 'Đang chốt kết quả…'
+                        : `Còn ${Math.ceil((caseView.quickVoteEndsAt - nowMs) / 1000)} giây · ${caseView.currentRoundVoteCount} phiếu`}
+                    </p>
+                  )}
+                  {caseView.lastQuickVoteResult === 'incorrect' && (
+                    <p className="text-[11px] font-bold text-rose-200" role="status">
+                      Lượt trước chưa đoán đúng. Bạn có thể bình chọn tiếp.
+                    </p>
+                  )}
                       <input
                         type="text"
                         autoComplete="off"
@@ -226,28 +231,21 @@ export const DonationCaseModal: React.FC<DonationCaseModalProps> = ({
                         placeholder="Nhập chính xác tên nhân vật nghi ngờ (hoặc Tên #ABCD)..."
                         className="w-full rounded-xl border border-amber-500/35 bg-black/40 px-3 py-2 text-xs font-bold text-amber-50 placeholder-amber-200/40 outline-none focus:border-emerald-400"
                       />
-                      {voteNotice && (
-                        <div
-                          className={`rounded-xl px-2.5 py-1.5 text-[11px] font-bold ${
-                            voteNotice.type === 'ok'
-                              ? 'bg-emerald-500/20 text-emerald-200'
-                              : 'bg-rose-500/20 text-rose-200'
-                          }`}
-                        >
-                          {voteNotice.text}
-                        </div>
+                      {voteError && (
+                        <p role="alert" className="rounded-xl bg-rose-500/20 px-2.5 py-1.5 text-[11px] font-bold text-rose-200">
+                          {voteError}
+                        </p>
                       )}
                       <button
                         type="submit"
-                        disabled={submitting || !suspectDraft.trim()}
+                        disabled={submitting || !suspectDraft.trim() ||
+                          (caseView.quickVoteEndsAt !== null && nowMs >= caseView.quickVoteEndsAt)}
                         className="w-full rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-45 py-2 text-xs font-black text-slate-950 shadow cursor-pointer"
                       >
                         {caseView.hasVotedCurrentRound
                           ? '🔄 Đổi phiếu bình chọn'
-                          : '🗳️ Bình chọn kẻ trộm'}
+                          : caseView.quickVoteEndsAt !== null ? '🗳️ Gửi phiếu' : '🗳️ Mở lượt bình chọn 5 giây'}
                       </button>
-                    </>
-                  )}
                 </form>
               )}
 

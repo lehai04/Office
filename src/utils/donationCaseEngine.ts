@@ -3,6 +3,8 @@ import type { AvatarGender, RoomMember } from '../types/office';
 
 export const CASE_PHASE_DURATION_MS = 5 * 60 * 1000; // 5 phút mỗi đợt
 export const CASE_TOTAL_DURATION_MS = 30 * 60 * 1000; // 30 phút tổng cộng
+const QUICK_VOTE_DURATION_MS = 5_000;
+const CASE_RESULT_DISPLAY_MS = 10_000;
 
 // Cấu hình kinh tế mặc định (xu ảo Office & điểm Công đức)
 export const DONATION_CASE_CONFIG = {
@@ -63,6 +65,10 @@ export interface DonationCaseServerRecord {
   settlementDone: boolean;
   settlementSummary: CaseSettlementSummary | null;
   resolvedAt: number | null;
+  quickVote?: { endsAt: number; votes: Record<string, string> };
+  lastQuickVoteResult?: 'correct' | 'incorrect';
+  queuedCases?: DonationCaseServerRecord[];
+  revision?: number;
 }
 
 export interface PublicDonationCaseView {
@@ -81,6 +87,54 @@ export interface PublicDonationCaseView {
   canReportPolice: boolean;
   caughtThiefNickname: string | null;
   settlementSummary: CaseSettlementSummary | null;
+  quickVoteEndsAt: number | null;
+  lastQuickVoteResult: 'correct' | 'incorrect' | null;
+  queuedCaseCount: number;
+}
+
+export function isDonationCaseOpen(caseRec?: Pick<DonationCaseServerRecord, 'status'> | null): boolean {
+  return caseRec?.status === 'stolen_unreported' || caseRec?.status === 'investigating';
+}
+
+export function queueDonationCase(
+  current: DonationCaseServerRecord | null,
+  next: DonationCaseServerRecord
+): DonationCaseServerRecord {
+  if (!current || (!isDonationCaseOpen(current) && !current.queuedCases?.length &&
+    (current.resolvedAt === null || next.stolenAt >= current.resolvedAt + CASE_RESULT_DISPLAY_MS))) return next;
+  (current.queuedCases ??= []).push(next);
+  current.revision = (current.revision ?? 0) + 1;
+  return current;
+}
+
+export function nextDonationCase(current: DonationCaseServerRecord, nowMs: number): DonationCaseServerRecord {
+  if (current.resolvedAt === null || nowMs < current.resolvedAt + CASE_RESULT_DISPLAY_MS) return current;
+  const [next, ...remaining] = current.queuedCases ?? [];
+  if (!next) return current;
+  next.queuedCases = remaining;
+  return next;
+}
+
+export function nextDonationCaseUpdateAt(caseRec: DonationCaseServerRecord): number | undefined {
+  if (caseRec.quickVote) return caseRec.quickVote.endsAt;
+  if (caseRec.status === 'investigating' && caseRec.policeReportedAt !== null &&
+    (caseRec.currentPhase < 5 || !caseRec.lastQuickVoteResult)) {
+    return caseRec.policeReportedAt + (caseRec.currentPhase + 1) * CASE_PHASE_DURATION_MS;
+  }
+  if (caseRec.queuedCases?.length && caseRec.resolvedAt !== null) {
+    return caseRec.resolvedAt + CASE_RESULT_DISPLAY_MS;
+  }
+}
+
+export function submitDonationCaseVote(
+  caseRec: DonationCaseServerRecord,
+  voterId: string,
+  suspectId: string,
+  nowMs: number
+): void {
+  caseRec.quickVote ??= { endsAt: nowMs + QUICK_VOTE_DURATION_MS, votes: {} };
+  caseRec.quickVote.votes[voterId] = suspectId;
+  caseRec.revision = (caseRec.revision ?? 0) + 1;
 }
 
 export interface UserEconomyLedgerEntry {
@@ -417,20 +471,39 @@ export function advanceDonationCaseByTime(
   nowMs: number,
   callbacks: CaseTickCallbacks
 ): boolean {
+  let changed = false;
+  const quickVote = caseRec.quickVote;
+  if (isDonationCaseOpen(caseRec) && quickVote) {
+    if (nowMs < quickVote.endsAt) return false;
+    const correct = tallyMajorityWinner(quickVote.votes) === caseRec.thiefSnapshot.userId;
+    delete caseRec.quickVote;
+    caseRec.revision = (caseRec.revision ?? 0) + 1;
+    caseRec.lastQuickVoteResult = correct ? 'correct' : 'incorrect';
+    if (correct) {
+      caseRec.status = 'caught';
+      caseRec.resolvedAt = nowMs;
+      settleCaseRewardsAndPenalties(caseRec, 'caught', callbacks);
+      callbacks.onPostNpcChat(
+        `🚓 [VỤ ÁN CÔNG ĐỨC] Bình chọn đúng! Đã bắt được kẻ trộm: "${caseRec.thiefSnapshot.nickname}".`
+      );
+      return true;
+    }
+    callbacks.onPostNpcChat('🕵️ [VỤ ÁN CÔNG ĐỨC] Bình chọn chưa đúng. Có thể mở lượt bình chọn mới.');
+    changed = true;
+  }
   if (caseRec.status !== 'investigating' || !caseRec.policeReportedAt) {
-    return false;
+    return changed;
   }
 
   const elapsed = Math.max(0, nowMs - caseRec.policeReportedAt);
-  const targetStep = Math.min(6, Math.floor(elapsed / CASE_PHASE_DURATION_MS));
+  const targetStep = Math.min(caseRec.lastQuickVoteResult ? 5 : 6, Math.floor(elapsed / CASE_PHASE_DURATION_MS));
   if (targetStep <= caseRec.currentPhase) {
-    return false;
+    return changed;
   }
 
-  let changed = false;
   for (let step = caseRec.currentPhase + 1; step <= targetStep; step++) {
     // Chốt vòng trước đó (nếu step >= 2 tức là vừa hết vòng step - 1)
-    if (step >= 2) {
+    if (step >= 2 && !caseRec.lastQuickVoteResult) {
       const finishedRound = step - 1;
       const winnerId = tallyMajorityWinner(caseRec.votesByRound[finishedRound]);
       if (winnerId && winnerId === caseRec.thiefSnapshot.userId) {
@@ -459,9 +532,8 @@ export function advanceDonationCaseByTime(
         caseRec.publishedClues.push(clue);
       }
       caseRec.currentPhase = step as 1 | 2 | 3 | 4 | 5;
-      const minsLeft = Math.max(0, 30 - step * 5);
       callbacks.onPostNpcChat(
-        `🔎 [VỤ ÁN CÔNG ĐỨC] ${clue.title}: ${clue.text} (Mở bình chọn vòng ${step}/5 • Còn ${minsLeft} phút)`
+        `🔎 [VỤ ÁN CÔNG ĐỨC] ${clue.title}: ${clue.text}`
       );
       changed = true;
     } else if (step === 6) {
@@ -488,19 +560,19 @@ export function toPublicDonationCaseView(
 ): PublicDonationCaseView | null {
   if (!caseRec) return null;
 
-  const round = caseRec.currentPhase;
-  const roundVotes = round >= 1 ? caseRec.votesByRound[round] || {} : {};
+  const roundVotes = caseRec.quickVote?.votes ?? {};
   const myVoteTargetId = roundVotes[viewerUserId] || null;
   const myTargetMember = myVoteTargetId
     ? members.find((m) => m.userId === myVoteTargetId)
     : null;
 
   const nextPhaseAt =
-    caseRec.status === 'investigating' && caseRec.policeReportedAt
+    caseRec.status === 'investigating' && caseRec.policeReportedAt &&
+    (caseRec.currentPhase < 5 || !caseRec.lastQuickVoteResult)
       ? caseRec.policeReportedAt + (caseRec.currentPhase + 1) * CASE_PHASE_DURATION_MS
       : null;
   const endsAt =
-    caseRec.status === 'investigating' && caseRec.policeReportedAt
+    caseRec.status === 'investigating' && caseRec.policeReportedAt && !caseRec.lastQuickVoteResult && !caseRec.quickVote
       ? caseRec.policeReportedAt + CASE_TOTAL_DURATION_MS
       : null;
 
@@ -527,5 +599,8 @@ export function toPublicDonationCaseView(
       caseRec.status === 'caught' || caseRec.status === 'escaped'
         ? caseRec.settlementSummary
         : null,
+    quickVoteEndsAt: caseRec.quickVote?.endsAt ?? null,
+    lastQuickVoteResult: caseRec.lastQuickVoteResult ?? null,
+    queuedCaseCount: caseRec.queuedCases?.length ?? 0,
   };
 }

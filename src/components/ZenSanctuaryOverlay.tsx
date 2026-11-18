@@ -118,7 +118,7 @@ interface ZenSanctuaryOverlayProps {
     error?: string;
     meritAwarded?: number;
   }>;
-  onRobDonationBox: (amountVnd: number) => Promise<{
+  onRobDonationBox: () => Promise<{
     ok: boolean;
     error?: string;
     robbedVnd?: number;
@@ -437,11 +437,7 @@ export const ZenSanctuaryOverlay: React.FC<ZenSanctuaryOverlayProps> = ({
           )}
 
           {/* VỤ ÁN HÒM CÔNG ĐỨC: Trộm hòm / Chủ trì Báo cảnh sát / Bảng vụ án */}
-          {onStealDonationBox &&
-            donationBox.totalVnd > 0 &&
-            (!donationCaseView ||
-              donationCaseView.status === 'caught' ||
-              donationCaseView.status === 'escaped') && (
+          {onStealDonationBox && donationBox.totalVnd > 0 && (
               <button
                 type="button"
                 data-testid="zen-steal-box-btn"
@@ -647,9 +643,7 @@ export const ZenSanctuaryOverlay: React.FC<ZenSanctuaryOverlayProps> = ({
                     if (donationRequest.current) return;
                     donationRequest.current = true;
                     setDonationBusy(true);
-                    const entered = Math.round(Number(donationAmountDraft) || 0);
-                    const amount = entered > 0 ? Math.min(entered, donationBox.totalVnd) : donationBox.totalVnd;
-                    const res = await onRobDonationBox(amount).finally(() => {
+                    const res = await onRobDonationBox().finally(() => {
                       donationRequest.current = false;
                       setDonationBusy(false);
                     });

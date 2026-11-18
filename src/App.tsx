@@ -602,11 +602,13 @@ export function App() {
       setMyCatInventory(loadMyCatInventory(session.userId));
       setGiftRequests(loadRoomGiftRequests(room.code));
       setRoomPuzzleState(loadRoomPuzzleState(room.code));
-    setUserWallet(loadUserWalletState(room.code, session.userId));
-    if (isUsingStaticFallback()) setRoomDonationBox(loadRoomDonationBoxState(room.code));
-    fetchDonationCaseApi(room.code, session.sessionToken)
-      .then((res) => setDonationCaseView(res.caseView))
-      .catch(() => {});
+      if (isUsingStaticFallback()) {
+        setUserWallet(loadUserWalletState(room.code, session.userId));
+        setRoomDonationBox(loadRoomDonationBoxState(room.code));
+        fetchDonationCaseApi(room.code, session.sessionToken)
+          .then((res) => setDonationCaseView(res.caseView))
+          .catch(() => {});
+      }
     };
     window.addEventListener('storage', onStorageChange);
     return () => {
@@ -751,16 +753,26 @@ export function App() {
     if (!session || !room || isUsingStaticFallback()) return;
     const controller = new AbortController();
     const refresh = () => { void refreshShop(undefined, controller.signal); };
+    const refreshRoom = () => {
+      refresh();
+      if (!USE_OFFICE_WEBSOCKET) {
+        fetchDonationCaseApi(room.code, session.sessionToken, controller.signal)
+          .then((res) => {
+            if (!controller.signal.aborted) setDonationCaseView(res.caseView);
+          })
+          .catch(() => {});
+      }
+    };
     window.addEventListener(SHOP_UPDATE_EVENT, refresh);
     window.addEventListener(ALTAR_UPDATE_EVENT, refresh);
-    window.addEventListener('focus', refresh);
-    const timer = window.setInterval(refresh, USE_OFFICE_WEBSOCKET ? 30_000 : 4_000);
+    window.addEventListener('focus', refreshRoom);
+    const timer = window.setInterval(refreshRoom, USE_OFFICE_WEBSOCKET ? 30_000 : 4_000);
     refresh();
     return () => {
       controller.abort();
       window.removeEventListener(SHOP_UPDATE_EVENT, refresh);
       window.removeEventListener(ALTAR_UPDATE_EVENT, refresh);
-      window.removeEventListener('focus', refresh);
+      window.removeEventListener('focus', refreshRoom);
       window.clearInterval(timer);
     };
   }, [refreshShop]);
@@ -974,21 +986,32 @@ export function App() {
     [room, session]
   );
 
-  // Tự động tick tiến trình vụ án mỗi 10s khi đang điều tra
+  const donationCasePollMs = donationCaseView?.quickVoteEndsAt ? 1_000
+    : isDonationCaseModalOpen || donationCaseView?.status === 'investigating' ? 4_000 : 0;
   useEffect(() => {
-    if (!session || !room || donationCaseView?.status !== 'investigating') return;
-    const timer = window.setInterval(() => {
+    if (!session || !room || !donationCasePollMs) return;
+    let active = true;
+    let pending = false;
+    const poll = () => {
+      if (pending) return;
+      pending = true;
       tickDonationCaseApi(room.code, session.sessionToken)
         .then((res) => {
+          if (!active) return;
           setDonationCaseView(res.caseView);
           applyLedgerFromCaseApi(res.myLedger);
         })
-        .catch(() => {});
-    }, 10_000);
-    return () => window.clearInterval(timer);
-  }, [session, room, donationCaseView?.status, applyLedgerFromCaseApi]);
+        .catch(() => {})
+        .finally(() => { pending = false; });
+    };
+    const timer = window.setInterval(poll, donationCasePollMs);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [session, room, donationCasePollMs, applyLedgerFromCaseApi]);
 
-  const stealHostedDonation = useCallback(async () => {
+  const stealDonation = useCallback(async () => {
     if (!session || !room) throw new Error('Chưa kết nối phòng.');
     if (stealingDonation.current) throw new Error('Đang xử lý thao tác cướp.');
     stealingDonation.current = true;
@@ -996,8 +1019,22 @@ export function App() {
       const res = await stealDonationBoxCaseApi(room.code, session.sessionToken);
       setDonationCaseView(res.caseView);
       applyLedgerFromCaseApi(res.myLedger);
-      await refreshShop();
+      if (isUsingStaticFallback()) {
+        setRoomDonationBox(loadRoomDonationBoxState(room.code));
+      } else {
+        await refreshShop();
+      }
       return res.stolenAmountVnd ?? 0;
+    } catch (problem) {
+      if (problem instanceof Error && 'code' in problem &&
+        problem.code === 'EMPTY_DONATION_BOX') {
+        await Promise.allSettled([
+          refreshShop(),
+          fetchDonationCaseApi(room.code, session.sessionToken)
+            .then((res) => setDonationCaseView(res.caseView)),
+        ]);
+      }
+      throw problem;
     } finally {
       stealingDonation.current = false;
     }
@@ -1005,13 +1042,13 @@ export function App() {
 
   const handleStealDonationBoxCase = useCallback(async () => {
     try {
-      const amount = await stealHostedDonation();
+      const amount = await stealDonation();
       playChatNotificationSound();
       showToast(`Bạn đã lấy ${formatVnd(amount)} từ Hòm Công Đức.`);
     } catch (problem) {
       showToast(problem instanceof Error ? problem.message : 'Không thể trộm hòm công đức lúc này.');
     }
-  }, [stealHostedDonation, showToast]);
+  }, [stealDonation, showToast]);
 
   const handleReportDonationCasePolice = useCallback(async () => {
     if (!session || !room) return;
@@ -1029,9 +1066,9 @@ export function App() {
 
   const handleVoteDonationCase = useCallback(
     async (suspectName: string): Promise<{ ok: boolean; error?: string }> => {
-      if (!session || !room) return { ok: false, error: 'Chưa kết nối phòng.' };
+      if (!session || !room || !donationCaseView) return { ok: false, error: 'Chưa tải được vụ án.' };
       try {
-        const res = await voteDonationCaseApi(room.code, suspectName, session.sessionToken);
+        const res = await voteDonationCaseApi(room.code, suspectName, session.sessionToken, donationCaseView.id);
         setDonationCaseView(res.caseView);
         applyLedgerFromCaseApi(res.myLedger);
         return { ok: true };
@@ -1042,78 +1079,18 @@ export function App() {
         };
       }
     },
-    [session, room, applyLedgerFromCaseApi]
+    [session, room, donationCaseView?.id, applyLedgerFromCaseApi]
   );
 
-  const handleRobDonationBox = useCallback(
-    async (
-      requestedVnd: number
-    ): Promise<{ ok: boolean; error?: string; robbedVnd?: number }> => {
-      if (!session || !room) {
-        return { ok: false, error: 'Chưa kết nối phòng.' };
-      }
-      if (isUsingStaticFallback() && roomDonationBox.totalVnd <= 0) {
-        return { ok: false, error: 'Hòm công đức đang trống trơn!' };
-      }
-      if (!isUsingStaticFallback()) {
-        try {
-          return { ok: true, robbedVnd: await stealHostedDonation() };
-        } catch (problem) {
-          return { ok: false, error: problem instanceof Error ? problem.message : 'Chưa thể thực hiện.' };
-        }
-      }
-      const robAmount = Math.min(
-        roomDonationBox.totalVnd,
-        Math.max(1000, Math.round(requestedVnd) || roomDonationBox.totalVnd)
-      );
-
-      const nextWallet: UserWalletState = {
-        ...userWallet,
-        balanceVnd: userWallet.balanceVnd + robAmount,
-        updatedAt: Date.now(),
-      };
-      setUserWallet(nextWallet);
-      saveUserWalletState(room.code, session.userId, nextWallet);
-
-      setMeritCount((prev) => {
-        const next = Math.max(0, prev - 5);
-        try {
-          window.localStorage.setItem(
-            `van_phong_ao_zen_merit:${room.code}:${session.userId}`,
-            String(next)
-          );
-        } catch {
-          // ignore
-        }
-        return next;
-      });
-
-      const nextBox: RoomDonationBoxState = {
-        totalVnd: Math.max(0, roomDonationBox.totalVnd - robAmount),
-        donations: [
-          {
-            id: `rob-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-            donorUserId: session.userId,
-            donorNickname: session.nickname,
-            amountVnd: robAmount,
-            meritAwarded: -5,
-            kind: 'rob' as const,
-            createdAt: Date.now(),
-          },
-          ...roomDonationBox.donations,
-        ].slice(0, 50),
-        updatedAt: Date.now(),
-      };
-      setRoomDonationBox(nextBox);
-      saveRoomDonationBoxState(room.code, nextBox);
-      broadcastDonationBoxSyncEvent({ roomCode: room.code, donationBox: nextBox });
-
-      playChatNotificationSound();
-      showToast(`🥷 ${session.nickname} vừa cướp ${formatVnd(robAmount)} từ Hòm Công Đức!`);
-      return { ok: true, robbedVnd: robAmount };
-    },
-    [session, room, userWallet, roomDonationBox, showToast, stealHostedDonation]
-  );
+  const handleRobDonationBox = useCallback(async (): Promise<{
+    ok: boolean; error?: string; robbedVnd?: number;
+  }> => {
+    try {
+      return { ok: true, robbedVnd: await stealDonation() };
+    } catch (problem) {
+      return { ok: false, error: problem instanceof Error ? problem.message : 'Chưa thể thực hiện.' };
+    }
+  }, [stealDonation]);
 
   const triggerGlobalChatAlert = useCallback(
     (incoming: ChatMessage) => {

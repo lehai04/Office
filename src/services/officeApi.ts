@@ -296,7 +296,8 @@ async function apiFetch<T>(
       ...options,
       headers,
     });
-  } catch {
+  } catch (problem) {
+    if (options.signal?.aborted) throw problem;
     if (API_ORIGIN) throw new Error('Chưa kết nối được máy chủ Office. Vui lòng thử lại.');
     // Khi không kết nối được máy chủ Node (ví dụ chạy bản tĩnh), chuyển sang Static Fallback Engine
     staticFallbackActive = true;
@@ -322,11 +323,11 @@ async function apiFetch<T>(
   }
 
   if (!res.ok) {
-    const err = new Error(data.message || `Lỗi máy chủ (${res.status})`) as Error & {
+    const err = new Error(data.message || data.error?.message || `Lỗi máy chủ (${res.status})`) as Error & {
       code?: string;
       status?: number;
     };
-    err.code = data.error;
+    err.code = typeof data.error === 'string' ? data.error : data.error?.code;
     err.status = res.status;
     throw err;
   }
@@ -583,11 +584,12 @@ export interface DonationCaseApiResponse {
 
 export async function fetchDonationCaseApi(
   roomCode: string,
-  sessionToken: string
+  sessionToken: string,
+  signal?: AbortSignal
 ): Promise<DonationCaseApiResponse> {
   return apiFetch(
     `/api/rooms/${encodeURIComponent(roomCode)}/donation-case`,
-    { method: 'GET' },
+    { method: 'GET', signal },
     sessionToken
   );
 }
@@ -617,11 +619,12 @@ export async function reportDonationCasePoliceApi(
 export async function voteDonationCaseApi(
   roomCode: string,
   suspectName: string,
-  sessionToken: string
+  sessionToken: string,
+  caseId?: string
 ): Promise<DonationCaseApiResponse> {
   return apiFetch(
     `/api/rooms/${encodeURIComponent(roomCode)}/donation-case/vote`,
-    { method: 'POST', body: JSON.stringify({ suspectName }) },
+    { method: 'POST', body: JSON.stringify({ suspectName, caseId }) },
     sessionToken
   );
 }

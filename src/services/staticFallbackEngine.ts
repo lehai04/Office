@@ -30,6 +30,7 @@ import {
 } from '../utils/officePuzzleData';
 import {
   loadRoomDonationBoxState,
+  loadUserWalletState,
   saveRoomDonationBoxState,
   type RoomDonationBoxState,
 } from '../utils/officeEconomyData';
@@ -39,7 +40,11 @@ import {
   calculateStealAmountVnd,
   ensureUserLedger,
   isAbbotNickname,
+  isDonationCaseOpen,
+  nextDonationCase,
+  queueDonationCase,
   resolveSuspectByInput,
+  submitDonationCaseVote,
   toPublicDonationCaseView,
   type DonationCaseServerRecord,
   type RoomEconomyLedger,
@@ -617,10 +622,18 @@ function mergeRemoteDatabase(
       const cur = local.roomDonationCases[rCode];
       if (
         !cur ||
-        remoteCase.id !== cur.id ||
-        remoteCase.currentPhase > cur.currentPhase ||
-        (remoteCase.status !== 'investigating' && cur.status === 'investigating') ||
-        (remoteCase.policeReportedAt && !cur.policeReportedAt)
+        (remoteCase.id !== cur.id && (
+          remoteCase.stealSequenceNumber > cur.stealSequenceNumber ||
+          (remoteCase.stealSequenceNumber === cur.stealSequenceNumber && remoteCase.stolenAt > cur.stolenAt)
+        )) ||
+        (remoteCase.id === cur.id && (
+          (remoteCase.revision ?? 0) > (cur.revision ?? 0) ||
+          ((remoteCase.revision ?? 0) === (cur.revision ?? 0) && (
+            remoteCase.currentPhase > cur.currentPhase ||
+            (!isDonationCaseOpen(remoteCase) && isDonationCaseOpen(cur)) ||
+            (remoteCase.policeReportedAt && !cur.policeReportedAt)
+          ))
+        ))
       ) {
         local.roomDonationCases[rCode] = remoteCase;
       }
@@ -1853,6 +1866,12 @@ export async function handleStaticFallbackRequest<T>(
     }
 
     const ledger = db.roomEconomyLedgers[room.code];
+    const getCaseLedger = (userId: string) => {
+      if (ledger.users[userId]) return ledger.users[userId];
+      const entry = ensureUserLedger(ledger, userId);
+      entry.balanceVnd = loadUserWalletState(room.code, userId).balanceVnd;
+      return entry;
+    };
     const box = db.roomDonationBoxes[room.code];
     const roomMembersList = db.roomMembers
       .filter((m) => m.roomId === room.id)
@@ -1891,7 +1910,10 @@ export async function handleStaticFallbackRequest<T>(
     const runTick = (): boolean => {
       const curCase = db.roomDonationCases?.[room.code];
       if (!curCase) return false;
-      const changed = advanceDonationCaseByTime(curCase, Date.now(), {
+      const now = Date.now();
+      const nextCase = nextDonationCase(curCase, now);
+      db.roomDonationCases![room.code] = nextCase;
+      const changed = advanceDonationCaseByTime(nextCase, now, {
         onPostNpcChat: (text) => postNpcChat(text),
         onAdjustDonationBox: (deltaVnd) => {
           box.totalVnd = Math.max(0, box.totalVnd + deltaVnd);
@@ -1902,22 +1924,22 @@ export async function handleStaticFallbackRequest<T>(
             donationBox: box,
           });
         },
-        getUserLedger: (uid) => ensureUserLedger(ledger, uid),
+        getUserLedger: getCaseLedger,
       });
-      if (changed) {
+      if (changed || nextCase !== curCase) {
         saveStaticDb(db);
         emitRealtimeEvent(db, room, {
           type: 'donation_case_sync',
-          caseId: curCase.id,
-          status: curCase.status,
-          currentPhase: curCase.currentPhase,
+          caseId: nextCase.id,
+          status: nextCase.status,
+          currentPhase: nextCase.currentPhase,
         });
       }
-      return changed;
+      return changed || nextCase !== curCase;
     };
 
     runTick();
-    const myLedger = ensureUserLedger(ledger, account.userId);
+    const myLedger = getCaseLedger(account.userId);
     const activeCase = db.roomDonationCases[room.code] || null;
 
     if (subPath === 'donation-case' && method === 'GET') {
@@ -1953,16 +1975,6 @@ export async function handleStaticFallbackRequest<T>(
           'Bạn phải đang ở trong Phòng Tịnh Tâm mới có thể trộm hòm công đức!'
         );
       }
-      if (
-        activeCase &&
-        (activeCase.status === 'stolen_unreported' || activeCase.status === 'investigating')
-      ) {
-        throw createApiError(
-          409,
-          'CASE_ALREADY_ACTIVE',
-          'Hòm công đức đang có một vụ trộm chưa kết thúc!'
-        );
-      }
       if (box.totalVnd <= 0) {
         throw createApiError(400, 'EMPTY_DONATION_BOX', 'Hòm công đức đang trống!');
       }
@@ -1973,7 +1985,7 @@ export async function handleStaticFallbackRequest<T>(
       saveRoomDonationBoxState(room.code, box);
 
       // Cộng xu vào ví kẻ trộm (khấu trừ nợ trước nếu có)
-      const thiefEntry = ensureUserLedger(ledger, account.userId);
+      const thiefEntry = myLedger;
       if (thiefEntry.pendingDebtVnd > 0) {
         const paid = Math.min(thiefEntry.pendingDebtVnd, stolenAmountVnd);
         thiefEntry.pendingDebtVnd -= paid;
@@ -1987,7 +1999,7 @@ export async function handleStaticFallbackRequest<T>(
       ledger.abbotStealCount = (ledger.abbotStealCount || 0) + 1;
       const abbotPenalty = calculateAbbotTheftMeritPenalty(ledger.abbotStealCount);
       if (abbotMember) {
-        const abbotEntry = ensureUserLedger(ledger, abbotMember.userId);
+        const abbotEntry = getCaseLedger(abbotMember.userId);
         abbotEntry.meritCount = Math.max(0, abbotEntry.meritCount - abbotPenalty);
       }
 
@@ -2016,7 +2028,8 @@ export async function handleStaticFallbackRequest<T>(
         settlementSummary: null,
         resolvedAt: null,
       };
-      db.roomDonationCases[room.code] = newCase;
+      const currentCase = queueDonationCase(activeCase, newCase);
+      db.roomDonationCases[room.code] = currentCase;
       saveStaticDb(db);
 
       postNpcChat(
@@ -2024,11 +2037,11 @@ export async function handleStaticFallbackRequest<T>(
         `npc_stolen_${newCase.id}`
       );
       emitRealtimeEvent(db, room, { type: 'donation_box_sync', donationBox: box });
-      emitRealtimeEvent(db, room, { type: 'donation_case_sync', caseId: newCase.id });
+      emitRealtimeEvent(db, room, { type: 'donation_case_sync', caseId: currentCase.id });
 
       return {
         caseView: toPublicDonationCaseView(
-          newCase,
+          currentCase,
           account.userId,
           memberRecord.nickname,
           roomMembersList
@@ -2088,11 +2101,8 @@ export async function handleStaticFallbackRequest<T>(
     }
 
     if (subPath === 'donation-case/vote' && method === 'POST') {
-      if (!activeCase || activeCase.status !== 'investigating') {
-        throw createApiError(409, 'CASE_NOT_INVESTIGATING', 'Vụ án chưa mở điều tra hoặc đã kết thúc.');
-      }
-      if (activeCase.currentPhase < 1 || activeCase.currentPhase > 5) {
-        throw createApiError(400, 'VOTING_NOT_OPEN_YET', 'Chưa tới thời gian mở bình chọn (Manh mối 1 mở ở phút thứ 5).');
+      if (!activeCase || !isDonationCaseOpen(activeCase) || (body.caseId && body.caseId !== activeCase.id)) {
+        throw createApiError(409, 'CASE_NOT_OPEN', 'Vụ án này đã kết thúc hoặc đã chuyển sang vụ khác.');
       }
       const suspectInput = typeof body.suspectName === 'string' ? body.suspectName : '';
       const resolved = resolveSuspectByInput(roomMembersList, suspectInput);
@@ -2104,9 +2114,7 @@ export async function handleStaticFallbackRequest<T>(
         );
       }
 
-      const round = activeCase.currentPhase;
-      if (!activeCase.votesByRound[round]) activeCase.votesByRound[round] = {};
-      activeCase.votesByRound[round][account.userId] = resolved.member.userId;
+      submitDonationCaseVote(activeCase, account.userId, resolved.member.userId, Date.now());
       saveStaticDb(db);
 
       emitRealtimeEvent(db, room, {
