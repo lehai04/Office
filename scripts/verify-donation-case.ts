@@ -244,4 +244,44 @@ function createTestCase(t0: number): DonationCaseServerRecord {
   assert.equal(second.status, 'stolen_unreported');
 }
 
+// 7. Chỉ công bố danh tính khi lượt sai thứ năm đã được chốt.
+{
+  const start = 40_000_000;
+  const c = createTestCase(start);
+  const ledger: RoomEconomyLedger = { abbotStealCount: 1, users: {} };
+  const chats: string[] = [];
+  const callbacks = {
+    onPostNpcChat: (message: string) => chats.push(message),
+    onAdjustDonationBox: () => {},
+    getUserLedger: (uid: string) => ensureUserLedger(ledger, uid),
+  };
+  const view = () => toPublicDonationCaseView(c, 'u3', 'Cá chép', members);
+  for (let round = 0; round < 4; round++) {
+    const at = start + round * 6_000;
+    assert.equal(submitDonationCaseVote(c, 'u3', 'u2', at), true);
+    advanceDonationCaseByTime(c, at + 5_000, callbacks);
+    assert.equal(view()?.wrongVoteCount, round + 1);
+    assert.equal(view()?.settlementSummary, null);
+  }
+  const tieAt = start + 24_000;
+  assert.equal(submitDonationCaseVote(c, 'u3', 'u2', tieAt), true);
+  assert.equal(submitDonationCaseVote(c, 'abbot', 'thief', tieAt + 1), false);
+  advanceDonationCaseByTime(c, tieAt + 5_000, callbacks);
+  assert.equal(view()?.lastQuickVoteResult, 'no_majority');
+  assert.equal(view()?.wrongVoteCount, 4);
+  assert.equal(chats.some((message) => message.includes('#AAAA')), false);
+
+  const lastAt = start + 30_000;
+  assert.equal(submitDonationCaseVote(c, 'u3', 'u2', lastAt), true);
+  assert.equal(advanceDonationCaseByTime(c, lastAt + 4_999, callbacks), false);
+  assert.equal(view()?.settlementSummary, null);
+  assert.equal(advanceDonationCaseByTime(c, lastAt + 5_000, callbacks), true);
+  assert.equal(c.status, 'escaped');
+  assert.equal(view()?.wrongVoteCount, 5);
+  assert.equal(view()?.settlementSummary?.thiefNickname, 'LeLe');
+  assert.equal(view()?.settlementSummary?.thiefMemberTag, '#AAAA');
+  assert.equal(advanceDonationCaseByTime(c, lastAt + 5_001, callbacks), false);
+  assert.equal(chats.filter((message) => message.includes('LeLe') && message.includes('#AAAA')).length, 1);
+}
+
 console.log('✅ All Vụ án Hòm Công Đức unit tests passed!');

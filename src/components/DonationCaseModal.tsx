@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ShieldAlert, Clock, Search, Vote, X } from 'lucide-react';
-import type { PublicDonationCaseView } from '../utils/donationCaseEngine';
+import { DONATION_CASE_WRONG_VOTE_LIMIT, type PublicDonationCaseView } from '../utils/donationCaseEngine';
 import type { RoomMember } from '../types/office';
 import { formatVnd } from '../utils/officeEconomyData';
 
@@ -161,6 +161,10 @@ export const DonationCaseModal: React.FC<DonationCaseModalProps> = ({
                     Phiếu đầu tiên mở lượt 5 giây. Mỗi người có một phiếu và có thể đổi trước khi hết giờ.
                     Cả phòng bắt được trộm nếu chọn đúng người với quá nửa số phiếu đã gửi.
                   </p>
+                  <p className="text-xs leading-relaxed text-emerald-100/85">
+                    Đoán sai {caseView.wrongVoteCount ?? 0}/{DONATION_CASE_WRONG_VOTE_LIMIT} lần.
+                    Sau {DONATION_CASE_WRONG_VOTE_LIMIT} lần chọn sai, hệ thống sẽ công bố danh tính kẻ trộm.
+                  </p>
 
                   {caseView.quickVoteEndsAt !== null && (
                     <p className="text-[11px] text-amber-200" role="status">
@@ -280,7 +284,9 @@ export const DonationCaseModal: React.FC<DonationCaseModalProps> = ({
                     <div className="text-sm font-black">
                       {caseView.status === 'caught'
                         ? `🎉 Bắt đúng kẻ trộm: ${caseView.caughtThiefNickname}`
-                        : '💨 Hết 30 phút — Kẻ trộm đã thoát!'}
+                        : caseView.settlementSummary.thiefMemberTag
+                          ? `💨 Đã đoán sai ${DONATION_CASE_WRONG_VOTE_LIMIT} lần. Kẻ trộm đã thoát: ${caseView.settlementSummary.thiefNickname} (${caseView.settlementSummary.thiefMemberTag}).`
+                          : '💨 Hết 30 phút — Kẻ trộm đã thoát!'}
                     </div>
                     {caseView.status === 'caught' ? (
                       <>

@@ -4,6 +4,7 @@ import type { AvatarGender, RoomMember } from '../types/office';
 export const CASE_PHASE_DURATION_MS = 5 * 60 * 1000; // 5 phút mỗi đợt
 export const CASE_TOTAL_DURATION_MS = 30 * 60 * 1000; // 30 phút tổng cộng
 const QUICK_VOTE_DURATION_MS = 5_000;
+export const DONATION_CASE_WRONG_VOTE_LIMIT = 5;
 const CASE_RESULT_DISPLAY_MS = 10_000;
 
 // Cấu hình kinh tế mặc định (xu ảo Office & điểm Công đức)
@@ -41,7 +42,8 @@ export interface CaseClue {
 
 export interface CaseSettlementSummary {
   outcome: 'caught' | 'escaped';
-  thiefNickname?: string; // Chỉ có khi caught
+  thiefNickname?: string; // Chỉ có khi đã công bố danh tính
+  thiefMemberTag?: string;
   actualRefundedVnd: number;
   actualCompensatedTotalVnd: number;
   actualFinedTotalVnd: number;
@@ -69,6 +71,7 @@ export interface DonationCaseServerRecord {
   resolvedAt: number | null;
   quickVote?: { endsAt: number; votes: Record<string, string> };
   lastQuickVoteResult?: QuickVoteResult;
+  wrongVoteCount?: number;
   queuedCases?: DonationCaseServerRecord[];
   revision?: number;
 }
@@ -91,6 +94,7 @@ export interface PublicDonationCaseView {
   settlementSummary: CaseSettlementSummary | null;
   quickVoteEndsAt: number | null;
   lastQuickVoteResult: QuickVoteResult | null;
+  wrongVoteCount?: number;
   queuedCaseCount: number;
 }
 
@@ -493,7 +497,24 @@ export function advanceDonationCaseByTime(
       );
       return true;
     }
-    const result = winner ? 'Người được chọn không phải kẻ trộm.' : 'Phiếu bị chia, chưa ai có quá nửa số phiếu.';
+    if (winner) {
+      caseRec.wrongVoteCount = (caseRec.wrongVoteCount ?? 0) + 1;
+      if (caseRec.wrongVoteCount >= DONATION_CASE_WRONG_VOTE_LIMIT) {
+        caseRec.status = 'escaped';
+        caseRec.resolvedAt = nowMs;
+        settleCaseRewardsAndPenalties(caseRec, 'escaped', callbacks);
+        const { nickname, memberTag } = caseRec.thiefSnapshot;
+        caseRec.settlementSummary!.thiefNickname = nickname;
+        caseRec.settlementSummary!.thiefMemberTag = memberTag;
+        callbacks.onPostNpcChat(
+          `💨 [VỤ ÁN CÔNG ĐỨC] Đã bình chọn sai ${DONATION_CASE_WRONG_VOTE_LIMIT} lần. Kẻ trộm đã thoát: "${nickname}" (${memberTag}).`
+        );
+        return true;
+      }
+    }
+    const result = winner
+      ? `Người được chọn không phải kẻ trộm (${caseRec.wrongVoteCount}/${DONATION_CASE_WRONG_VOTE_LIMIT} lần đoán sai).`
+      : 'Phiếu bị chia, chưa ai có quá nửa số phiếu.';
     callbacks.onPostNpcChat(`🕵️ [VỤ ÁN CÔNG ĐỨC] ${result} Có thể mở lượt bình chọn mới.`);
     changed = true;
   }
@@ -607,6 +628,7 @@ export function toPublicDonationCaseView(
         : null,
     quickVoteEndsAt: caseRec.quickVote?.endsAt ?? null,
     lastQuickVoteResult: caseRec.lastQuickVoteResult ?? null,
+    wrongVoteCount: caseRec.wrongVoteCount ?? 0,
     queuedCaseCount: caseRec.queuedCases?.length ?? 0,
   };
 }
