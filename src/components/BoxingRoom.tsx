@@ -2,7 +2,7 @@ import { useRef } from 'react';
 import { Html } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import type { Group } from 'three';
-import { BOXING, FISH_ID, type BoxingHit, type BoxingView } from '../utils/boxing';
+import { BOXING, FISH_ID, boxingRoomPoint, type BoxingHit, type BoxingView } from '../utils/boxing';
 import type { ScenePoint } from '../utils/officeShop';
 
 function Block({ at, size, color }: { at: ScenePoint; size: ScenePoint; color: string }) {
@@ -24,9 +24,10 @@ function SquareStars({ point, hit }: { point: ScenePoint; hit?: BoxingHit }) {
   const stars = useRef<Group>(null);
   useFrame(({ clock }) => {
     if (!stars.current) return;
-    const age = hit ? (Date.now() - hit.at) / 420 : 0;
+    const age = hit ? (Date.now() - hit.at) / 620 : 0;
     stars.current.visible = age < 1;
     stars.current.rotation.y = clock.elapsedTime * 5.2;
+    stars.current.position.y = point[1] + (hit ? Math.max(0, Math.min(age, 1)) * 0.33 : 0);
     stars.current.scale.setScalar(hit ? 0.7 + Math.min(age, 1) * 0.85 : 1);
   });
   return <group ref={stars} position={point}>
@@ -35,7 +36,7 @@ function SquareStars({ point, hit }: { point: ScenePoint; hit?: BoxingHit }) {
       const x = Math.cos(a) * 0.46;
       const z = Math.sin(a) * 0.46;
       return <group key={i} position={[x, 0.09 * (i % 3), z]} rotation={[0, -a, i * 0.2]}>
-        <Block at={[0, 0, 0]} size={[0.17, 0.045, 0.045]} color={gold} />
+        <Block at={[0, 0, 0]} size={[0.17, 0.045, 0.045]} color={hit?.attacker === FISH_ID ? "#c38aff" : gold} />
         <Block at={[0, 0, 0]} size={[0.045, 0.17, 0.046]} color="#fff2a8" />
       </group>;
     })}
@@ -46,7 +47,7 @@ export function BoxingImpact({ point, hit }: { point: ScenePoint; hit: BoxingHit
   return <SquareStars point={[point[0], point[1] + 1.12, point[2]]} hit={hit} />;
 }
 
-export function BoxingRoom({ view, onFloor }: { view: BoxingView | null; onFloor: (point: ScenePoint, isTouch: boolean) => void }) {
+export function BoxingRoom({ view, onFloor }: { view: BoxingView | null; onFloor?: (point: ScenePoint, isTouch: boolean) => void }) {
   const fish = useRef<Group>(null);
   const glove = useRef<Group>(null);
   const knockout = view?.fishHp === 0;
@@ -62,10 +63,10 @@ export function BoxingRoom({ view, onFloor }: { view: BoxingView | null; onFloor
   });
   return <group>
     <group position={[0, 0, BOXING.centerZ]}>
-      <mesh position={[0,-0.08,0]} receiveShadow onClick={(event) => {
+      <mesh position={[0,-0.08,0]} receiveShadow onClick={onFloor ? (event) => {
         event.stopPropagation();
-        onFloor([event.point.x, 0, event.point.z], (event.nativeEvent as PointerEvent).pointerType === 'touch');
-      }}>
+        onFloor(boxingRoomPoint(event.point.x, event.point.z), (event.nativeEvent as PointerEvent).pointerType === 'touch');
+      } : undefined}>
         <boxGeometry args={[BOXING.width,0.16,BOXING.depth]} /><meshStandardMaterial color="#707083" />
       </mesh>
       <Block at={[0,0.86,-4.38]} size={[13.2,1.72,.17]} color={navy} />

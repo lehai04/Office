@@ -39,3 +39,22 @@ export interface BoxingView {
 export const FISH_ID = 'boxing-fish';
 export const inBoxingRing = ({ x, z }: BoxingPosition) =>
   Math.abs(x - BOXING.ringX) <= BOXING.ringHalfWidth && Math.abs(z - BOXING.ringZ) <= BOXING.ringHalfDepth;
+export const BOXING_MAP = {
+  scale: 0.72,
+  x: 8.8,
+  z: -8.65,
+} as const;
+
+export const BOXING_MAP_OFFSET: [number, number, number] = [
+  BOXING_MAP.x, 0, BOXING_MAP.z - BOXING.centerZ * BOXING_MAP.scale,
+];
+
+export function boxingMapPoint(x: number, y: number, z: number): [number, number, number] {
+  return [BOXING_MAP.x + x * BOXING_MAP.scale, y * BOXING_MAP.scale,
+    BOXING_MAP.z + (z - BOXING.centerZ) * BOXING_MAP.scale];
+}
+
+export function boxingRoomPoint(x: number, z: number): [number, number, number] {
+  return [(x - BOXING_MAP.x) / BOXING_MAP.scale, 0,
+    BOXING.centerZ + (z - BOXING_MAP.z) / BOXING_MAP.scale];
+}

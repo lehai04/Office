@@ -322,8 +322,8 @@ export function App() {
   const boxingZone: BoxingZone = activePanel === 'boxing' ? 'boxing' :
     activePanel === 'zen' || activePanel === 'games' ? 'away' : 'office';
   const boxingEnabled = (activePanel === 'boxing' || activePanel === 'none') && !shopOpen && !placingItem;
-  const boxing = useBoxing(room?.code, session?.sessionToken, boxingZone, boxingEnabled,
-    () => showToast('−5 công đức'));
+  const boxing = useBoxing(room?.code, session?.sessionToken, session?.userId, boxingZone, boxingEnabled,
+    (id) => members.find((member) => member.userId === id)?.nickname ?? 'Một người chơi');
 
   const triggerSpeechBubble = useCallback((userId: string, content: string) => {
     const expiresAt = Date.now() + 5000;
@@ -2367,6 +2367,8 @@ export function App() {
         boxingView={boxing.view}
         boxingError={boxing.error}
         boxingFeedback={boxing.feedback}
+        boxingRecentlyHit={boxing.recentlyHit}
+        onEnterBoxing={() => togglePanel('boxing')}
         onBoxingPosition={boxing.setPosition}
         onPunch={boxingEnabled && boxing.available ? () => { void boxing.punch(); } : undefined}
         canWalk={(activePanel === 'none' || activePanel === 'boxing') && !placingItem && !shopOpen}

@@ -1,17 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { isUsingStaticFallback, officeApiUrl } from './officeApi';
 import { USE_OFFICE_WEBSOCKET } from './zenAltar';
-import { BOXING, type BoxingView, type BoxingZone } from '../utils/boxing';
+import { BOXING, FISH_ID, type BoxingView, type BoxingZone } from '../utils/boxing';
 import type { ScenePoint } from '../utils/officeShop';
 
 export const BOXING_UPDATE_EVENT = 'office-boxing-updated';
 const HIT_KEY = 'KeyF';
 
-export function useBoxing(room: string | undefined, token: string | undefined, zone: BoxingZone, enabled: boolean,
-  onSpend: () => void) {
+export function useBoxing(room: string | undefined, token: string | undefined, userId: string | undefined,
+  zone: BoxingZone, enabled: boolean, playerName: (id: string) => string) {
   const [view, setView] = useState<BoxingView | null>(null);
   const [error, setError] = useState('');
   const [feedback, setFeedback] = useState('');
+  const [recentlyHit, setRecentlyHit] = useState(false);
   const position = useRef<ScenePoint | null>(null);
   const last = useRef<{ zone: BoxingZone; x: number; z: number; at: number }>();
   const inFlight = useRef<Promise<boolean> | null>(null);
@@ -19,11 +20,18 @@ export function useBoxing(room: string | undefined, token: string | undefined, z
   const strikeAt = useRef(0);
   const striking = useRef(false);
   const feedbackTimer = useRef<number>();
-  const spend = useRef(onSpend);
-  spend.current = onSpend;
+  const impactTimer = useRef<number>();
+  const handled = useRef(new Set<string>());
+  const lookup = useRef(playerName);
+  lookup.current = playerName;
   const real = Boolean(room && token && !isUsingStaticFallback());
 
   const setPosition = useCallback((point: ScenePoint) => { position.current = point; }, []);
+  const notify = useCallback((message: string) => {
+    setFeedback(message);
+    window.clearTimeout(feedbackTimer.current);
+    feedbackTimer.current = window.setTimeout(() => setFeedback(''), 2600);
+  }, []);
   const accept = useCallback((next: BoxingView, personal: boolean) => {
     const offset = Date.now() - next.serverTime;
     const message = { ...next, hits: next.hits.map((hit) => ({ ...hit, at: hit.at + offset })),
@@ -71,17 +79,37 @@ export function useBoxing(room: string | undefined, token: string | undefined, z
   useEffect(() => {
     generation.current++;
     last.current = undefined;
+    handled.current.clear();
     setView(null);
     setFeedback('');
+    setRecentlyHit(false);
     if (!real) return;
     const receive = (event: Event) => accept((event as CustomEvent<BoxingView>).detail, false);
     window.addEventListener(BOXING_UPDATE_EVENT, receive);
     return () => {
       window.removeEventListener(BOXING_UPDATE_EVENT, receive);
       window.clearTimeout(feedbackTimer.current);
+      window.clearTimeout(impactTimer.current);
       generation.current++;
     };
   }, [request, accept, real]);
+
+  useEffect(() => {
+    if (!view || !userId) return;
+    const incoming = view.hits.filter((hit) => hit.target === userId &&
+      hit.attacker !== userId && !handled.current.has(hit.id));
+    if (!incoming.length) return;
+    if (handled.current.size > 128) handled.current.clear();
+    for (const hit of incoming) handled.current.add(hit.id);
+    const lastHit = incoming.at(-1)!;
+    const ownHit = view.hits.some((hit) => hit.attacker === userId && hit.target === FISH_ID && hit.id + '-fish' === lastHit.id);
+    notify(lastHit.attacker === FISH_ID
+      ? ownHit ? `Trúng Cá · −${BOXING.damage} máu · Cá đấm trả!` : 'Cá Dọn Bể vừa đấm trả bạn!'
+      : `${lookup.current(lastHit.attacker)} vừa đấm trúng bạn!`);
+    setRecentlyHit(true);
+    window.clearTimeout(impactTimer.current);
+    impactTimer.current = window.setTimeout(() => setRecentlyHit(false), 420);
+  }, [view, userId, notify]);
 
   useEffect(() => {
     if (!real) return;
@@ -103,18 +131,20 @@ export function useBoxing(room: string | undefined, token: string | undefined, z
       if (!await sync(true)) throw new Error('Chưa đồng bộ được vị trí Boxing.');
       const result = await request({ action: 'punch', id });
       const hit = result?.hits.find((event) => event.id === id);
-      if (hit) {
-        setFeedback(hit.target ? 'Đấm trúng' : 'Đấm hụt');
-        window.clearTimeout(feedbackTimer.current);
-        feedbackTimer.current = window.setTimeout(() => setFeedback(''), 1800);
-        if (zone === 'office' && hit.target) spend.current();
-      }
+      if (hit?.target === FISH_ID) {
+        const retaliated = result?.hits.some((event) => event.id === id + '-fish' && event.target === userId);
+        notify(result?.fishHp === 0 ? 'Cá Dọn Bể đã gục!' : retaliated ?
+          `Trúng Cá · −${BOXING.damage} máu · Cá đấm trả!` : `Trúng Cá Dọn Bể · −${BOXING.damage} máu`);
+      } else if (hit?.target) {
+        const cost = result?.fighters[hit.attacker]?.zone === 'office' ? ` · −${BOXING.officeMeritCost} công đức` : '';
+        notify(`Đã đấm trúng ${lookup.current(hit.target)}${cost}`);
+      } else if (hit) notify('Đấm hụt');
     } catch (problem) {
       setError(problem instanceof Error ? problem.message : 'Chưa kết nối được Boxing.');
     } finally {
       striking.current = false;
     }
-  }, [enabled, real, zone, sync, request]);
+  }, [enabled, real, zone, sync, request, notify, userId]);
 
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
@@ -129,5 +159,5 @@ export function useBoxing(room: string | undefined, token: string | undefined, z
     return () => window.removeEventListener('keydown', key);
   }, [enabled, real, punch]);
 
-  return { view, error, feedback, setPosition, punch, available: real };
+  return { view, error, feedback, recentlyHit, setPosition, punch, available: real };
 }

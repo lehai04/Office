@@ -1,5 +1,5 @@
 import { BoxingImpact, BoxingRoom } from './BoxingRoom';
-import { BOXING, type BoxingHit, type BoxingView } from '../utils/boxing';
+import { BOXING, BOXING_MAP, BOXING_MAP_OFFSET, boxingMapPoint, type BoxingHit, type BoxingView } from '../utils/boxing';
 import { EXTRA_VOXELS } from '../utils/shopVoxels';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { isUsingStaticFallback } from '../services/officeApi';
@@ -41,6 +41,8 @@ interface OfficeScene3DProps {
   onPunch?: () => void;
   boxingError: string;
   boxingFeedback: string;
+  boxingRecentlyHit: boolean;
+  onEnterBoxing: () => void;
   canWalk: boolean;
   onWalk: (point: ScenePoint) => void;
   decorations: OfficeDecoration[];
@@ -174,8 +176,8 @@ const SceneCameraController: React.FC<{
   useEffect(() => {
     if (cameraMode === 'overview') {
       if (inBoxingRoom) {
-        camera.position.set(0, isPortraitMobile ? 29 : 11.3, BOXING.centerZ + (isPortraitMobile ? 21 : 10));
-        camera.lookAt(0, 0, BOXING.centerZ);
+        camera.position.set(...boxingMapPoint(0, isPortraitMobile ? 29 : 11.3, BOXING.centerZ + (isPortraitMobile ? 21 : 10)));
+        camera.lookAt(...boxingMapPoint(0, 0, BOXING.centerZ));
       } else if (inZenRoom) {
         if (isPortraitMobile) {
           camera.position.set(0, 4.3, -4.6);
@@ -192,11 +194,11 @@ const SceneCameraController: React.FC<{
         camera.lookAt(-7.6, 1.2, -11.4);
       } else {
         if (isPortraitMobile) {
-          camera.position.set(0, 21.5, 16.5);
+          camera.position.set(1.35, 29, 19.5);
         } else {
-          camera.position.set(0, 14.2, 11.2);
+          camera.position.set(1.35, 17.2, 12.6);
         }
-        camera.lookAt(0, 0, 0);
+        camera.lookAt(1.35, 0, -3.6);
       }
     }
   }, [cameraMode, inZenRoom, inGameRoom, inBoxingRoom, isPortraitMobile, camera]);
@@ -299,14 +301,14 @@ const SceneCameraController: React.FC<{
     const eyeY = baseEyeY + bowHeightOffset;
     const eyeZ = myPosition[2] + walkOffsetRef.current.z;
 
-    camera.position.set(eyeX, eyeY, eyeZ);
+    camera.position.set(...(inBoxingRoom ? boxingMapPoint(eyeX, eyeY, eyeZ) : [eyeX, eyeY, eyeZ] as const));
 
     const totalPitch = pitchRef.current + bowPitchOffset;
     const lookX = eyeX + Math.sin(yawRef.current) * Math.cos(totalPitch) * 5;
     const lookY = eyeY + Math.sin(totalPitch) * 5;
     const lookZ = eyeZ + Math.cos(yawRef.current) * Math.cos(totalPitch) * 5;
 
-    camera.lookAt(lookX, lookY, lookZ);
+    camera.lookAt(...(inBoxingRoom ? boxingMapPoint(lookX, lookY, lookZ) : [lookX, lookY, lookZ] as const));
   });
 
   if (cameraMode === 'first_person') {
@@ -317,11 +319,11 @@ const SceneCameraController: React.FC<{
     <OrbitControls
       makeDefault
       target={
-        inBoxingRoom ? [0, 0, BOXING.centerZ] : inZenRoom
+        inBoxingRoom ? boxingMapPoint(0, 0, BOXING.centerZ) : inZenRoom
           ? [0, 0.9, -11.2]
           : inGameRoom
             ? [-7.6, 0.9, -11.2]
-            : [0, 0, 0]
+            : [1.35, 0, -3.6]
       }
       minPolarAngle={Math.PI / 8}
       maxPolarAngle={Math.PI / 2.15}
@@ -2218,6 +2220,8 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
   onPunch,
   boxingError,
   boxingFeedback,
+  boxingRecentlyHit,
+  onEnterBoxing,
   canWalk,
   onWalk,
   decorations,
@@ -2303,7 +2307,9 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
           remote?.zone === 'boxing' ? [remote.x, 0, remote.z] : undefined;
         return point ? [{ member, isSeated: false, position: point, rotationY: Math.PI }] : [];
       }
-      if (!local && remote?.zone === 'boxing') return [];
+      if (!local && remote?.zone === 'boxing') {
+        return [{ member, isSeated: false, position: [remote.x, 0, remote.z] as ScenePoint, rotationY: Math.PI }];
+      }
       return [placeMember(member, remote)];
     });
 
@@ -2481,8 +2487,11 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
           </div>
         </>
       )}
+      {boxingRecentlyHit && <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-20 shadow-[inset_0_0_70px_#b681ee88] motion-reduce:hidden" />}
+      {(boxingError || boxingFeedback) && <p role="status" className="pointer-events-none fixed inset-x-4 bottom-56 z-30 mx-auto w-fit max-w-[calc(100%-2rem)] rounded-lg border border-violet-400/40 bg-slate-950/95 px-3 py-2 text-center text-xs font-semibold text-violet-100 shadow sm:bottom-24">
+        {boxingError || boxingFeedback}
+      </p>}
       {onPunch && <div className={`fixed bottom-24 z-30 flex flex-col items-start gap-1 ${inBoxingRoom || cameraMode === 'first_person' ? 'left-32' : 'left-3'} sm:right-4 sm:left-auto`}>
-        {(boxingError || boxingFeedback) && <p role="status" className="max-w-48 rounded bg-slate-950/90 px-2 py-1 text-xs text-violet-200">{boxingError || boxingFeedback}</p>}
         <button type="button" onClick={onPunch} className="min-h-11 rounded-xl border border-violet-400/40 bg-violet-700 px-3 text-sm font-bold text-white shadow-lg active:bg-violet-500">
           🥊 Đấm <kbd className="ml-1 hidden rounded bg-black/30 px-1 sm:inline">F</kbd>
         </button>
@@ -2510,7 +2519,21 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
         />
 
         <group position={[0, -0.3, 0]}>
-          {inBoxingRoom && <BoxingRoom view={boxingView} onFloor={onFloorClick} />}
+          <group position={BOXING_MAP_OFFSET} scale={BOXING_MAP.scale}>
+            <BoxingRoom view={boxingView} onFloor={inBoxingRoom ? onFloorClick : undefined} />
+          </group>
+          {!inBoxingRoom && <group position={[6.65, 0, -5.25]}>
+            <mesh position={[0, 0.92, 0]} castShadow onClick={(event) => { event.stopPropagation(); onEnterBoxing(); }}>
+              <boxGeometry args={[1.42, 1.84, 0.22]} />
+              <meshStandardMaterial color="#7346a5" />
+            </mesh>
+            <Html position={[0, 2, 0]} center zIndexRange={[12, 4]}>
+              <button type="button" onClick={onEnterBoxing}
+                className="whitespace-nowrap rounded-full border border-violet-300/40 bg-violet-700 px-2 py-0.5 text-xs font-bold text-white shadow">
+                🥊 Boxing
+              </button>
+            </Html>
+          </group>}
           <group visible={!inBoxingRoom}>
           {/* GIAN PHÒNG TỊNH TÂM 3D (Phật • Ông Địa • Thần Tài • Mõ Gỗ • Chuông Đồng) */}
           <ZenSanctuaryRoom3D
@@ -2793,12 +2816,13 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
             if (altar?.rituals.some((ritual) => ritual.userId === member.userId)) return null;
             const isMe = member.userId === currentUserId;
             const bubble = activeBubbles[member.userId];
+            const inBoxingMap = inBoxingRoom || (!isMe && boxingView?.fighters[member.userId]?.zone === 'boxing');
             const hit = boxingView?.hits.filter((event) => event.target === member.userId).at(-1);
             const strike = boxingView?.hits.filter((event) => event.attacker === member.userId).at(-1);
             const dupCount =
               nicknameCounts.get(member.nickname.trim().toLowerCase()) ?? 1;
             return (
-              <group key={member.userId}>
+              <group key={member.userId} position={inBoxingMap ? BOXING_MAP_OFFSET : undefined} scale={inBoxingMap ? BOXING_MAP.scale : 1}>
               <LowPolyCharacter
                 boxingHit={hit} boxingPunch={strike}
                 gender={member.avatarGender}
