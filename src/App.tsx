@@ -1,3 +1,4 @@
+import { OfficeInstallButton } from './components/OfficeInstallButton';
 import { PrivateChatDialog } from './components/PrivateChatDialog';
 import { OfficePresenceControl } from './components/OfficePresenceControl';
 import { officeSocialRequest, updateOfficePresence } from './services/officeSocial';
@@ -2641,6 +2642,7 @@ export function App() {
 
         {/* Cụm phải: Góc nhìn & Nút xổ Menu cá nhân (Click để mở, click để đóng) */}
         <div className="pointer-events-auto relative flex items-center gap-1">
+          <OfficeInstallButton />
           <OfficePresenceControl presence={ownDraft ?? myMember?.presence} pending={presencePending} onChange={(value) => void changeMyPresence(value)} />
           <button
             type="button"

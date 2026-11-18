@@ -1,9 +1,15 @@
 {
-  "name": "Văn phòng ảo — Tịnh Tâm 3D",
-  "short_name": "Văn phòng 3D",
+  "name": "Office — Văn phòng 3D",
+  "short_name": "Office",
+  "id": "./",
   "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#020617",
   "theme_color": "#020617",
-  "description": "Văn phòng ảo 3D với Phòng Tịnh Tâm, Chấm công, Chat và Mini game đồng nghiệp."
+  "description": "Văn phòng ảo 3D với Phòng Tịnh Tâm, Chấm công, Chat và Mini game đồng nghiệp.",
+  "icons": [
+    { "src": "office-icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "office-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
 }
