@@ -30,6 +30,7 @@ export const OFFICE_SHOP = {
   keyboard: { name: 'Bàn phím', icon: '⌨️', price: 95_000, kind: 'decor', category: 'equipment', description: 'Bàn phím để trên bàn làm việc.' },
   monitor: { name: 'Màn hình phụ', icon: '🖥️', price: 210_000, kind: 'decor', category: 'equipment', description: 'Màn hình phụ cho góc làm việc.' },
   frame: { name: 'Khung tranh', icon: '🖼️', price: 80_000, kind: 'decor', category: 'decor', description: 'Khung tranh nhỏ để bàn.' },
+  bed: { name: 'Giường ngủ', icon: '🛏️', price: 0, kind: 'decor', category: 'decor', description: 'Đặt trên sàn văn phòng và bấm giường để nằm ngủ.' },
   clock: { name: 'Đồng hồ bàn', icon: '🕰️', price: 65_000, kind: 'decor', category: 'decor', description: 'Đồng hồ để bàn làm việc.' },
 } as const;
 
@@ -65,6 +66,7 @@ export interface OfficeShopState {
   decorations: OfficeDecoration[];
   outfit?: 'outfit';
   equipped?: ShopOutfit;
+  sleepingBedId?: string;
 }
 
 export const EMPTY_OFFICE_SHOP: OfficeShopState = { inventory: {}, decorations: [] };
@@ -73,7 +75,7 @@ export type ShopCommand =
   | { action: 'buy' | 'equip'; item: ShopItem; id: string }
   | { action: 'place'; item: ShopItem; position: ScenePoint; id: string }
   | { action: 'spend' | 'donate'; amount: number; id: string }
-  | { action: 'remove'; decorationId: string; id: string };
+  | { action: 'remove' | 'sleep'; decorationId: string; id: string };
 
 export interface RoomShopView {
   shop: OfficeShopState;
@@ -83,6 +85,7 @@ export interface RoomShopView {
   altarMerit?: number;
   appearances: Record<string, ShopOutfit>;
   decorations: OfficeDecoration[];
+  sleeping?: Record<string, ScenePoint>;
 }
 
 export const OFFICE_ACTION_DURATION_MS = 3000;

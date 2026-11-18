@@ -1,3 +1,4 @@
+import { PET_EVENTS, type PetEvent } from './officeSocial';
 // Hệ thống Dữ liệu & Đồng bộ cho Game "Nuôi Mèo Văn Phòng" (src/utils/officeCatsData.ts)
 
 export type CatBreedId =
@@ -12,7 +13,7 @@ export type CatBreedId =
   | 'husky'
   | 'monkey';
 export type PetSpecies = 'cat' | 'dog' | 'monkey';
-export type CatActivity = 'walking' | 'playing' | 'sleeping';
+export type CatActivity = 'walking' | 'playing' | 'sleeping' | PetEvent;
 export type CatItemCategory = 'food' | 'toy' | 'bed';
 
 export const DOG_UNLOCK_FEE_VND = 500_000;
@@ -487,6 +488,7 @@ export function saveRoomGiftRequests(
 }
 
 export function getActivityLabel(act: CatActivity): string {
+  if (Object.hasOwn(PET_EVENTS, act)) return PET_EVENTS[act as PetEvent];
   if (act === 'playing') return '🧶 Đang chơi đùa';
   if (act === 'sleeping') return '💤 Đang nằm ngủ';
   return '🐾 Đang đi dạo';

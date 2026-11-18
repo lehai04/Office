@@ -76,7 +76,7 @@ export function OfficeShopModal({ balance, shop, connectionError, onClose, onBuy
 
   const placed = (id: ShopItem) => shop.decorations.filter(({ item }) => item === id);
   const quantity = (id: ShopItem) => shop.inventory[id] ?? 0;
-  const source = tab === 'store' ? items : items.filter((id) => quantity(id) || placed(id).length);
+  const source = tab === 'store' ? items.filter((id) => id !== 'bed') : items.filter((id) => quantity(id) || placed(id).length);
   const visible = source.filter((id) =>
     (category === 'all' || OFFICE_SHOP[id].category === category) &&
     normalizeName(OFFICE_SHOP[id].name).includes(normalizeName(query))

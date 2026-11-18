@@ -1,3 +1,4 @@
+import type { PrivateChatGroup } from '../utils/officeSocial';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   MessageSquare,
@@ -43,6 +44,11 @@ interface ChatDrawerProps {
   onSendMessage: (content: string, existingClientMsgId?: string) => Promise<void>;
   onOpenDonationCase?: () => void;
   onOpenPrivateChat?: () => void;
+  groups?: PrivateChatGroup[];
+  privateInviteCount?: number;
+  selectedGroup?: string;
+  onChooseGroup?: (code: string) => void;
+  groupContent?: React.ReactNode;
 }
 
 export const ChatDrawer: React.FC<ChatDrawerProps> = ({
@@ -54,6 +60,11 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
   onSendMessage,
   onOpenDonationCase,
   onOpenPrivateChat,
+  groups = [],
+  privateInviteCount = 0,
+  selectedGroup = '',
+  onChooseGroup,
+  groupContent,
 }) => {
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
@@ -105,7 +116,7 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
   return (
     <aside
       data-testid="chat-drawer"
-      className="fixed z-30 bottom-16 sm:bottom-20 right-0 sm:right-4 left-0 sm:left-auto w-full sm:w-[360px] max-h-[56vh] sm:max-h-[68vh] flex flex-col rounded-t-3xl sm:rounded-3xl border border-white/15 bg-slate-900/90 backdrop-blur-xl shadow-2xl text-slate-100 transition-all"
+      className={`fixed z-30 bottom-16 sm:bottom-20 right-0 sm:right-4 left-0 sm:left-auto w-full flex flex-col rounded-t-3xl sm:rounded-3xl border border-white/15 bg-slate-900/90 backdrop-blur-xl shadow-2xl text-slate-100 ${groups.length ? 'h-[58dvh] sm:h-[65dvh] sm:w-[580px]' : 'max-h-[56vh] sm:max-h-[68vh] sm:w-[360px]'}`}
     >
       {/* Thanh tiêu đề ngăn trượt */}
       <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
@@ -125,7 +136,7 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
         <div className="flex shrink-0 items-center gap-1.5">
         {onOpenPrivateChat && <button type="button" onClick={onOpenPrivateChat}
           className="flex min-h-8 items-center gap-1 rounded-lg bg-violet-600/25 px-2 text-xs font-semibold text-violet-100 hover:bg-violet-600/50">
-          <LockKeyhole size={13} /> Nhóm riêng
+          <LockKeyhole size={13} /> Nhóm riêng {privateInviteCount > 0 && <span>({privateInviteCount})</span>}
         </button>}
         <button
           type="button"
@@ -140,11 +151,22 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
         </div>
       </div>
 
+      <div className="flex min-h-0 flex-1">
+        {groups.length > 0 && <nav aria-label="Các cuộc trò chuyện"
+          className="flex w-[31%] max-w-40 shrink-0 flex-col gap-1 overflow-y-auto border-r border-white/15 p-2">
+          {[{ code: '', name: 'Chung' }, ...groups].map(({ code, name }) => <button key={code} type="button"
+            onClick={() => onChooseGroup?.(code)} aria-pressed={selectedGroup === code}
+            className="rounded-lg border border-white/10 p-2 text-left text-xs [overflow-wrap:anywhere] aria-pressed:bg-violet-700">
+            {name}
+          </button>)}
+        </nav>}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {groupContent ?? <>
       {/* Danh sách tin nhắn */}
       <div
         ref={listRef}
         data-testid="chat-message-list"
-        className="flex-1 overflow-y-auto px-4 py-3 space-y-2.5 min-h-[200px]"
+        className="flex-1 overflow-y-auto px-4 py-3 space-y-2.5 min-h-0"
       >
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-40 text-center text-xs text-slate-400">
@@ -312,6 +334,9 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
           <Send className="h-4 w-4" />
         </button>
       </form>
+        </>}
+        </div>
+      </div>
     </aside>
   );
 };

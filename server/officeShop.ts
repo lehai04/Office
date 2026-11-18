@@ -10,6 +10,7 @@ export interface StoredShop {
   state: OfficeShopState;
   receipts: Record<string, string>;
   settledMonths: string[];
+  bedGranted?: boolean;
 }
 
 export function restoreShop(raw: unknown): { shop: StoredShop; balance?: number } {
@@ -62,10 +63,15 @@ export function runShopCommand(stored: StoredShop, wallet: UserEconomyLedgerEntr
       wallet.meritCount += merit;
       onDonate?.(id, requested, merit);
     }
+  } else if (action === 'sleep') {
+    const bed = shop.decorations.find((placed) => placed.id === body.decorationId && placed.item === 'bed');
+    if (!bed) return 'Bạn chỉ có thể ngủ trên giường của mình.';
+    shop.sleepingBedId = shop.sleepingBedId === bed.id ? undefined : bed.id;
   } else if (action === 'remove') {
     const index = shop.decorations.findIndex((placed) => placed.id === body.decorationId);
     if (index < 0) return 'Vật phẩm đã được cất.';
-    const [{ item: removed }] = shop.decorations.splice(index, 1);
+    const [{ item: removed, id: placedId }] = shop.decorations.splice(index, 1);
+    if (shop.sleepingBedId === placedId) shop.sleepingBedId = undefined;
     shop.inventory[removed] = (shop.inventory[removed] ?? 0) + 1;
   } else {
     if (!isShopItem(item)) return 'Vật phẩm không hợp lệ.';
@@ -73,6 +79,7 @@ export function runShopCommand(stored: StoredShop, wallet: UserEconomyLedgerEntr
     const count = shop.inventory[item] ?? 0;
     switch (action as ShopCommand['action']) {
       case 'buy':
+        if (item === 'bed') return 'Giường ngủ đã có sẵn trong túi đồ.';
         if ((product.kind === 'equip' || product.kind === 'action') && count) return 'Bạn đã sở hữu vật phẩm này.';
         if (wallet.balanceVnd < product.price) return 'Không đủ số dư.';
         wallet.balanceVnd -= product.price;
@@ -87,13 +94,17 @@ export function runShopCommand(stored: StoredShop, wallet: UserEconomyLedgerEntr
       }
       case 'place': {
         if (product.kind !== 'decor' || !count) return 'Bạn không có vật phẩm để đặt.';
-        const position = deskPoint(body.position, seatId);
-        if (!position) return 'Hãy chọn vị trí trên bàn của bạn.';
+        const raw = body.position;
+        const floor = Array.isArray(raw) && raw.length === 3 && raw.every(Number.isFinite) &&
+          Math.abs(raw[0]) < 7.2 && Math.abs(raw[2]) < 4.8 && Math.abs(raw[1]) < 0.06;
+        const position: ScenePoint | undefined = item === 'bed'
+          ? floor ? [raw[0], 0, raw[2]] : undefined : deskPoint(raw, seatId);
+        if (!position) return item === 'bed' ? 'Hãy chọn vị trí trên sàn.' : 'Hãy chọn vị trí trên bàn của bạn.';
         if (shop.decorations.some((placed) => Math.hypot(placed.position[0] - position[0], placed.position[2] - position[2]) < 0.3)) {
           return 'Chỗ này đã có vật phẩm.';
         }
         shop.inventory[item] = count - 1;
-        shop.decorations.push({ id, item: item as DecorationItem, position, seatId });
+        shop.decorations.push({ id, item: item as DecorationItem, position, seatId: item === 'bed' ? undefined : seatId });
         break;
       }
       default:

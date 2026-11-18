@@ -1,10 +1,12 @@
+import { ALL_PET_BREEDS } from '../src/utils/officeCatsData';
+import { PET_EVENTS, type PetEvent, type PrivateChatInvite } from '../src/utils/officeSocial';
 import { isOfficeMood, type OfficePresence, type PrivateChatGroup, type PrivateChatMessage } from '../src/utils/officeSocial';
 import { isOfficeAction, type OfficeActionEvent } from '../src/utils/officeShop';
 import { BOXING } from '../src/utils/boxing';
 import { activeFighters, boxingView, createBoxingState, punch, recoverFish, updateFighter, type BoxingState } from './boxing';
 import { restoreShop, runShopCommand, type StoredShop } from './officeShop';
 import { SHOP_OFFERINGS, equippedItems, type RoomShopView, type ShopConsumable } from '../src/utils/officeShop';
-import { createDefaultWalletState, settlePastMonthsSalary, type DonationRecord, type RoomDonationBoxState } from '../src/utils/officeEconomyData';
+import { calculateDonationMerit, createDefaultWalletState, settlePastMonthsSalary, type DonationRecord, type RoomDonationBoxState } from '../src/utils/officeEconomyData';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -12,7 +14,7 @@ import { adjustAltarMerit, altarView, createAltarState, settleAltar, updateAltar
 import { getNowInHoChiMinh, VN_TIMEZONE } from '../src/utils/dateVn';
 import { pushPublicKey, parseReminderDevice, sendReminder, type ReminderDevice } from './reminderPush';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { WORK_SEAT_LAYOUTS, MEETING_CHAIRS, DEFAULT_ROOM_CODE, DEFAULT_ROOM_NAME } from '../src/constants/officeLayout';
+import { WORK_SEAT_LAYOUTS, MEETING_CHAIRS, DOOR_STANDING_SLOTS, DEFAULT_ROOM_CODE, DEFAULT_ROOM_NAME } from '../src/constants/officeLayout';
 import type {
   AvatarGender,
   AttendanceStatus,
@@ -73,6 +75,7 @@ interface StoredPrivateChat {
   name: string;
   passwordHash: string;
   members: string[];
+  invites?: Record<string, PrivateChatInvite>;
   messages: PrivateChatMessage[];
 }
 
@@ -80,6 +83,7 @@ function publicChat(group: StoredPrivateChat): PrivateChatGroup {
   return { code: group.code, name: group.name, memberCount: group.members.length };
 }
 
+const petEventTimes = new Map<string, number>();
 const privateChatAttempts = new Map<string, { count: number; expiresAt: number }>();
 
 interface DatabaseSchema {
@@ -100,6 +104,7 @@ interface DatabaseSchema {
   shops?: Record<string, Record<string, StoredShop>>;
   boxing?: Record<string, BoxingState>;
   privateChats?: Record<string, Record<string, StoredPrivateChat>>;
+  vggMeritBatch?: { members: number; records: number; credited: number; skipped: number; gift: number };
 }
 
 export async function dispatchDailyReminders(): Promise<void> {
@@ -246,7 +251,12 @@ function getRoomShop(room: RoomInfo, userId: string) {
     const ledger = ensureUserLedger(roomLedger, userId, restored.balance);
     if (restored.balance !== undefined) ledger.balanceVnd = restored.balance;
   }
-  return { shops, stored: shops[userId], ledger: ensureUserLedger(roomLedger, userId) };
+  const stored = shops[userId];
+  if (!stored.bedGranted) {
+    stored.bedGranted = true;
+    if (!stored.state.inventory.bed && !stored.state.decorations.some((placed) => placed.item === 'bed')) stored.state.inventory.bed = 1;
+  }
+  return { shops, stored, ledger: ensureUserLedger(roomLedger, userId) };
 }
 
 function serverDonationBox(room: RoomInfo): RoomDonationBoxState {
@@ -275,6 +285,55 @@ function serverDonationBox(room: RoomInfo): RoomDonationBoxState {
 
 function changeRoomAltarMerit(roomId: string, userId: string, delta: number) {
   if (delta) adjustAltarMerit((db.altars ??= {})[roomId] ??= createAltarState(), userId, delta);
+}
+
+export function auditVggMeritBatch(apply: boolean, expected?: string) {
+  if (db.vggMeritBatch) return { ...db.vggMeritBatch, applied: true };
+  const room = db.rooms.VGG;
+  if (!room) throw new Error('VGG_NOT_FOUND');
+  const members = db.roomMembers.filter((member) => member.roomId === room.id);
+  const box = serverDonationBox(room);
+  const credited = new Set(box.donations.map((entry) => entry.donorUserId + ':' + entry.id));
+  const credits = new Map<string, number>();
+  const records: string[] = [];
+  let skipped = 0;
+  for (const member of members) {
+    const receipts = db.shops?.[room.id]?.[member.userId]?.receipts ?? {};
+    for (const [id, signature] of Object.entries(receipts)) {
+      let values: unknown[];
+      try { values = JSON.parse(signature) as unknown[]; } catch { continue; }
+      if (!Array.isArray(values) || values[0] !== 'donate' || credited.has(member.userId + ':' + id)) continue;
+      const amount = values[4];
+      if (typeof amount !== 'number' || !Number.isSafeInteger(amount) || amount < 1000) continue;
+      // At the retention boundary, an absent record may already have earned points.
+      if (box.donations.length >= 50) { skipped++; continue; }
+      records.push(member.userId + ':' + id);
+      credits.set(member.userId, (credits.get(member.userId) ?? 0) + calculateDonationMerit(amount));
+    }
+  }
+  const gift = 300;
+  const summary = { members: members.length, records: records.length, credited: [...credits.values()].reduce((a, b) => a + b, 0), skipped, gift };
+  const fingerprint = crypto.createHash('sha256').update(JSON.stringify([
+    members.map(({ userId }) => userId).sort(), records.sort(), summary,
+  ])).digest('hex');
+  if (!apply) return { ...summary, fingerprint, applied: false };
+  if (expected !== fingerprint) throw new Error('AUDIT_CHANGED');
+
+  for (const member of members) changeRoomAltarMerit(room.id, member.userId, gift + (credits.get(member.userId) ?? 0));
+  db.vggMeritBatch = summary;
+  const leader = members.find((member) => member.userId === room.managerUserId);
+  const message: ChatMessage = {
+    id: 'vgg_merit_gift_300', clientMsgId: 'vgg_merit_gift_300', roomId: room.id,
+    userId: 'npc_office', nickname: 'Thông báo Office', memberTag: '#OFFICE',
+    content: `🎁 Trưởng nhóm${leader ? ' ' + leader.nickname : ''} đã tặng mỗi thành viên VGG 300 công đức!`,
+    createdAt: new Date().toISOString(), status: 'sent',
+  };
+  db.messages.push(message);
+  saveDatabase(db, true);
+  broadcastToRoom(room.id, { type: 'chat_message', message });
+  broadcastToRoom(room.id, { type: 'altar_updated' });
+  broadcastToRoom(room.id, { type: 'shop_updated' });
+  return { ...summary, applied: true };
 }
 
 function trackDonationCaseMerit(roomId: string, ledger: RoomEconomyLedger) {
@@ -313,6 +372,11 @@ function roomShopView(room: RoomInfo, userId: string): RoomShopView {
   });
   const box = serverDonationBox(room);
   return { shop: stored.state, balanceVnd: ledger.balanceVnd, donationTotalVnd: box.totalVnd,
+    sleeping: Object.fromEntries(members.flatMap((member) => {
+      const state = shops[member.userId]?.state;
+      const bed = state?.decorations.find((placed) => placed.id === state.sleepingBedId);
+      return bed ? [[member.userId, bed.position]] : [];
+    })),
     donationBox: box, altarMerit: db.altars?.[room.id]?.members[userId]?.merit ?? 0, appearances, decorations };
 }
 
@@ -325,6 +389,7 @@ function settleRoomAltar(roomId: string, altar: RoomAltarState, now: number) {
 
 const currentOfficeActions = new Map<string, OfficeActionEvent>();
 
+const boxingAway = new Map<string, number>();
 const boxingPresence = new Map<string, Parameters<typeof updateFighter>[0]>();
 
 function publishBoxing(roomId: string, state: BoxingState, now: number) {
@@ -333,6 +398,7 @@ function publishBoxing(roomId: string, state: BoxingState, now: number) {
 }
 
 export function removeBoxingPresence(roomId: string, userId: string): void {
+  boxingAway.delete(roomId + ':' + userId);
   const fighters = boxingPresence.get(roomId);
   if (!fighters?.[userId]) return;
   delete fighters[userId];
@@ -937,6 +1003,46 @@ export async function handleApiRequest(
       return true;
     }
 
+    if (subPath === 'pet-event' && method === 'POST') {
+      const body = await readJsonBody(req);
+      const activity = body.activity as PetEvent;
+      const name = typeof body.name === 'string' ? body.name.trim().slice(0, 40) : '';
+      const other = db.roomMembers.find((member) => member.roomId === room.id && member.userId === body.otherUserId && member.userId !== account.userId);
+      const otherName = typeof body.otherName === 'string' ? body.otherName.trim().slice(0, 40) : '';
+      if (!name || typeof activity !== 'string' || !Object.hasOwn(PET_EVENTS, activity) ||
+          (activity === 'fighting' && (!other || !otherName))) {
+        sendJson(res, 400, { message: 'Hoạt động thú cưng không hợp lệ.' });
+        return true;
+      }
+      const key = room.id + ':' + account.userId;
+      const now = Date.now();
+      for (const [id, time] of petEventTimes) if (now - time > 60_000) petEventTimes.delete(id);
+      if (now - (petEventTimes.get(key) ?? 0) < 20_000) {
+        sendJson(res, 429, { message: 'Thú cưng đang hoạt động.' });
+        return true;
+      }
+      petEventTimes.set(key, now);
+      const pet = name + ' của ' + memberRecord.nickname;
+      const message = activity === 'fighting' && other
+        ? pet + ' và ' + otherName + ' của ' + other.nickname + ' đang đánh nhau, mau mau cản!'
+        : pet + ' ' + PET_EVENTS[activity] + (activity === 'bathroom' ? ', mau mau dọn!' : '!');
+      const profiles = [
+        { member: memberRecord, name, breedId: body.breedId },
+        ...(activity === 'fighting' && other ? [{ member: other, name: otherName, breedId: body.otherBreedId }] : []),
+      ].flatMap((entry) => {
+        const breed = ALL_PET_BREEDS.find((candidate) => candidate.id === entry.breedId);
+        return breed ? [{
+          ownerUserId: entry.member.userId, ownerNickname: entry.member.nickname, catName: entry.name, breedId: breed.id,
+          species: breed.species ?? 'cat', activity, fullness: 80, happiness: 80, petCount: 0, placedYardItems: [], updatedAt: now,
+        }] : [];
+      });
+      const event = { type: 'pet_activity', activity, userId: account.userId,
+        otherUserId: activity === 'fighting' ? other?.userId : undefined, message, profiles };
+      broadcastToRoom(room.id, event);
+      sendJson(res, 200, event);
+      return true;
+    }
+
     if (subPath === 'presence' && method === 'POST') {
       const body = await readJsonBody(req);
       if (typeof body.doNotDisturb !== 'boolean' || (body.mood !== null && !isOfficeMood(body.mood))) {
@@ -957,7 +1063,8 @@ export async function handleApiRequest(
       if (method === 'GET') {
         const code = urlObj.searchParams.get('group')?.toUpperCase();
         if (!code) {
-          sendJson(res, 200, { groups: Object.values(groups).filter((group) => group.members.includes(memberId)).map(publicChat) });
+          sendJson(res, 200, { groups: Object.values(groups).filter((group) => group.members.includes(memberId)).map(publicChat),
+            invites: Object.values(groups).flatMap((group) => group.invites?.[memberId] && !group.members.includes(memberId) ? [group.invites[memberId]] : []) });
           return true;
         }
         const group = Object.hasOwn(groups, code) ? groups[code] : undefined;
@@ -984,6 +1091,18 @@ export async function handleApiRequest(
         sendJson(res, 200, { group: publicChat(created), messages: [] });
         return true;
       }
+      if (body.action === 'invite') {
+        const invitee = db.roomMembers.find((member) => member.roomId === room.id && member.userId === body.userId);
+        if (!group?.members.includes(memberId) || !invitee || group.members.includes(invitee.userId)) {
+          sendJson(res, 400, { message: 'Không thể mời thành viên này.' });
+          return true;
+        }
+        (group.invites ??= {})[invitee.userId] = { code: group.code, name: group.name, from: memberRecord.nickname };
+        saveDatabase(db, true);
+        broadcastToRoom(room.id, { type: 'private_chat_updated', code: group.code }, (client) => client.userId === invitee.userId);
+        sendJson(res, 200, { group: publicChat(group), messages: group.messages });
+        return true;
+      }
       if (body.action === 'join') {
         if (group?.members.includes(memberId)) {
           sendJson(res, 200, { group: publicChat(group), messages: group.messages });
@@ -1005,6 +1124,7 @@ export async function handleApiRequest(
           return true;
         }
         group.members.push(memberId);
+        if (group.invites) delete group.invites[memberId];
         privateChatAttempts.delete(attemptKey);
         saveDatabase(db, true);
         broadcastToRoom(room.id, { type: 'private_chat_updated', code: group.code }, (client) => group.members.includes(client.userId));
@@ -1063,7 +1183,7 @@ export async function handleApiRequest(
 
     if (subPath === 'shop' && (method === 'GET' || method === 'POST')) {
       const body = method === 'POST' ? await readJsonBody(req) : null;
-      const initial = !db.shops?.[room.id]?.[account.userId];
+      const initial = !db.shops?.[room.id]?.[account.userId]?.bedGranted;
       const { stored, ledger } = getRoomShop(room, account.userId);
       const attendance: Record<string, AttendanceStatus> = {};
       const prefix = `${room.id}:${account.userId}:`;
@@ -1106,15 +1226,36 @@ export async function handleApiRequest(
       if (recovered) { saveDatabase(db, true); publishBoxing(room.id, state, now); }
       if (body?.action === 'move') {
         const inZen = officeStorage?.zenStatus(room.id, account.userId) ?? zenPresence.has(`${room.id}:${account.userId}`);
-        if (!updateFighter(fighters, account.userId, inZen ? 'away' : body.zone, body.x, body.z, now)) {
+        const zone = inZen ? 'away' : body.zone;
+        if (!updateFighter(fighters, account.userId, zone, body.x, body.z, now)) {
           sendJson(res, 409, { message: 'Vị trí Boxing chưa hợp lệ.' });
           return true;
         }
+        const key = room.id + ':' + account.userId;
+        if (zone === 'away') boxingAway.set(key, now);
+        else boxingAway.delete(key);
         publishBoxing(room.id, state, now);
       } else if (body?.action === 'punch' && typeof body.id === 'string' && /^[\da-f-]{36}$/i.test(body.id)) {
         const currentlyInZen = officeStorage?.zenStatus(room.id, account.userId) ?? zenPresence.has(`${room.id}:${account.userId}`);
         if (currentlyInZen) delete fighters[account.userId];
-        const hit = punch(state, fighters, account.userId, body.id, now, () => {
+        const candidates = { ...fighters };
+        if (fighters[account.userId]?.zone === 'office') {
+          const current = buildRoomStatePayload(room).members;
+          const standing = current.filter((member) => !member.seatId && !member.meetingChairId && !member.inZenRoom)
+            .sort((a, b) => a.userId.localeCompare(b.userId));
+          for (const member of current) {
+            if (candidates[member.userId] || member.inZenRoom ||
+                (member.online && boxingAway.has(room.id + ':' + member.userId))) continue;
+            const seat = WORK_SEAT_LAYOUTS.find((layout) => layout.seatId === member.seatId)?.chairPosition;
+            const meeting = MEETING_CHAIRS.find((chair) => chair.id === member.meetingChairId)?.position;
+            const index = Math.max(0, standing.findIndex((entry) => entry.userId === member.userId));
+            const slot = DOOR_STANDING_SLOTS[index % DOOR_STANDING_SLOTS.length].position;
+            const row = Math.floor(index / DOOR_STANDING_SLOTS.length);
+            const [x, , z] = seat ?? meeting ?? [slot[0] - row * 0.55, 0, slot[2] + row * 0.45];
+            candidates[member.userId] = { zone: 'office', x, z, at: now };
+          }
+        }
+        const hit = punch(state, candidates, account.userId, body.id, now, () => {
           if (getMerit() < BOXING.officeMeritCost) return false;
           altar.members[account.userId].merit -= BOXING.officeMeritCost;
           return true;
@@ -1905,8 +2046,9 @@ export async function handleApiRequest(
         saveDatabase(db, true);
 
         postNpcChat(
-          `🚨 [VỤ ÁN CÔNG ĐỨC] Hòm công đức vừa bị trộm! Đã mất ${stolenAmountVnd.toLocaleString('vi-VN')} xu Office.`
+          `🚨 [VỤ ÁN CÔNG ĐỨC] Hòm công đức đã bị trộm, mau mau bắt tên trộm! Đã mất ${stolenAmountVnd.toLocaleString('vi-VN')} xu Office.`
         );
+        broadcastToRoom(room.id, { type: 'donation_theft_alert' });
         broadcastToRoom(room.id, { type: 'donation_case_sync', caseId: newCase.id });
         broadcastToRoom(room.id, { type: 'shop_updated' });
         if (abbotMember) broadcastToRoom(room.id, { type: 'altar_updated' }, (client) => client.userId === abbotMember.userId);

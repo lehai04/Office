@@ -32,3 +32,13 @@ export const PRIVATE_CHAT_EVENT = 'office-private-chat-updated';
 export function isOfficeMood(value: unknown): value is OfficeMood {
   return typeof value === 'string' && Object.hasOwn(OFFICE_MOODS, value);
 }
+
+export const PET_EVENTS = {
+  fighting: 'đang đánh nhau',
+  bathroom: 'đi vệ sinh giữa phòng',
+  hungry: 'đang đói bụng',
+  cuddly: 'muốn được vuốt ve',
+  spinning: 'đang nhảy xoay vòng',
+} as const;
+export type PetEvent = keyof typeof PET_EVENTS;
+export type PrivateChatInvite = { code: string; name: string; from: string };

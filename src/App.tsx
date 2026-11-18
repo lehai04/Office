@@ -1,7 +1,7 @@
 import { PrivateChatDialog } from './components/PrivateChatDialog';
 import { OfficePresenceControl } from './components/OfficePresenceControl';
-import { updateOfficePresence } from './services/officeSocial';
-import { PRIVATE_CHAT_EVENT, type OfficePresence } from './utils/officeSocial';
+import { officeSocialRequest, updateOfficePresence } from './services/officeSocial';
+import { PRIVATE_CHAT_EVENT, PET_EVENTS, type PetEvent, type OfficePresence, type PrivateChatGroup, type PrivateChatInvite } from './utils/officeSocial';
 import { OfficeActionWheel } from './components/OfficeActionWheel';
 import { BOXING_UPDATE_EVENT, useBoxing } from './services/boxing';
 import type { BoxingZone } from './utils/boxing';
@@ -168,6 +168,9 @@ export function App() {
 
   const [activePanel, setActivePanel] = useState<ActivePanel>('none');
   const [privateChatOpen, setPrivateChatOpen] = useState(false);
+  const [chatGroups, setChatGroups] = useState<PrivateChatGroup[]>([]);
+  const [activeChatGroup, setActiveChatGroup] = useState('');
+  const [chatInvites, setChatInvites] = useState<PrivateChatInvite[]>([]);
   const [presencePending, setPresencePending] = useState(false);
   const presenceSaving = useRef(false);
   const [claimingSeatId, setClaimingSeatId] = useState<string | null>(null);
@@ -361,6 +364,29 @@ export function App() {
       setToastMessage((prev) => (prev === msg ? null : prev));
     }, 4000);
   }, []);
+
+  const refreshPrivateChatGroups = useCallback(async () => {
+    if (!room || !session || isUsingStaticFallback()) return;
+    const scope = actionRoom.current;
+    try {
+      const result = await officeSocialRequest<{ groups: PrivateChatGroup[]; invites?: PrivateChatInvite[] }>(
+        room.code, session.sessionToken, 'private-chat');
+      if (actionRoom.current === scope) {
+        setChatGroups(result.groups);
+        setChatInvites(result.invites ?? []);
+      }
+    } catch { /* Nhóm riêng có thể tải lại khi mở Chat. */ }
+  }, [room?.code, session?.sessionToken]);
+
+  useEffect(() => {
+    setChatGroups([]);
+    setChatInvites([]);
+    setActiveChatGroup('');
+  }, [room?.id, session?.userId]);
+
+  useEffect(() => {
+    if (activePanel === 'chat') void refreshPrivateChatGroups();
+  }, [activePanel, refreshPrivateChatGroups]);
 
   const boxingZone: BoxingZone = activePanel === 'boxing' ? 'boxing' :
     activePanel === 'zen' || activePanel === 'games' ? 'away' : 'office';
@@ -587,32 +613,32 @@ export function App() {
     };
   }, [session, room]);
 
-  // Nếu bạn bận, mèo vẫn tự đi dạo hoặc nghỉ ngơi theo nhịp tự nhiên
+  const currentPets = useRef(roomCats);
+  currentPets.current = roomCats;
+  const petCycle = useRef(0);
   useEffect(() => {
-    if (!session || !room) return;
-    const myCat = roomCats[session.userId];
-    if (!myCat) return;
+    if (!session || !room || !roomCats[session.userId]) return;
+    const cycle: CatActivity[] = ['walking', 'hungry', 'spinning', 'bathroom', 'cuddly', 'fighting', 'sleeping'];
     const timer = window.setInterval(() => {
-      const cycle: CatActivity[] = ['walking', 'playing', 'sleeping'];
-      setRoomCats((prev) => {
-        const current = prev[session.userId];
-        if (!current) return prev;
-        const nextAct =
-          cycle[(cycle.indexOf(current.activity) + 1) % cycle.length];
-        const nextMap = {
-          ...prev,
-          [session.userId]: {
-            ...current,
-            activity: nextAct,
-            updatedAt: Date.now(),
-          },
-        };
-        saveRoomCats(room.code, nextMap);
-        return nextMap;
+      if (document.hidden) return;
+      const pets = currentPets.current;
+      const own = pets[session.userId];
+      if (!own) return;
+      const other = Object.values(pets).find((pet) => pet.ownerUserId !== session.userId);
+      let activity = cycle[petCycle.current++ % cycle.length];
+      if (activity === 'fighting' && !other) activity = 'playing';
+      const update = (state: CatActivity) => setRoomCats((previous) => {
+        if (!previous[session.userId]) return previous;
+        return { ...previous, [session.userId]: { ...previous[session.userId], activity: state, updatedAt: Date.now() } };
       });
-    }, 24000);
+      if (Object.hasOwn(PET_EVENTS, activity) && !isUsingStaticFallback()) {
+        void officeSocialRequest(room.code, session.sessionToken, 'pet-event', {
+          activity, name: own.catName, breedId: own.breedId, otherUserId: other?.ownerUserId, otherName: other?.catName, otherBreedId: other?.breedId,
+        }).then(() => update(activity)).catch(() => {});
+      } else update(activity);
+    }, 24_000);
     return () => window.clearInterval(timer);
-  }, [session, room, Boolean(session && roomCats[session.userId])]);
+  }, [session?.sessionToken, room?.code, Boolean(session && roomCats[session.userId])]);
 
   // Đăng ký Service Worker & đồng bộ trạng thái nhắc nhở hàng ngày (kể cả khi đóng tab nếu trình duyệt chạy nền)
   useEffect(() => {
@@ -1611,8 +1637,28 @@ export function App() {
     if (!session || !room) return;
 
     const handleRealtimePayload = (data: Record<string, unknown>) => {
+      if (data.type === 'donation_theft_alert') {
+        showToast('🚨 Hòm công đức đã bị trộm, mau mau bắt tên trộm!');
+        return;
+      }
+      if (data.type === 'pet_activity' && typeof data.activity === 'string' && Object.hasOwn(PET_EVENTS, data.activity)) {
+        const activity = data.activity as PetEvent;
+        setRoomCats((current) => {
+          const next = { ...current };
+          if (Array.isArray(data.profiles)) for (const profile of data.profiles as OfficeCatProfile[]) {
+            next[profile.ownerUserId] ??= profile;
+          }
+          for (const id of [data.userId, data.otherUserId]) {
+            if (typeof id === 'string' && next[id]) next[id] = { ...next[id], activity, updatedAt: Date.now() };
+          }
+          return next;
+        });
+        if (typeof data.message === 'string' && (activity === 'fighting' || activity === 'bathroom')) showToast(data.message);
+        return;
+      }
       if (data.type === 'private_chat_updated' && typeof data.code === 'string') {
         window.dispatchEvent(new CustomEvent(PRIVATE_CHAT_EVENT, { detail: data.code }));
+        if (activePanelRef.current !== 'chat' || !chatGroups.some((group) => group.code === data.code)) void refreshPrivateChatGroups();
         return;
       }
       if (data.type === 'office_action') {
@@ -2436,7 +2482,7 @@ export function App() {
       return;
     }
     if (kind === 'decor') {
-      if (!mySeat) throw new Error('Hãy chọn chỗ ngồi trong văn phòng trước khi đặt vật phẩm.');
+      if (id !== 'bed' && !mySeat) throw new Error('Hãy chọn chỗ ngồi trong văn phòng trước khi đặt vật phẩm.');
       setPlacingItem(id as DecorationItem);
       setCameraMode('overview');
       if (activePanel === 'zen') exitZenRoom();
@@ -2463,16 +2509,20 @@ export function App() {
         onEnterBoxing={() => togglePanel('boxing')}
         onBoxingPosition={boxing.setPosition}
         onPunch={boxingEnabled && boxing.available ? () => { void boxing.punch(); } : undefined}
-        canWalk={(activePanel === 'none' || activePanel === 'boxing') && !placingItem && !shopOpen && !actionWheelOpen && !privateChatOpen}
+        canWalk={(activePanel === 'none' || activePanel === 'boxing') && !placingItem && !shopOpen && !actionWheelOpen && !privateChatOpen && (!shop.sleepingBedId || activePanel === 'boxing')}
         onWalk={setWalkTarget}
         decorations={shopView?.decorations ?? []}
+        sleeping={shopView?.sleeping ?? {}}
+        onUseBed={(id) => void refreshShop({ action: 'sleep', decorationId: id, id: crypto.randomUUID() })
+          .catch((error) => showToast(error instanceof Error ? error.message : 'Chưa dùng được giường.'))}
         appearances={shopView?.appearances ?? {}}
         actions={officeActions}
         onOpenActionWheel={shopOpen || placingItem || actionWheelOpen ? undefined : () => setActionWheelOpen(true)}
         onFloorClick={(point, isTouch) => {
-          if (!placingItem && isTouch && (activePanel === 'none' || activePanel === 'boxing') && cameraMode === 'overview') setWalkTarget(point);
+          if (placingItem === 'bed') void placeItem(point);
+          else if (!placingItem && isTouch && (activePanel === 'none' || activePanel === 'boxing') && cameraMode === 'overview') setWalkTarget(point);
         }}
-        onDeskClick={placingItem ? (point, seatId) => {
+        onDeskClick={placingItem && placingItem !== 'bed' ? (point, seatId) => {
           if (seatId !== mySeat?.seatId) showToast('Bạn chỉ có thể đặt vật phẩm tại bàn của mình.');
           else void placeItem(point);
         } : undefined}
@@ -2519,9 +2569,15 @@ export function App() {
           onClose={() => setShopOpen(false)} onBuy={buyItem} onUse={useItem}
           onRemove={async (decorationId) => { await refreshShop({ action: 'remove', decorationId, id: crypto.randomUUID() }); }} />
       )}
+      {shop.sleepingBedId && activePanel === 'none' && <button type="button"
+        onClick={() => void refreshShop({ action: 'sleep', decorationId: shop.sleepingBedId!, id: crypto.randomUUID() })
+          .catch((error) => showToast(error instanceof Error ? error.message : 'Chưa thể thức dậy.'))}
+        className="fixed left-1/2 top-16 z-30 -translate-x-1/2 rounded-xl bg-violet-700 px-4 py-2 text-sm font-bold text-white">
+        Thức dậy
+      </button>}
       {placingItem && (
         <div className="fixed inset-x-0 top-14 z-30 mx-auto flex w-fit items-center gap-3 rounded-xl bg-slate-900 px-3 py-2 text-sm text-white">
-          Chọn vị trí trên bàn của bạn để đặt {OFFICE_SHOP[placingItem].name.toLowerCase()}.
+          Chọn vị trí {placingItem === 'bed' ? 'trên sàn' : 'trên bàn của bạn'} để đặt {OFFICE_SHOP[placingItem].name.toLowerCase()}.
           <button type="button" onClick={() => setPlacingItem(null)} className="rounded bg-white/15 px-2 py-1">Hủy</button>
         </div>
       )}
@@ -2946,11 +3002,21 @@ export function App() {
         members={members}
         onSendMessage={handleSendMessage}
         onOpenPrivateChat={() => setPrivateChatOpen(true)}
+        privateInviteCount={chatInvites.length}
+        groups={chatGroups}
+        selectedGroup={activeChatGroup}
+        onChooseGroup={setActiveChatGroup}
+        groupContent={activeChatGroup && chatGroups.some((group) => group.code === activeChatGroup)
+          ? <PrivateChatDialog key={activeChatGroup} embedded initialCode={activeChatGroup}
+              room={room.code} token={session.sessionToken} userId={session.userId} people={members} onClose={() => setActiveChatGroup('')} />
+          : undefined}
         onOpenDonationCase={() => setIsDonationCaseModalOpen(true)}
       />
 
       {privateChatOpen && activePanel === 'chat' && <PrivateChatDialog key={room.id + ':' + session.userId}
-        room={room.code} token={session.sessionToken} userId={session.userId} onClose={() => setPrivateChatOpen(false)} />}
+        room={room.code} token={session.sessionToken} userId={session.userId} people={members}
+        onJoined={(code) => { void refreshPrivateChatGroups(); setActiveChatGroup(code); setPrivateChatOpen(false); }}
+        onClose={() => setPrivateChatOpen(false)} />}
 
       <AttendanceDrawer
         isOpen={activePanel === 'attendance'}

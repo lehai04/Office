@@ -4,7 +4,7 @@ import { Readable } from 'node:stream';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import {
   authorizeOfficeRealtime, configureOfficeStorage, handleApiRequest, importVggRoom, publishOfficePresence, settleOfficeAlarms,
-  removeBoxingPresence,
+  removeBoxingPresence, auditVggMeritBatch,
   type OfficeRealtimeMember,
 } from '../server/officeServer';
 
@@ -12,6 +12,7 @@ interface Env {
   OFFICE_STATE: DurableObjectNamespace<OfficeState>;
   OFFICE_WEB_ORIGIN: string;
   OFFICE_VGG_IMPORT_TOKEN?: string;
+  OFFICE_VGG_MERIT_TOKEN?: string;
 }
 
 type Attachment = OfficeRealtimeMember & { inZen: boolean };
@@ -113,6 +114,19 @@ export class OfficeState extends DurableObject<Env> {
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
+    if (url.pathname === '/internal/vgg-merit' && (request.method === 'GET' || request.method === 'POST')) {
+      const token = this.env.OFFICE_VGG_MERIT_TOKEN;
+      const supplied = Buffer.from(request.headers.get('Authorization') ?? '');
+      if (!token) return Response.json({ error: 'NOT_FOUND' }, { status: 404 });
+      const expected = Buffer.from('Bearer ' + token);
+      if (supplied.length !== expected.length || !timingSafeEqual(expected, supplied)) return Response.json({ error: 'UNAUTHORIZED' }, { status: 401 });
+      try {
+        const body = request.method === 'POST' ? await request.json() as { fingerprint?: string } : undefined;
+        return Response.json(auditVggMeritBatch(request.method === 'POST', body?.fingerprint));
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : 'MERIT_AUDIT_FAILED' }, { status: 409 });
+      }
+    }
     if (url.pathname === '/internal/import-vgg' && request.method === 'POST') {
       const token = this.env.OFFICE_VGG_IMPORT_TOKEN;
       if (!token) return Response.json({ error: 'NOT_FOUND' }, { status: 404 });

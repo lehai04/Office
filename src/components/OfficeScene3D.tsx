@@ -47,6 +47,8 @@ interface OfficeScene3DProps {
   canWalk: boolean;
   onWalk: (point: ScenePoint) => void;
   decorations: OfficeDecoration[];
+  sleeping: Record<string, ScenePoint>;
+  onUseBed: (id: string) => void;
   appearances: Record<string, ShopOutfit>;
   actions: Record<string, OfficeActionEvent>;
   onOpenActionWheel?: () => void;
@@ -460,6 +462,7 @@ const LowPolyCharacter: React.FC<{
   boxingPunch?: BoxingHit;
   onSelectCharacter?: () => void;
   presence?: OfficePresence;
+  sleeping?: boolean;
 }> = ({
   gender,
   nickname,
@@ -480,6 +483,7 @@ const LowPolyCharacter: React.FC<{
   boxingPunch,
   onSelectCharacter,
   presence,
+  sleeping = false,
 }) => {
   const upperBodyRef = useRef<THREE.Group>(null);
   const bowStartRef = useRef<number>(0);
@@ -578,7 +582,7 @@ const LowPolyCharacter: React.FC<{
           at={[Math.cos(i * 2.4) * (0.25 + i * 0.037), 1.12 + i * 0.037, Math.sin(i * 2.4) * (0.25 + i * 0.037)]}
           size={[0.053, 0.015, 0.045]} color={['#f883ba', '#ffd562', '#62d9d0'][i % 3]} />)}
       </group>}
-      <group position-y={action === 'headstand' ? -1.65 : 0}>
+      <group position-y={action === 'headstand' ? -1.65 : 0} rotation-x={sleeping ? -Math.PI / 2 : 0}>
       {!hideMeshInFpv && (
         <>
           {/* Đài sen hồng 2 tầng cánh nở dưới chân Trụ trì Thanh Ngọc */}
@@ -838,6 +842,7 @@ const LowPolyCharacter: React.FC<{
               />
               {isManager && <span title="Trưởng phòng">👑</span>}
               <span>{displayName}</span>
+              {sleeping && <span title="Đang ngủ">💤</span>}
               {mood && <span title={OFFICE_MOODS[mood].label} aria-label={OFFICE_MOODS[mood].label}>{OFFICE_MOODS[mood].icon}</span>}
               {presence?.doNotDisturb && <span className="rounded bg-rose-800 px-1 text-rose-50">Không làm phiền</span>}
             </NameTag>
@@ -1883,6 +1888,16 @@ const LowPolyCat3D: React.FC<{
       groupRef.current.rotation.y = 0.4;
       const breath = 1 + Math.sin(t * 2.2) * 0.04;
       groupRef.current.scale.set(breath, 0.82, breath);
+    } else if (cat.activity === 'fighting' || cat.activity === 'spinning') {
+      const spin = cat.activity === 'spinning';
+      groupRef.current.position.set(baseAnchorX + Math.sin(t * 8) * (spin ? 0.06 : 0.32),
+        Math.abs(Math.sin(t * (spin ? 6 : 9))) * 0.28, baseAnchorZ);
+      groupRef.current.rotation.y = spin ? t * 6 : Math.sin(t * 7) * 0.45;
+      groupRef.current.scale.set(1, 1, 1);
+    } else if (cat.activity === 'bathroom' || cat.activity === 'hungry' || cat.activity === 'cuddly') {
+      groupRef.current.position.set(baseAnchorX, cat.activity === 'cuddly' ? Math.abs(Math.sin(t * 4)) * 0.09 : 0, baseAnchorZ);
+      groupRef.current.rotation.y = 0.4;
+      groupRef.current.scale.set(1, cat.activity === 'bathroom' ? 0.73 : 1, 1);
     } else if (cat.activity === 'playing') {
       // Mèo nhảy nhót vờn quanh đồ chơi trong văn phòng
       const px = baseAnchorX + Math.cos(t * 1.5) * 0.48;
@@ -2257,6 +2272,8 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
   canWalk,
   onWalk,
   decorations,
+  sleeping,
+  onUseBed,
   appearances,
   actions,
   onOpenActionWheel,
@@ -2381,6 +2398,10 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
         };
       }
 
+      if (sleeping[member.userId]) {
+        const [bx, , bz] = sleeping[member.userId];
+        return { member, isSeated: false, position: [bx, 0.45, bz + 0.58] as ScenePoint, rotationY: 0 };
+      }
       if (member.userId === currentUserId && walkTarget) {
         return { member, isSeated: false, position: walkTarget, rotationY: 0 };
       }
@@ -2429,7 +2450,7 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
         rotationY: slot.rotationY,
       };
     }
-  }, [members, currentUserId, inZenRoom, inGameRoom, inBoxingRoom, abbotAtDonationDesk, walkTarget, boxingView?.fighters]);
+  }, [members, currentUserId, inZenRoom, inGameRoom, inBoxingRoom, abbotAtDonationDesk, walkTarget, boxingView?.fighters, sleeping]);
 
   const myPlacement = useMemo(() => {
     const found = characterPlacements.find((p) => p.member.userId === currentUserId);
@@ -2602,7 +2623,10 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
             <meshStandardMaterial color="#f1f5f9" roughness={0.88} />
           </mesh>
           {decorations.map(({ id, item, position }) => EXTRA_VOXELS[item] ? (
-            <group key={id} position={position} scale={0.29}><VoxelObject item={item} /></group>
+            <group key={id} position={position} scale={item === 'bed' ? 1 : 0.29}
+              onClick={item === 'bed' ? (event) => { if (event.delta <= 5) { event.stopPropagation(); onUseBed(id); } } : undefined}>
+              <VoxelObject item={item} />
+            </group>
           ) : (
             <group key={id} position={position}>
               <mesh position={[0, item === 'plant' ? 0.13 : 0.045, 0]} castShadow>
@@ -2872,6 +2896,7 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
                 boxingHit={hit} boxingPunch={strike}
                 onSelectCharacter={isMe ? onOpenActionWheel : undefined}
                 presence={member.presence}
+                sleeping={Boolean(sleeping[member.userId] && !inBoxingMap && !member.inZenRoom)}
                 gender={member.avatarGender}
                 nickname={member.nickname}
                 memberTag={member.memberTag}
