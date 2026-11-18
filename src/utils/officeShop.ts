@@ -20,9 +20,24 @@ export const OFFICE_SHOP = {
   hoodie: { name: 'Hoodie xanh', icon: '🧥', price: 140_000, kind: 'equip', category: 'outfit', description: 'Áo hoodie xanh cho nhân vật.' },
   glasses: { name: 'Kính tròn', icon: '👓', price: 75_000, kind: 'equip', category: 'outfit', description: 'Kính tròn đeo trên mặt nhân vật.' },
   cap: { name: 'Mũ lưỡi trai', icon: '🧢', price: 85_000, kind: 'equip', category: 'outfit', description: 'Mũ lưỡi trai cho nhân vật.' },
+  princess_dress: { name: 'Váy công chúa', icon: '👗', price: 240_000, kind: 'equip', category: 'outfit', description: 'Váy hồng nhiều tầng, thắt nơ ở eo.' },
+  princess_tiara: { name: 'Vương miện công chúa', icon: '👑', price: 95_000, kind: 'equip', category: 'outfit', description: 'Vương miện vàng đính đá hồng, có thể phối cùng váy công chúa.' },
+  cat_cosplay: { name: 'Cosplay mèo hồng', icon: '🐱', price: 220_000, kind: 'equip', category: 'outfit', description: 'Bộ đồ mèo hồng có tai nhọn, bụng sáng màu và đuôi cong.' },
+  rabbit_cosplay: { name: 'Cosplay thỏ trắng', icon: '🐰', price: 220_000, kind: 'equip', category: 'outfit', description: 'Bộ đồ thỏ trắng có tai dài và đuôi tròn.' },
+  panda_cosplay: { name: 'Cosplay gấu trúc', icon: '🐼', price: 220_000, kind: 'equip', category: 'outfit', description: 'Bộ đồ gấu trúc đen trắng với hai tai tròn.' },
+  monk_robe: { name: 'Áo sư chùa', icon: '🟤', price: 180_000, kind: 'equip', category: 'outfit', description: 'Áo nâu dài với vạt chéo màu vàng đất.' },
+  pixel_glasses: { name: 'Kính pixel', icon: '🕶️', price: 80_000, kind: 'equip', category: 'outfit', description: 'Kính đen góc vuông có điểm sáng kiểu pixel.' },
   wave: { name: 'Vẫy tay', icon: '👋', price: 70_000, kind: 'action', category: 'action', description: 'Vẫy tay chào đồng nghiệp.' },
   clap: { name: 'Vỗ tay', icon: '👏', price: 90_000, kind: 'action', category: 'action', description: 'Vỗ tay ăn mừng.' },
   confetti: { name: 'Tung confetti', icon: '🎉', price: 160_000, kind: 'action', category: 'action', description: 'Tung giấy màu lên cao.' },
+  spin: { name: 'Xoay một vòng', icon: '🔄', price: 105_000, kind: 'action', category: 'action', description: 'Xoay người một vòng tại chỗ.' },
+  nap: { name: 'Gục đầu chợp mắt', icon: '💤', price: 95_000, kind: 'action', category: 'action', description: 'Cúi đầu chợp mắt trong vài giây.' },
+  bow: { name: 'Chắp tay cúi chào', icon: '🙏', price: 85_000, kind: 'action', category: 'action', description: 'Chắp tay và cúi người chào.' },
+  cheer: { name: 'Nhảy reo mừng', icon: '🙌', price: 120_000, kind: 'action', category: 'action', description: 'Bật nhảy tại chỗ và giơ cao hai tay.' },
+  salute: { name: 'Chào kiểu đội trưởng', icon: '🫡', price: 85_000, kind: 'action', category: 'action', description: 'Giơ một tay lên trán để chào.' },
+  heart: { name: 'Thả tim', icon: '💗', price: 110_000, kind: 'action', category: 'action', description: 'Tạo dáng và gửi một trái tim bay lên.' },
+  stretch: { name: 'Vươn vai', icon: '🧘', price: 75_000, kind: 'action', category: 'action', description: 'Duỗi hai tay sang ngang rồi vươn cao.' },
+  laugh: { name: 'Cười nghiêng ngả', icon: '😂', price: 95_000, kind: 'action', category: 'action', description: 'Ôm bụng và lắc người vì cười.' },
   lotus: { name: 'Hoa sen', icon: '🪷', price: 18_000, kind: 'consumable', category: 'altar', description: 'Hoa sen dâng tại Phòng Tịnh Tâm.' },
   tea: { name: 'Chén trà', icon: '🍵', price: 12_000, kind: 'consumable', category: 'altar', description: 'Chén trà dâng tại bàn thờ.' },
   cake: { name: 'Đĩa bánh', icon: '🍰', price: 25_000, kind: 'consumable', category: 'altar', description: 'Đĩa bánh dâng tại bàn thờ.' },
@@ -42,7 +57,21 @@ export type OfficeAction = ItemOfKind<'action'>;
 export type ShopConsumable = ItemOfKind<'consumable'>;
 export type ShopOffering = Exclude<ShopConsumable, 'incense'>;
 export type ShopEquipment = ItemOfKind<'equip'>;
-export const OUTFIT_SLOTS = { outfit: 'shirt', hoodie: 'shirt', glasses: 'eyes', cap: 'head' } as const;
+export const OUTFIT_SLOTS = {
+  outfit: 'shirt', hoodie: 'shirt', glasses: 'eyes', cap: 'head',
+  princess_dress: 'shirt', princess_tiara: 'head', cat_cosplay: 'shirt',
+  rabbit_cosplay: 'shirt', panda_cosplay: 'shirt', monk_robe: 'shirt', pixel_glasses: 'eyes',
+} as const satisfies Record<ShopEquipment, 'shirt' | 'eyes' | 'head'>;
+
+export const COSPLAY_COLORS = {
+  cat_cosplay: { suit: '#eb5ba1', accent: '#ffd1e8' },
+  rabbit_cosplay: { suit: '#f4f4ff', accent: '#f4a6bf' },
+  panda_cosplay: { suit: '#242638', accent: '#ffffff' },
+} as const;
+
+export function isAnimalCostume(item: ShopEquipment | undefined): item is keyof typeof COSPLAY_COLORS {
+  return item !== undefined && Object.hasOwn(COSPLAY_COLORS, item);
+}
 export type ShopOutfit = Partial<Record<typeof OUTFIT_SLOTS[ShopEquipment], ShopEquipment>>;
 export const SHOP_OFFERINGS: readonly ShopOffering[] = ['offering', 'lotus', 'tea', 'cake'];
 

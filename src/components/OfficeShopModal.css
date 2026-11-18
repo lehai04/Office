@@ -145,6 +145,17 @@
 .office-shop__motion--wave { animation: shop-wave .55s ease-in-out 3; transform-origin: 50% 80%; }
 .office-shop__motion--clap { animation: shop-clap .3s ease-in-out 5; }
 .office-shop__motion--confetti { animation: shop-confetti .9s ease-out 2; }
+.office-shop__motion--spin { animation: shop-spin 1.65s ease-in-out; }
+.office-shop__motion--nap,
+.office-shop__motion--bow { animation: shop-lean 1.65s ease-in-out; transform-origin: 50% 75%; }
+.office-shop__motion--cheer,
+.office-shop__motion--heart { animation: shop-dance .45s ease-in-out 4; }
+.office-shop__motion--salute,
+.office-shop__motion--laugh { animation: shop-wave .55s ease-in-out 3; }
+.office-shop__motion--stretch { animation: shop-stretch 1.65s ease-in-out; }
+@keyframes shop-spin { to { transform: rotateY(360deg); } }
+@keyframes shop-lean { 50% { transform: rotate(22deg) translateY(7%); } }
+@keyframes shop-stretch { 50% { transform: scale(1.08, 1.18); } }
 @keyframes shop-wave { 0%, 100% { transform: rotate(-6deg); } 50% { transform: rotate(7deg); } }
 @keyframes shop-clap { 0%, 100% { transform: scaleX(1); } 50% { transform: scaleX(.87); } }
 @keyframes shop-confetti { 0% { transform: translateY(10px) scale(.86); } 48% { transform: translateY(-15px) scale(1.12); } 100% { transform: none; } }

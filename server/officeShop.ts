@@ -24,8 +24,17 @@ export function restoreShop(raw: unknown): { shop: StoredShop; balance?: number 
     placed && typeof placed.id === 'string' && isShopItem(placed.item) && OFFICE_SHOP[placed.item].kind === 'decor' &&
     Array.isArray(placed.position) && placed.position.length === 3 && placed.position.every(Number.isFinite));
   const outfit = wallet.shop?.outfit === 'outfit' && inventory.outfit ? 'outfit' : undefined;
+  const equipped: OfficeShopState['equipped'] = wallet.shop?.equipped ? {} : undefined;
+  if (equipped) {
+    for (const [slot, item] of Object.entries(wallet.shop?.equipped ?? {})) {
+      if (isShopItem(item) && inventory[item] && item in OUTFIT_SLOTS) {
+        const expected = OUTFIT_SLOTS[item as ShopEquipment];
+        if (slot === expected) equipped[expected] = item as ShopEquipment;
+      }
+    }
+  }
   return {
-    shop: { state: { inventory, decorations, outfit }, receipts: {},
+    shop: { state: { inventory, decorations, outfit, equipped }, receipts: {},
       settledMonths: Array.isArray(wallet.settledMonths) ? wallet.settledMonths.filter((month) => /^\d{4}-\d{2}$/.test(month)) : [] },
     balance: Number.isSafeInteger(wallet.balanceVnd) && wallet.balanceVnd! >= 0 ? wallet.balanceVnd : undefined,
   };

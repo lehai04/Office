@@ -7,7 +7,10 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { isUsingStaticFallback } from '../services/officeApi';
 import { uniqueStaticRoomMembers } from '../utils/roomMemberDisplay';
 import { ALTAR_BOW_MS, ALTAR_KICK_MS, ALTAR_PLACE_MS, ALTAR_WALK_MS, type AltarRitual, type AltarView } from '../utils/zenAltar';
-import type { OfficeAction, OfficeActionEvent, OfficeDecoration, ScenePoint, ShopOutfit, ShopOffering, ShopItem } from '../utils/officeShop';
+import {
+  COSPLAY_COLORS, isAnimalCostume, OFFICE_ACTION_DURATION_MS,
+  type OfficeActionEvent, type OfficeDecoration, type ScenePoint, type ShopOutfit, type ShopOffering, type ShopItem,
+} from '../utils/officeShop';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Html, OrbitControls, ContactShadows } from '@react-three/drei';
 import * as THREE from 'three';
@@ -461,7 +464,7 @@ const LowPolyCharacter: React.FC<{
   rotationY: number;
   bubbleText?: string;
   outfit?: ShopOutfit;
-  action?: OfficeAction | null;
+  actionEvent?: OfficeActionEvent;
   duplicateNicknameCount: number;
   boxingHit?: BoxingHit;
   boxingPunch?: BoxingHit;
@@ -482,7 +485,7 @@ const LowPolyCharacter: React.FC<{
   rotationY,
   bubbleText,
   outfit,
-  action,
+  actionEvent,
   duplicateNicknameCount,
   boxingHit,
   boxingPunch,
@@ -496,7 +499,9 @@ const LowPolyCharacter: React.FC<{
   const leftArm = useRef<THREE.Mesh>(null);
   const rightArm = useRef<THREE.Mesh>(null);
   const confetti = useRef<THREE.Group>(null);
+  const actionEffect = useRef<THREE.Group>(null);
   const startPosition = useRef(position);
+  const action = actionEvent?.action;
 
   useEffect(() => {
     if (isBowing) {
@@ -507,6 +512,12 @@ const LowPolyCharacter: React.FC<{
   }, [isBowing]);
 
   useFrame(({ clock }, delta) => {
+    const progress = actionEvent
+      ? THREE.MathUtils.clamp((Date.now() - actionEvent.startedAt) / OFFICE_ACTION_DURATION_MS, 0, 1)
+      : 0;
+    const gesture = sleeping || isBowing ? null : action;
+    const beat = Math.sin(clock.elapsedTime * 14);
+    let lean = 0;
     const actor = actorRef.current;
     if (actor) {
       const [x, y, z] = position;
@@ -517,16 +528,54 @@ const LowPolyCharacter: React.FC<{
       actor.position.z += (z - actor.position.z) * step;
       if (!sleeping && action === 'dance') actor.position.y += Math.abs(Math.sin(clock.elapsedTime * 8)) * 0.08;
       actor.rotation.z = sleeping ? 0 : action === 'dance' ? Math.sin(clock.elapsedTime * 9) * 0.18 : action === 'headstand' ? Math.PI : boxingHit && Date.now() - boxingHit.at < 240 ? 0.23 : 0;
+      actor.rotation.y = rotationY + (gesture === 'spin' ? progress * Math.PI * 2 : 0);
+      if (gesture === 'cheer') actor.position.y += Math.abs(Math.sin(progress * Math.PI * 3)) * 0.30;
+      if (gesture === 'laugh') actor.rotation.z += beat * 0.11;
     }
     if (leftArm.current && rightArm.current) {
       const base = isBowing ? -1.1 : isSeated ? -0.55 : 0;
-      const beat = Math.sin(clock.elapsedTime * 14);
       leftArm.current.rotation.x = action === 'clap' ? -1.35 : action === 'confetti' ? -2.2 : base;
       rightArm.current.rotation.x = action === 'clap' ? -1.35 : action === 'wave' ? -2.45 : action === 'confetti' ? -2.2 : base;
       leftArm.current.rotation.z = action === 'clap' ? -0.67 - beat * 0.31 : isBowing ? -0.35 : 0.08;
       if (boxingPunch && Date.now() - boxingPunch.at < 240) rightArm.current.rotation.x = -1.58;
       rightArm.current.rotation.z = action === 'clap' ? 0.67 + beat * 0.31 : action === 'wave' ? -0.47 + beat * 0.36 : isBowing ? 0.35 : -0.08;
+      switch (gesture) {
+        case 'nap':
+          lean = Math.sin(progress * Math.PI) * 0.65;
+          leftArm.current.rotation.x = rightArm.current.rotation.x = -0.85;
+          break;
+        case 'bow':
+          lean = Math.sin(progress * Math.PI) * 0.82;
+          leftArm.current.rotation.x = rightArm.current.rotation.x = -1.1;
+          leftArm.current.rotation.z = -0.66;
+          rightArm.current.rotation.z = 0.66;
+          break;
+        case 'cheer':
+          leftArm.current.rotation.x = -2.6 + beat * 0.22;
+          rightArm.current.rotation.x = -2.6 - beat * 0.22;
+          break;
+        case 'salute':
+          rightArm.current.rotation.x = -2.45;
+          rightArm.current.rotation.z = 0.48;
+          break;
+        case 'heart':
+          leftArm.current.rotation.x = rightArm.current.rotation.x = -2.6;
+          leftArm.current.rotation.z = 0.65;
+          rightArm.current.rotation.z = -0.65;
+          break;
+        case 'stretch':
+          leftArm.current.rotation.z = -1.35 - Math.sin(progress * Math.PI) * 1.25;
+          rightArm.current.rotation.z = -leftArm.current.rotation.z;
+          break;
+        case 'laugh':
+          lean = 0.25 + beat * 0.08;
+          leftArm.current.rotation.x = rightArm.current.rotation.x = -0.85;
+          leftArm.current.rotation.z = 0.85;
+          rightArm.current.rotation.z = -0.85;
+          break;
+      }
     }
+    if (actionEffect.current) actionEffect.current.position.y = 1.65 + progress * 0.42;
     if (confetti.current) {
       confetti.current.rotation.y = clock.elapsedTime * 3;
       confetti.current.position.y = 0.13 + (Math.sin(clock.elapsedTime * 6) + 1) * 0.18;
@@ -537,19 +586,25 @@ const LowPolyCharacter: React.FC<{
       const wave = Math.max(0, Math.sin(elapsed * Math.PI * 2.0));
       upperBodyRef.current.rotation.x = wave * 0.65;
     } else {
-      upperBodyRef.current.rotation.x = 0;
+      upperBodyRef.current.rotation.x = lean;
     }
   });
 
+  const shirt = outfit?.shirt;
+  const animal = isAnimalCostume(shirt) ? shirt : undefined;
+  const costume = animal ? COSPLAY_COLORS[animal] : undefined;
+  const dress = shirt === 'princess_dress';
+  const robe = shirt === 'monk_robe';
   const shirtColor =
-    outfit?.shirt === 'hoodie' ? '#668bea' : outfit?.shirt === 'outfit' ? '#a855f7' : gender === 'male'
+    costume?.suit ?? (dress ? '#dc4c91' : robe ? '#81502e' :
+    shirt === 'hoodie' ? '#668bea' : shirt === 'outfit' ? '#a855f7' : gender === 'male'
       ? isCurrentUser
         ? '#10b981'
         : '#3b82f6'
       : isCurrentUser
         ? '#ec4899'
-        : '#f43f5e';
-  const pantsColor = gender === 'male' ? '#1e293b' : '#334155';
+        : '#f43f5e');
+  const pantsColor = costume?.suit ?? (robe ? '#65432d' : gender === 'male' ? '#1e293b' : '#334155');
   const hairColor = gender === 'male' ? '#1f2937' : '#451a03';
   const skinColor = '#fcd34d';
 
@@ -586,6 +641,13 @@ const LowPolyCharacter: React.FC<{
           at={[Math.cos(i * 2.4) * (0.25 + i * 0.037), 1.12 + i * 0.037, Math.sin(i * 2.4) * (0.25 + i * 0.037)]}
           size={[0.053, 0.015, 0.045]} color={['#f883ba', '#ffd562', '#62d9d0'][i % 3]} />)}
       </group>}
+      {!sleeping && !isBowing && !hideMeshInFpv && (action === 'heart' || action === 'nap') && (
+        <group ref={actionEffect} position-y={1.65}>
+          <Html center style={{ pointerEvents: 'none' }}>
+            <span aria-hidden="true" className="text-2xl">{action === 'heart' ? '💗' : '💤'}</span>
+          </Html>
+        </group>
+      )}
       {sleeping && !hideMeshInFpv && <group position={[0, 0, -1.25]}>
         <AltarBlock at={[-0.19, 0.02, 0.035]} size={[0.105, 0.10, 0.18]} color={shirtColor} />
         <AltarBlock at={[-0.13, 0.0375, 0.103]} size={[0.19, 0.085, 0.096]} color={shirtColor} />
@@ -684,7 +746,7 @@ const LowPolyCharacter: React.FC<{
           {/* Phần thân trên & đầu (Có thể cúi lạy khi ở Phòng Tịnh Tâm) */}
           <group ref={sleeping ? undefined : upperBodyRef} position={[0, hipY, 0]}>
             {!sleeping && <>
-            {gender === 'male' ? (
+            {gender === 'male' || dress || robe || costume ? (
               <mesh position={[0, 0.36, 0]} castShadow>
                 <boxGeometry args={[0.42, 0.52, 0.24]} />
                 <meshStandardMaterial
@@ -716,6 +778,40 @@ const LowPolyCharacter: React.FC<{
                 </mesh>
               </group>
             )}
+
+            {dress && <>
+              <mesh position={[0, -0.08, isSeated ? 0.08 : 0]} castShadow>
+                <cylinderGeometry args={[0.20, 0.43, isSeated ? 0.28 : 0.53, 10]} />
+                <meshStandardMaterial color="#f28abb" />
+              </mesh>
+              <mesh position={[0, isSeated ? -0.19 : -0.31, isSeated ? 0.08 : 0]} castShadow>
+                <cylinderGeometry args={[0.40, 0.44, 0.09, 10]} />
+                <meshStandardMaterial color="#ffc2e6" />
+              </mesh>
+              <AltarBlock at={[0, 0.13, 0.14]} size={[0.25, 0.08, 0.06]} color="#a92471" />
+              <AltarBlock at={[0, 0.13, 0.18]} size={[0.07, 0.09, 0.04]} color="#ffe1a8" />
+            </>}
+            {robe && <>
+              <mesh position={[0, -0.08, isSeated ? 0.08 : 0]} castShadow>
+                <cylinderGeometry args={[0.23, 0.31, isSeated ? 0.26 : 0.54, 8]} />
+                <meshStandardMaterial color="#81502e" />
+              </mesh>
+              <mesh position={[0, 0.34, 0.135]} rotation-z={-0.55}>
+                <boxGeometry args={[0.09, 0.54, 0.035]} />
+                <meshStandardMaterial color="#c68a4d" />
+              </mesh>
+            </>}
+            {costume && <>
+              <AltarBlock at={[0, 0.32, 0.12]} size={[0.27, 0.36, 0.05]} color={animal === 'rabbit_cosplay' ? '#ffe0eb' : costume.accent} />
+              <mesh position={[0, 0.10, -0.18]} rotation-x={animal === 'cat_cosplay' ? 0.8 : 0}>
+                <sphereGeometry args={[0.09, 8, 6]} />
+                <meshStandardMaterial color={costume.suit} />
+              </mesh>
+              {animal === 'cat_cosplay' && <mesh position={[0, 0.21, -0.24]} rotation-x={-0.45}>
+                <boxGeometry args={[0.09, 0.31, 0.09]} />
+                <meshStandardMaterial color={costume.suit} />
+              </mesh>}
+            </>}
 
             {/* Hai tay (Chắp tay trước ngực khi đang lạy khấn) */}
             <mesh
@@ -749,13 +845,39 @@ const LowPolyCharacter: React.FC<{
                   opacity={isOnline ? 1 : 0.6}
                 />
               </mesh>
-              {sleeping ? <>
+              {sleeping || action === 'nap' && !isBowing ? <>
                 <AltarBlock at={[-0.08, 0.02, 0.178]} size={[0.055, 0.012, 0.012]} color="#0f172a" />
                 <AltarBlock at={[0.08, 0.02, 0.178]} size={[0.055, 0.012, 0.012]} color="#0f172a" />
                 <AltarBlock at={[0, -0.071, 0.178]} size={[0.036, 0.01, 0.012]} color="#582b3e" />
               </> : <AvatarMoodFace mood={mood} eyebrowColor={hairColor} />}
               {outfit?.eyes === 'glasses' && <group position={[0, -0.07, 0.18]} scale={0.16}><VoxelObject item="glasses" /></group>}
+              {outfit?.eyes === 'pixel_glasses' && <>
+                <AltarBlock at={[0, 0.018, 0.19]} size={[0.32, 0.034, 0.032]} color="#172033" />
+                {[-1, 1].map((side) => <group key={side} position-x={side * 0.085}>
+                  <AltarBlock at={[0, -0.01, 0.192]} size={[0.127, 0.074, 0.033]} color="#172033" />
+                  <AltarBlock at={[-0.027, 0.002, 0.214]} size={[0.029, 0.019, 0.008]} color="#b6ddf5" />
+                </group>)}
+              </>}
               {outfit?.head === 'cap' && <group position={[0, 0.085, 0.02]} scale={0.34}><VoxelObject item="cap" /></group>}
+              {outfit?.head === 'princess_tiara' && <group position={[0, isManager ? 0.34 : 0.25, 0.15]}>
+                <AltarBlock at={[0, 0, 0]} size={[0.29, 0.055, 0.06]} color="#f9c74f" />
+                {[-1, 0, 1].map((point) => <AltarBlock key={point}
+                  at={[point * 0.097, 0.035, 0]} size={[0.048, point === 0 ? 0.13 : 0.085, 0.062]} color="#f9c74f" />)}
+                <AltarBlock at={[0, 0.052, 0.037]} size={[0.038, 0.04, 0.02]} color="#f06aa5" />
+              </group>}
+              {costume && [-1, 1].map((side) => (
+                <group key={side} position={[side * 0.155, 0.205, 0]} rotation-z={side * -0.20}>
+                  <mesh position-y={animal === 'rabbit_cosplay' ? 0.16 : 0.07}>
+                    {animal === 'cat_cosplay' ? <coneGeometry args={[0.10, 0.20, 4]} /> :
+                      <sphereGeometry args={[0.095, 8, 6]} />}
+                    <meshStandardMaterial color={costume.suit} />
+                  </mesh>
+                  {animal === 'rabbit_cosplay' && <>
+                    <AltarBlock at={[0, 0.17, 0]} size={[0.12, 0.30, 0.13]} color={costume.suit} />
+                    <AltarBlock at={[0, 0.19, 0.071]} size={[0.054, 0.22, 0.018]} color={costume.accent} />
+                  </>}
+                </group>
+              ))}
               {outfit?.shirt === 'hoodie' && <AltarBlock at={[0,-0.11,-0.1]} size={[0.42,0.23,0.31]} color="#5579cc" />}
               {gender === 'male' ? (
                 <mesh position={[0, 0.16, -0.01]} castShadow>
@@ -2908,7 +3030,7 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
                 isSeated={isSeated}
                 isBowing={isMe && isBowing}
                 outfit={appearances[member.userId]}
-                action={actions[member.userId]?.action ?? null}
+                actionEvent={actions[member.userId]}
                 hideMeshInFpv={isMe && cameraMode === 'first_person'}
                 position={position}
                 rotationY={heading}

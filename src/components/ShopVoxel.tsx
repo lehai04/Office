@@ -1,7 +1,7 @@
 import { EXTRA_VOXELS } from '../utils/shopVoxels';
 import { useEffect, useRef } from 'react';
 import artworkUrl from '../assets/office-shop-voxel.png?url';
-import type { ShopItem } from '../utils/officeShop';
+import { OFFICE_SHOP, type ShopItem } from '../utils/officeShop';
 
 const tiles: Partial<Record<ShopItem, readonly [number, number, number, number]>> = {
   outfit: [542, 86, 234, 288],
@@ -67,5 +67,8 @@ export function ShopVoxel({ item }: { item: ShopItem }) {
     return () => { active = false; };
   }, [item, tile, x, y, width, height]);
 
+  if (!tile && !EXTRA_VOXELS[item]) {
+    return <span aria-hidden="true" className="grid h-full place-items-center text-5xl">{OFFICE_SHOP[item].icon}</span>;
+  }
   return <canvas ref={canvas} width={width} height={height} aria-hidden="true" className="h-full w-full object-contain" />;
 }
