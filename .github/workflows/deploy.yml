@@ -33,6 +33,7 @@ jobs:
       - name: Build for GitHub Pages
         env:
           VITE_API_ORIGIN: https://office-vgg.van-phong-ao.workers.dev
+          VITE_OFFICE_WEBSOCKET: "true"
         run: npm run build:pages
 
       - name: Setup Pages
