@@ -1,4 +1,5 @@
-import { OFFICE_MOODS, type OfficePresence } from '../utils/officeSocial';
+import { PixelMoodIcon } from './PixelMoodIcon';
+import { OFFICE_MOODS, type OfficeMood, type OfficePresence } from '../utils/officeSocial';
 import { BoxingImpact, BoxingRoom } from './BoxingRoom';
 import { BOXING, BOXING_MAP, BOXING_MAP_OFFSET, FISH_ID, boxingMapPoint, inBoxingRing, type BoxingHit, type BoxingView } from '../utils/boxing';
 import { EXTRA_VOXELS } from '../utils/shopVoxels';
@@ -566,8 +567,6 @@ const LowPolyCharacter: React.FC<{
       : normalizedNickname;
 
   const mood = presence?.mood;
-  const isCheerful = mood === 'happy' || mood === 'love';
-  const isAnnoyed = mood === 'curt' || mood === 'grumpy' || mood === 'hate';
   const NameTag = onSelectCharacter ? 'button' : 'div';
 
   return (
@@ -738,25 +737,7 @@ const LowPolyCharacter: React.FC<{
                   opacity={isOnline ? 1 : 0.6}
                 />
               </mesh>
-              <mesh position={[-0.08, 0.02, 0.175]}>
-                <boxGeometry args={[0.045, 0.045, 0.02]} />
-                <meshBasicMaterial color="#0f172a" />
-              </mesh>
-              <mesh position={[0.08, 0.02, 0.175]}>
-                <boxGeometry args={[0.045, 0.045, 0.02]} />
-                <meshBasicMaterial color="#0f172a" />
-              </mesh>
-
-              {mood && <group position={[0, -0.06, 0.174]}>
-                <AltarBlock at={[0, 0, 0]} size={[0.075, 0.014, 0.012]} color={isCheerful ? '#a33458' : '#572b39'} />
-                {[-0.041, 0.041].map((x) => <AltarBlock key={x}
-                  at={[x, isCheerful ? 0.012 : mood === 'sad' ? -0.012 : 0, 0]} size={[0.015, 0.021, 0.013]} color="#572b39" />)}
-              </group>}
-              {isAnnoyed && <group position={[0, 0.061, 0.181]}>
-                {[-0.079, 0.079].map((x) => <group key={x} position={[x, 0, 0]} rotation-z={x < 0 ? -0.35 : 0.35}>
-                  <AltarBlock at={[0, 0, 0]} size={[0.063, 0.015, 0.012]} color={hairColor} />
-                </group>)}
-              </group>}
+              <AvatarMoodFace mood={mood} eyebrowColor={hairColor} />
               {outfit?.eyes === 'glasses' && <group position={[0, -0.07, 0.18]} scale={0.16}><VoxelObject item="glasses" /></group>}
               {outfit?.head === 'cap' && <group position={[0, 0.085, 0.02]} scale={0.34}><VoxelObject item="cap" /></group>}
               {outfit?.shirt === 'hoodie' && <AltarBlock at={[0,-0.11,-0.1]} size={[0.42,0.23,0.31]} color="#5579cc" />}
@@ -822,6 +803,7 @@ const LowPolyCharacter: React.FC<{
               </div>
             )}
 
+            <div className="flex items-center gap-1">
             <NameTag
               type={onSelectCharacter ? 'button' : undefined}
               aria-label={onSelectCharacter ? 'Mở vòng hiệu ứng của ' + displayName : undefined}
@@ -843,9 +825,13 @@ const LowPolyCharacter: React.FC<{
               {isManager && <span title="Trưởng phòng">👑</span>}
               <span>{displayName}</span>
               {sleeping && <span title="Đang ngủ">💤</span>}
-              {mood && <span title={OFFICE_MOODS[mood].label} aria-label={OFFICE_MOODS[mood].label}>{OFFICE_MOODS[mood].icon}</span>}
               {presence?.doNotDisturb && <span className="rounded bg-rose-800 px-1 text-rose-50">Không làm phiền</span>}
             </NameTag>
+            {mood && <span role="img" aria-label={OFFICE_MOODS[mood].label} title={OFFICE_MOODS[mood].label}
+              className="shrink-0 rounded-[4px] bg-slate-950/80 p-px shadow">
+              <PixelMoodIcon mood={mood} className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+            </span>}
+            </div>
           </div>
         </Html>
       )}
@@ -858,6 +844,38 @@ const LowPolyCharacter: React.FC<{
  * Gian Phòng Tịnh Tâm 3D (Có tượng Đức Phật, Ông Địa, Thần Tài, Mõ Gỗ, Chuông Đồng, Lư Hương & Bồ Đoàn)
  */
 const TRAY_SLOT_X = [-1.45, -0.95, 0.48, 1.0, 1.49];
+
+function AvatarMoodFace({ mood, eyebrowColor }: { mood?: OfficeMood | null; eyebrowColor: string }) {
+  const smile = mood === 'happy' || mood === 'love';
+  const narrowed = mood === 'curt' || mood === 'hate' || mood === 'grumpy';
+  const mouth = '#582b3e';
+  return <group position={[0, 0, 0.175]}>
+    {[-0.08, 0.08].map((x) => <mesh key={x}
+      position={[x + (mood === 'hate' ? -0.014 : 0), mood === 'sad' ? 0.009 : mood ? 0.027 : 0.02, 0]}>
+      <boxGeometry args={[narrowed ? 0.056 : 0.045, narrowed ? 0.017 : 0.045, 0.02]} />
+      <meshBasicMaterial color="#0f172a" />
+    </mesh>)}
+    {mood === 'grumpy' && [-0.08, 0.08].map((x) => (
+      <group key={x} position={[x, 0.072, 0.006]} rotation-z={x < 0 ? -0.39 : 0.39}>
+        <AltarBlock at={[0, 0, 0]} size={[0.072, 0.015, 0.01]} color={eyebrowColor} />
+      </group>
+    ))}
+    {mood && <group position={[mood === 'hate' ? 0.024 : 0, -0.063, 0.004]}
+      rotation-z={mood === 'hate' ? 0.26 : 0}>
+      <AltarBlock at={[0, 0, 0]} size={[0.077, 0.015, 0.012]} color={mouth} />
+      {(smile || mood === 'sad' || mood === 'grumpy') && [-0.044, 0.044].map((x) => (
+        <AltarBlock key={x} at={[x, smile ? 0.012 : -0.014, 0]} size={[0.015, 0.021, 0.012]} color={mouth} />
+      ))}
+    </group>}
+    {mood === 'sad' && <AltarBlock at={[0.105, -0.032, 0.008]} size={[0.025, 0.048, 0.015]} color="#55c8ed" />}
+    {mood === 'love' && <group position={[0.215, -0.014, 0.019]}>
+      <AltarBlock at={[-0.021, 0.021, 0]} size={[0.035, 0.029, 0.025]} color="#ef487b" />
+      <AltarBlock at={[0.021, 0.021, 0]} size={[0.035, 0.029, 0.025]} color="#ef487b" />
+      <AltarBlock at={[0, 0, 0]} size={[0.059, 0.028, 0.025]} color="#ef487b" />
+      <AltarBlock at={[0, -0.019, 0]} size={[0.027, 0.015, 0.025]} color="#ef487b" />
+    </group>}
+  </group>;
+}
 
 function AltarBlock({ at, size, color }: { at: ScenePoint; size: ScenePoint; color: string }) {
   return (
@@ -931,10 +949,11 @@ function PlacedTray({ slot, item, replacing }: { slot: number; item?: ShopOfferi
   return <group ref={mesh} position={[TRAY_SLOT_X[slot], 1.045, 0.49]}><FruitTray item={item} /></group>;
 }
 
-function RitualCharacter({ ritual, origin, outfit }: {
+function RitualCharacter({ ritual, origin, outfit, presence }: {
   ritual: AltarRitual;
   origin: ScenePoint;
   outfit?: ShopOutfit;
+  presence?: OfficePresence;
 }) {
   const actor = useRef<THREE.Group>(null);
   const carried = useRef<THREE.Group>(null);
@@ -969,7 +988,7 @@ function RitualCharacter({ ritual, origin, outfit }: {
     <group ref={actor} position={origin}>
       <LowPolyCharacter gender={ritual.avatarGender} nickname={ritual.nickname} memberTag=""
         isCurrentUser={false} isOnline isSeated={false} position={[0, 0, 0]} rotationY={0}
-        duplicateNicknameCount={1} outfit={outfit} />
+        duplicateNicknameCount={1} outfit={outfit} presence={presence} />
       <group ref={carried} position={[0, 1.04, 0.35]}>
         {([-0.19, 0.19] as const).map((x) => (
           <mesh key={x} position={[x, -0.035, -0.10]} rotation={[Math.PI / 2, 0, 0]}>
@@ -2919,6 +2938,7 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
           })}
           {!inBoxingRoom && altar?.rituals.map((ritual) => (
             <RitualCharacter key={ritual.id} ritual={ritual} outfit={appearances[ritual.userId]}
+              presence={members.find((member) => member.userId === ritual.userId)?.presence}
               origin={characterPlacements.find((placement) => placement.member.userId === ritual.userId)?.position ?? [0, 0, -8.25]} />
           ))}
 

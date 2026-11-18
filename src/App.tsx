@@ -172,6 +172,7 @@ export function App() {
   const [activeChatGroup, setActiveChatGroup] = useState('');
   const [chatInvites, setChatInvites] = useState<PrivateChatInvite[]>([]);
   const [presencePending, setPresencePending] = useState(false);
+  const [presenceDraft, setPresenceDraft] = useState<{ scope: string; value: OfficePresence }>();
   const presenceSaving = useRef(false);
   const [claimingSeatId, setClaimingSeatId] = useState<string | null>(null);
   const [seatError, setSeatError] = useState<string | null>(null);
@@ -2362,11 +2363,16 @@ export function App() {
     ? WORK_SEAT_LAYOUTS.find((l) => l.seatId === mySeat.seatId)
     : null;
   const myMember = members.find((m) => m.userId === session.userId);
+  const ownDraft = presenceDraft?.scope === actionRoom.current ? presenceDraft.value : undefined;
+  const displayedMembers = ownDraft
+    ? members.map((member) => member.userId === session.userId ? { ...member, presence: ownDraft } : member)
+    : members;
   const changeMyPresence = async (next: OfficePresence) => {
     if (presenceSaving.current) return;
     presenceSaving.current = true;
     setPresencePending(true);
     const scope = actionRoom.current;
+    setPresenceDraft({ scope, value: next });
     try {
       const updated = await updateOfficePresence(room.code, session.sessionToken, next);
       const myPresence = updated.members.find((member) => member.userId === session.userId)?.presence;
@@ -2379,6 +2385,7 @@ export function App() {
     } finally {
       presenceSaving.current = false;
       setPresencePending(false);
+      setPresenceDraft(undefined);
     }
   };
   const myMeetingChair = myMember?.meetingChairId
@@ -2527,7 +2534,7 @@ export function App() {
           else void placeItem(point);
         } : undefined}
         currentUserId={session.userId}
-        members={members}
+        members={displayedMembers}
         seats={seats}
         activeBubbles={activeBubbles}
         onSelectSeat={(seatId) => { setWalkTarget(null); void handleSelectSeat(seatId); }}
@@ -2634,7 +2641,7 @@ export function App() {
 
         {/* Cụm phải: Góc nhìn & Nút xổ Menu cá nhân (Click để mở, click để đóng) */}
         <div className="pointer-events-auto relative flex items-center gap-1">
-          <OfficePresenceControl presence={myMember?.presence} pending={presencePending} onChange={(value) => void changeMyPresence(value)} />
+          <OfficePresenceControl presence={ownDraft ?? myMember?.presence} pending={presencePending} onChange={(value) => void changeMyPresence(value)} />
           <button
             type="button"
             data-testid="toggle-camera-mode-btn"

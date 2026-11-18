@@ -1,0 +1,42 @@
+.office-mood-picker {
+  box-sizing: border-box;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 9px);
+  z-index: 35;
+  width: min(352px, calc(100vw - 20px));
+  padding: 13px;
+  border: 1px solid #fff;
+  border-radius: 20px;
+  background: #fff8ef;
+  color: #43114f;
+  box-shadow: 0 14px 35px #1d092d55;
+}
+.office-mood-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.office-mood-heading h2 { border-left: 5px solid #830bcc; border-radius: 3px; padding-left: 9px; font-weight: 850; font-size: 21px; }
+.office-mood-close { display: grid; place-items: center; width: 33px; height: 33px; border-radius: 9px; background: #ead7f5; }
+.office-mood-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+.office-mood-option {
+  position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  min-width: 0; min-height: 87px; gap: 1px; border: 1px solid #dfd2cb; border-radius: 13px;
+  background: #fff9f3; font-size: 14px; font-weight: 800;
+}
+.office-mood-option[aria-pressed="true"] { border-color: #8809cd; box-shadow: inset 0 0 0 1px #8809cd; background: #f0defa; }
+.office-mood-face { width: 47px; height: 47px; }
+.office-mood-check { display: grid; place-items: center; position: absolute; right: 5px; top: 5px; width: 18px; height: 18px; border-radius: 5px; color: #fff; background: #810cbd; }
+.office-mood-clear { display: block; width: 100%; margin-top: 9px; min-height: 35px; border-radius: 9px; color: #7011a2; font-size: 13px; font-weight: 750; background: #f3e7f9; }
+.office-mood-picker button:focus-visible { outline: 2px solid #7011a2; outline-offset: 2px; }
+.office-mood-picker button:disabled { opacity: .62; }
+.office-mood-sheet { position: fixed; inset: 0; z-index: 65; }
+.office-mood-overlay { position: absolute; inset: 0; background: #1a102078; }
+.office-mood-sheet .office-mood-picker {
+  inset: auto 0 0;
+  width: 100%;
+  max-height: 90dvh;
+  overflow: auto;
+  padding: 15px 14px max(17px, env(safe-area-inset-bottom));
+  border-radius: 21px 21px 0 0;
+  animation: office-mood-slide 180ms ease-out both;
+}
+@keyframes office-mood-slide { from { transform: translateY(100%); } to { transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .office-mood-sheet .office-mood-picker { animation: none; } }
