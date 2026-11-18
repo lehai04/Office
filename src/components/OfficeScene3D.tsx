@@ -48,6 +48,7 @@ interface OfficeScene3DProps {
   decorations: OfficeDecoration[];
   appearances: Record<string, ShopOutfit>;
   action: OfficeAction | null;
+  onOpenActionWheel?: () => void;
   altar: AltarView | null;
   onFloorClick: (point: ScenePoint, isTouch: boolean) => void;
   onDeskClick?: (point: ScenePoint, seatId: string) => void;
@@ -456,6 +457,7 @@ const LowPolyCharacter: React.FC<{
   duplicateNicknameCount: number;
   boxingHit?: BoxingHit;
   boxingPunch?: BoxingHit;
+  onSelectCharacter?: () => void;
 }> = ({
   gender,
   nickname,
@@ -474,6 +476,7 @@ const LowPolyCharacter: React.FC<{
   duplicateNicknameCount,
   boxingHit,
   boxingPunch,
+  onSelectCharacter,
 }) => {
   const upperBodyRef = useRef<THREE.Group>(null);
   const bowStartRef = useRef<number>(0);
@@ -555,8 +558,15 @@ const LowPolyCharacter: React.FC<{
       ? `${normalizedNickname} (${memberTag})`
       : normalizedNickname;
 
+  const NameTag = onSelectCharacter ? 'button' : 'div';
+
   return (
-    <group ref={actorRef} position={startPosition.current} rotation={[0, rotationY, 0]}>
+    <group ref={actorRef} position={startPosition.current} rotation={[0, rotationY, 0]}
+      onClick={onSelectCharacter && !hideMeshInFpv ? (event) => {
+        if (event.delta > 5) return;
+        event.stopPropagation();
+        onSelectCharacter();
+      } : undefined}>
       {action === 'confetti' && <group ref={confetti}>
         {Array.from({ length: 12 }, (_, i) => <AltarBlock key={i}
           at={[Math.cos(i * 2.4) * (0.25 + i * 0.037), 1.12 + i * 0.037, Math.sin(i * 2.4) * (0.25 + i * 0.037)]}
@@ -792,7 +802,11 @@ const LowPolyCharacter: React.FC<{
               </div>
             )}
 
-            <div
+            <NameTag
+              type={onSelectCharacter ? 'button' : undefined}
+              aria-label={onSelectCharacter ? 'Mở vòng hiệu ứng của ' + displayName : undefined}
+              style={{ pointerEvents: onSelectCharacter ? 'auto' : 'none' }}
+              onClick={onSelectCharacter ? (event) => { event.stopPropagation(); onSelectCharacter(); } : undefined}
               className={`flex items-center gap-1 whitespace-nowrap rounded-full px-1.5 py-0.2 text-[9px] sm:text-[10px] font-bold shadow backdrop-blur-sm transition-all ${
                 isCurrentUser
                   ? 'bg-emerald-600/90 text-white ring-1 ring-emerald-300'
@@ -808,7 +822,7 @@ const LowPolyCharacter: React.FC<{
               />
               {isManager && <span title="Trưởng phòng">👑</span>}
               <span>{displayName}</span>
-            </div>
+            </NameTag>
           </div>
         </Html>
       )}
@@ -2227,6 +2241,7 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
   decorations,
   appearances,
   action,
+  onOpenActionWheel,
   altar,
   onFloorClick,
   onDeskClick,
@@ -2837,6 +2852,7 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
               <group key={member.userId} position={inBoxingMap ? BOXING_MAP_OFFSET : undefined} scale={inBoxingMap ? BOXING_MAP.scale : 1}>
               <LowPolyCharacter
                 boxingHit={hit} boxingPunch={strike}
+                onSelectCharacter={isMe ? onOpenActionWheel : undefined}
                 gender={member.avatarGender}
                 nickname={member.nickname}
                 memberTag={member.memberTag}

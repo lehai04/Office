@@ -1,3 +1,4 @@
+import { OfficeActionWheel } from './components/OfficeActionWheel';
 import { BOXING_UPDATE_EVENT, useBoxing } from './services/boxing';
 import type { BoxingZone } from './utils/boxing';
 import { requestRoomShop, SHOP_UPDATE_EVENT } from './services/officeShop';
@@ -194,7 +195,8 @@ export function App() {
   const [shopRitual, setShopRitual] = useState<ShopConsumable | null>(null);
   const [placingItem, setPlacingItem] = useState<DecorationItem | null>(null);
   const [walkTarget, setWalkTarget] = useState<ScenePoint | null>(null);
-  const [officeAction, setOfficeAction] = useState<OfficeAction | null>(null);
+  const [officeAction, setOfficeAction] = useState<{ id: OfficeAction } | null>(null);
+  const [actionWheelOpen, setActionWheelOpen] = useState(false);
   const [isBowing, setIsBowing] = useState<boolean>(false);
   const [autoMo, setAutoMo] = useState<boolean>(false);
   // Game mặc định tắt âm thanh theo yêu cầu
@@ -321,7 +323,7 @@ export function App() {
 
   const boxingZone: BoxingZone = activePanel === 'boxing' ? 'boxing' :
     activePanel === 'zen' || activePanel === 'games' ? 'away' : 'office';
-  const boxingEnabled = (activePanel === 'boxing' || activePanel === 'none') && !shopOpen && !placingItem;
+  const boxingEnabled = (activePanel === 'boxing' || activePanel === 'none') && !shopOpen && !placingItem && !actionWheelOpen;
   const boxing = useBoxing(room?.code, session?.sessionToken, session?.userId, boxingZone, boxingEnabled,
     (id) => members.find((member) => member.userId === id)?.nickname ?? 'Một người chơi');
 
@@ -2211,6 +2213,7 @@ export function App() {
     setPlacingItem(null);
     setWalkTarget(null);
     setOfficeAction(null);
+    setActionWheelOpen(false);
     setAltar(null);
     setPushConnected(false);
     setPushStatus('');
@@ -2315,6 +2318,14 @@ export function App() {
   };
 
   const shop = shopView?.shop ?? EMPTY_OFFICE_SHOP;
+  const ownedActions = (Object.keys(OFFICE_SHOP) as ShopItem[]).filter(
+    (id): id is OfficeAction => OFFICE_SHOP[id].kind === 'action' && (shop.inventory[id] ?? 0) > 0
+  );
+  const playOwnedAction = (id: OfficeAction) => {
+    if (!ownedActions.includes(id)) return;
+    setOfficeAction({ id });
+    setActionWheelOpen(false);
+  };
   const buyItem = async (item: ShopItem, id: string) => {
     await refreshShop({ action: 'buy', item, id });
     showToast(`Đã mua ${OFFICE_SHOP[item].name}.`);
@@ -2339,7 +2350,7 @@ export function App() {
       return;
     }
     if (kind === 'action') {
-      setOfficeAction(id as OfficeAction);
+      playOwnedAction(id as OfficeAction);
       setShopOpen(false);
       return;
     }
@@ -2371,11 +2382,12 @@ export function App() {
         onEnterBoxing={() => togglePanel('boxing')}
         onBoxingPosition={boxing.setPosition}
         onPunch={boxingEnabled && boxing.available ? () => { void boxing.punch(); } : undefined}
-        canWalk={(activePanel === 'none' || activePanel === 'boxing') && !placingItem && !shopOpen}
+        canWalk={(activePanel === 'none' || activePanel === 'boxing') && !placingItem && !shopOpen && !actionWheelOpen}
         onWalk={setWalkTarget}
         decorations={shopView?.decorations ?? []}
         appearances={shopView?.appearances ?? {}}
-        action={officeAction}
+        action={officeAction?.id ?? null}
+        onOpenActionWheel={shopOpen || placingItem || actionWheelOpen ? undefined : () => setActionWheelOpen(true)}
         onFloorClick={(point, isTouch) => {
           if (!placingItem && isTouch && (activePanel === 'none' || activePanel === 'boxing') && cameraMode === 'overview') setWalkTarget(point);
         }}
@@ -2417,6 +2429,9 @@ export function App() {
           userId={session.userId} incense={shop.inventory.incense ?? 0} offerings={SHOP_OFFERINGS.filter((id) => (shop.inventory[id] ?? 0) > 0)}
           requestedRitual={shopRitual} onRitualHandled={() => setShopRitual(null)}
           onBuy={() => setShopOpen(true)} onCompletion={() => { void refreshShop(); }} onChange={setAltar} onToast={showToast} />
+      )}
+      {actionWheelOpen && !shopOpen && (
+        <OfficeActionWheel actions={ownedActions} onSelect={playOwnedAction} onClose={() => setActionWheelOpen(false)} />
       )}
       {shopOpen && (
         <OfficeShopModal balance={shopView?.balanceVnd ?? 0} shop={shop} connectionError={shopError}
