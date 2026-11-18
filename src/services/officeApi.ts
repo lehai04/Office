@@ -620,11 +620,12 @@ export async function voteDonationCaseApi(
   roomCode: string,
   suspectName: string,
   sessionToken: string,
-  caseId?: string
+  caseId?: string,
+  roundEndsAt?: number
 ): Promise<DonationCaseApiResponse> {
   return apiFetch(
     `/api/rooms/${encodeURIComponent(roomCode)}/donation-case/vote`,
-    { method: 'POST', body: JSON.stringify({ suspectName, caseId }) },
+    { method: 'POST', body: JSON.stringify({ suspectName, caseId, roundEndsAt }) },
     sessionToken
   );
 }

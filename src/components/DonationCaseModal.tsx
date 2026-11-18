@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { ShieldAlert, Clock, Search, Vote, X } from 'lucide-react';
 import type { PublicDonationCaseView } from '../utils/donationCaseEngine';
+import type { RoomMember } from '../types/office';
 import { formatVnd } from '../utils/officeEconomyData';
 
 interface DonationCaseModalProps {
   isOpen: boolean;
   onClose: () => void;
   caseView: PublicDonationCaseView | null;
-  isAbbotUser: boolean;
+  members: Pick<RoomMember, 'userId' | 'nickname' | 'memberTag'>[];
   onReportPolice: () => Promise<void>;
   onVoteSuspect: (suspectName: string) => Promise<{ ok: boolean; error?: string }>;
   onOpenChat: () => void;
@@ -25,7 +26,7 @@ export const DonationCaseModal: React.FC<DonationCaseModalProps> = ({
   isOpen,
   onClose,
   caseView,
-  isAbbotUser,
+  members,
   onReportPolice,
   onVoteSuspect,
   onOpenChat,
@@ -38,7 +39,7 @@ export const DonationCaseModal: React.FC<DonationCaseModalProps> = ({
   useEffect(() => {
     if (!isOpen) return;
     setNowMs(Date.now());
-    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
+    const timer = window.setInterval(() => setNowMs(Date.now()), 250);
     return () => window.clearInterval(timer);
   }, [isOpen]);
 
@@ -78,12 +79,13 @@ export const DonationCaseModal: React.FC<DonationCaseModalProps> = ({
                 🚓 Bảng Vụ Án Hòm Công Đức
               </h3>
               <p className="text-[10px] text-amber-200/75">
-                Thảo luận tại Chat chung • Bình chọn kín theo tên nhân vật
+                Bình chọn kín trong 5 giây
               </p>
             </div>
           </div>
           <button
             type="button"
+            aria-label="Đóng bảng vụ án"
             onClick={onClose}
             className="rounded-xl bg-white/10 hover:bg-white/20 p-1.5 text-amber-100 cursor-pointer"
           >
@@ -99,7 +101,7 @@ export const DonationCaseModal: React.FC<DonationCaseModalProps> = ({
           ) : (
             <>
               {/* Trạng thái + Đếm ngược */}
-              <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className={`grid gap-2 text-xs ${caseView.nextPhaseAt || caseView.queuedCaseCount ? 'grid-cols-2' : 'grid-cols-1'}`}>
                 <div className="rounded-2xl border border-amber-500/25 bg-black/30 p-2.5">
                   <div className="text-[10px] text-amber-200/70">Trạng thái</div>
                   <div className="mt-0.5 font-black text-amber-300">
@@ -116,29 +118,101 @@ export const DonationCaseModal: React.FC<DonationCaseModalProps> = ({
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-sky-400/25 bg-black/30 p-2.5">
-                  <div className="flex items-center gap-1 text-[10px] text-sky-200/75">
-                    <Clock className="h-3 w-3" />
-                    <span>
-                      {caseView.currentPhase === 0 ? 'Manh mối 1 sau' : 'Đợt kế tiếp'}
-                    </span>
+                {(caseView.nextPhaseAt !== null || caseView.queuedCaseCount > 0) && (
+                  <div className="rounded-2xl border border-sky-400/25 bg-black/30 p-2.5">
+                    {caseView.nextPhaseAt !== null && (
+                      <>
+                        <div className="flex items-center gap-1 text-[10px] text-sky-200/75">
+                          <Clock className="h-3 w-3" />
+                          <span>Manh mối tiếp theo</span>
+                        </div>
+                        <div className="mt-0.5 font-mono text-base font-black text-sky-300">
+                          {formatCountdown(caseView.nextPhaseAt, nowMs)}
+                        </div>
+                      </>
+                    )}
+                    {caseView.queuedCaseCount > 0 && (
+                      <div className="text-[10px] font-bold text-amber-200/80">
+                        {caseView.queuedCaseCount} vụ đang chờ
+                      </div>
+                    )}
                   </div>
-                  <div className="mt-0.5 text-base font-black text-sky-300 font-mono">
-                    {caseView.status === 'investigating'
-                      ? formatCountdown(caseView.nextPhaseAt, nowMs)
-                      : '--:--'}
-                  </div>
-                  <div className="text-[10px] text-amber-200/80 font-bold">
-                    {caseView.queuedCaseCount > 0 && `${caseView.queuedCaseCount} vụ đang chờ`}
-                  </div>
-                </div>
+                )}
               </div>
 
+              {/* Khu vực bình chọn kẻ trộm */}
+              {(caseView.status === 'stolen_unreported' || caseView.status === 'investigating') && (
+                <form
+                  onSubmit={(e) => void handleSubmitVote(e)}
+                  className="rounded-2xl border border-emerald-400/30 bg-black/30 p-3 space-y-2"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-1.5 text-xs font-black text-emerald-300">
+                      <Vote className="h-3.5 w-3.5" />
+                      Bình chọn kẻ trộm
+                    </span>
+                    {caseView.myCurrentVoteLabel && (
+                      <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-200">
+                        Đã chọn: {caseView.myCurrentVoteLabel}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs leading-relaxed text-emerald-100/85">
+                    Phiếu đầu tiên mở lượt 5 giây. Mỗi người có một phiếu và có thể đổi trước khi hết giờ.
+                    Cả phòng bắt được trộm nếu chọn đúng người với quá nửa số phiếu đã gửi.
+                  </p>
+
+                  {caseView.quickVoteEndsAt !== null && (
+                    <p className="text-[11px] text-amber-200" role="status">
+                      {nowMs >= caseView.quickVoteEndsAt
+                        ? 'Đang chốt kết quả…'
+                        : `Còn ${Math.ceil((caseView.quickVoteEndsAt - nowMs) / 1000)} giây · ${caseView.currentRoundVoteCount} phiếu`}
+                    </p>
+                  )}
+                  {caseView.quickVoteEndsAt === null &&
+                    (caseView.lastQuickVoteResult === 'incorrect' || caseView.lastQuickVoteResult === 'no_majority') && (
+                    <p className="text-[11px] font-bold text-rose-200" role="status">
+                      {caseView.lastQuickVoteResult === 'no_majority'
+                        ? 'Lượt trước phiếu bị chia. Bạn có thể mở lượt mới.'
+                        : 'Lượt trước chọn sai người. Bạn có thể mở lượt mới.'}
+                    </p>
+                  )}
+                      <select
+                        aria-label="Người bạn nghi ngờ"
+                        value={suspectDraft}
+                        onChange={(e) => setSuspectDraft(e.target.value)}
+                        className="w-full rounded-xl border border-amber-500/35 bg-[#1a130e] px-3 py-2 text-sm font-bold text-amber-50 focus:border-emerald-400"
+                      >
+                        <option value="">Chọn người bạn nghi ngờ</option>
+                        {members.map((member) => (
+                          <option key={member.userId} value={member.memberTag}>
+                            {member.nickname} ({member.memberTag})
+                          </option>
+                        ))}
+                      </select>
+                      {voteError && (
+                        <p role="alert" className="rounded-xl bg-rose-500/20 px-2.5 py-1.5 text-[11px] font-bold text-rose-200">
+                          {voteError}
+                        </p>
+                      )}
+                      <button
+                        type="submit"
+                        disabled={submitting || !suspectDraft.trim() ||
+                          (caseView.quickVoteEndsAt !== null && nowMs >= caseView.quickVoteEndsAt)}
+                        className="w-full rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-45 py-2 text-xs font-black text-slate-950 shadow cursor-pointer"
+                      >
+                        {caseView.hasVotedCurrentRound
+                          ? '🔄 Đổi phiếu bình chọn'
+                          : caseView.quickVoteEndsAt !== null ? '🗳️ Gửi phiếu' : '🗳️ Gửi phiếu và bắt đầu 5 giây'}
+                      </button>
+                </form>
+              )}
+
               {/* Nút Báo cảnh sát dành riêng cho Chủ trì */}
-              {caseView.status === 'stolen_unreported' && (
+              {caseView.canReportPolice && (
                 <div className="rounded-2xl border border-rose-400/40 bg-rose-500/15 p-3 text-center space-y-2">
                   <div className="text-xs font-bold text-rose-200">
-                    Hòm công đức vừa bị trộm! Mọi người có thể bình chọn ngay. {isAbbotUser && 'Trụ trì có thể báo cảnh sát NPC để nhận manh mối.'}
+                    Trụ trì có thể báo cảnh sát NPC để nhận manh mối.
                   </div>
                   {caseView.canReportPolice && (
                     <button
@@ -192,62 +266,6 @@ export const DonationCaseModal: React.FC<DonationCaseModalProps> = ({
                   </div>
                 )}
               </div>
-
-              {/* Khu vực Bình chọn kẻ trộm (Không có danh sách gợi ý nghi phạm) */}
-              {(caseView.status === 'stolen_unreported' || caseView.status === 'investigating') && (
-                <form
-                  onSubmit={(e) => void handleSubmitVote(e)}
-                  className="rounded-2xl border border-emerald-400/30 bg-black/30 p-3 space-y-2"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="flex items-center gap-1.5 text-xs font-black text-emerald-300">
-                      <Vote className="h-3.5 w-3.5" />
-                      Bình chọn kẻ trộm
-                    </span>
-                    {caseView.myCurrentVoteLabel && (
-                      <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-200">
-                        Đã chọn: {caseView.myCurrentVoteLabel}
-                      </span>
-                    )}
-                  </div>
-
-                  {caseView.quickVoteEndsAt !== null && (
-                    <p className="text-[11px] text-amber-200" role="status">
-                      {nowMs >= caseView.quickVoteEndsAt
-                        ? 'Đang chốt kết quả…'
-                        : `Còn ${Math.ceil((caseView.quickVoteEndsAt - nowMs) / 1000)} giây · ${caseView.currentRoundVoteCount} phiếu`}
-                    </p>
-                  )}
-                  {caseView.lastQuickVoteResult === 'incorrect' && (
-                    <p className="text-[11px] font-bold text-rose-200" role="status">
-                      Lượt trước chưa đoán đúng. Bạn có thể bình chọn tiếp.
-                    </p>
-                  )}
-                      <input
-                        type="text"
-                        autoComplete="off"
-                        value={suspectDraft}
-                        onChange={(e) => setSuspectDraft(e.target.value)}
-                        placeholder="Nhập chính xác tên nhân vật nghi ngờ (hoặc Tên #ABCD)..."
-                        className="w-full rounded-xl border border-amber-500/35 bg-black/40 px-3 py-2 text-xs font-bold text-amber-50 placeholder-amber-200/40 outline-none focus:border-emerald-400"
-                      />
-                      {voteError && (
-                        <p role="alert" className="rounded-xl bg-rose-500/20 px-2.5 py-1.5 text-[11px] font-bold text-rose-200">
-                          {voteError}
-                        </p>
-                      )}
-                      <button
-                        type="submit"
-                        disabled={submitting || !suspectDraft.trim() ||
-                          (caseView.quickVoteEndsAt !== null && nowMs >= caseView.quickVoteEndsAt)}
-                        className="w-full rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-45 py-2 text-xs font-black text-slate-950 shadow cursor-pointer"
-                      >
-                        {caseView.hasVotedCurrentRound
-                          ? '🔄 Đổi phiếu bình chọn'
-                          : caseView.quickVoteEndsAt !== null ? '🗳️ Gửi phiếu' : '🗳️ Mở lượt bình chọn 5 giây'}
-                      </button>
-                </form>
-              )}
 
               {/* Kết quả kết thúc vụ án */}
               {(caseView.status === 'caught' || caseView.status === 'escaped') &&

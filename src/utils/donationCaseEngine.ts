@@ -23,6 +23,8 @@ export type DonationCaseStatus =
   | 'caught'
   | 'escaped';
 
+type QuickVoteResult = 'correct' | 'incorrect' | 'no_majority';
+
 export interface ThiefSnapshot {
   userId: string;
   nickname: string;
@@ -66,7 +68,7 @@ export interface DonationCaseServerRecord {
   settlementSummary: CaseSettlementSummary | null;
   resolvedAt: number | null;
   quickVote?: { endsAt: number; votes: Record<string, string> };
-  lastQuickVoteResult?: 'correct' | 'incorrect';
+  lastQuickVoteResult?: QuickVoteResult;
   queuedCases?: DonationCaseServerRecord[];
   revision?: number;
 }
@@ -88,7 +90,7 @@ export interface PublicDonationCaseView {
   caughtThiefNickname: string | null;
   settlementSummary: CaseSettlementSummary | null;
   quickVoteEndsAt: number | null;
-  lastQuickVoteResult: 'correct' | 'incorrect' | null;
+  lastQuickVoteResult: QuickVoteResult | null;
   queuedCaseCount: number;
 }
 
@@ -131,10 +133,12 @@ export function submitDonationCaseVote(
   voterId: string,
   suspectId: string,
   nowMs: number
-): void {
+): boolean {
+  const opened = !caseRec.quickVote;
   caseRec.quickVote ??= { endsAt: nowMs + QUICK_VOTE_DURATION_MS, votes: {} };
   caseRec.quickVote.votes[voterId] = suspectId;
   caseRec.revision = (caseRec.revision ?? 0) + 1;
+  return opened;
 }
 
 export interface UserEconomyLedgerEntry {
@@ -475,10 +479,11 @@ export function advanceDonationCaseByTime(
   const quickVote = caseRec.quickVote;
   if (isDonationCaseOpen(caseRec) && quickVote) {
     if (nowMs < quickVote.endsAt) return false;
-    const correct = tallyMajorityWinner(quickVote.votes) === caseRec.thiefSnapshot.userId;
+    const winner = tallyMajorityWinner(quickVote.votes);
+    const correct = winner === caseRec.thiefSnapshot.userId;
     delete caseRec.quickVote;
     caseRec.revision = (caseRec.revision ?? 0) + 1;
-    caseRec.lastQuickVoteResult = correct ? 'correct' : 'incorrect';
+    caseRec.lastQuickVoteResult = correct ? 'correct' : winner ? 'incorrect' : 'no_majority';
     if (correct) {
       caseRec.status = 'caught';
       caseRec.resolvedAt = nowMs;
@@ -488,7 +493,8 @@ export function advanceDonationCaseByTime(
       );
       return true;
     }
-    callbacks.onPostNpcChat('🕵️ [VỤ ÁN CÔNG ĐỨC] Bình chọn chưa đúng. Có thể mở lượt bình chọn mới.');
+    const result = winner ? 'Người được chọn không phải kẻ trộm.' : 'Phiếu bị chia, chưa ai có quá nửa số phiếu.';
+    callbacks.onPostNpcChat(`🕵️ [VỤ ÁN CÔNG ĐỨC] ${result} Có thể mở lượt bình chọn mới.`);
     changed = true;
   }
   if (caseRec.status !== 'investigating' || !caseRec.policeReportedAt) {

@@ -211,12 +211,17 @@ function createTestCase(t0: number): DonationCaseServerRecord {
 
   assert.equal(queueDonationCase(first, second), first);
   assert.equal(toPublicDonationCaseView(first, 'u2', 'LeLe', members)?.queuedCaseCount, 1);
-  submitDonationCaseVote(first, 'u3', 'u2', start);
-  submitDonationCaseVote(first, 'abbot', 'u2', start + 1_000);
+  assert.equal(submitDonationCaseVote(first, 'u3', 'u2', start), true);
+  assert.equal(submitDonationCaseVote(first, 'abbot', 'thief', start + 500), false);
   assert.equal(nextDonationCaseUpdateAt(first), start + 5_000);
   assert.equal(advanceDonationCaseByTime(first, start + 4_999, callbacks), false);
 
   assert.equal(advanceDonationCaseByTime(first, start + 5_000, callbacks), true);
+  assert.equal(first.lastQuickVoteResult, 'no_majority');
+  assert.equal(first.status, 'stolen_unreported');
+
+  assert.equal(submitDonationCaseVote(first, 'u3', 'u2', start + 5_001), true);
+  assert.equal(advanceDonationCaseByTime(first, start + 10_001, callbacks), true);
   const wrong = toPublicDonationCaseView(first, 'u3', 'Cá chép', members);
   assert.equal(wrong?.lastQuickVoteResult, 'incorrect');
   assert.equal(wrong?.quickVoteEndsAt, null);
@@ -224,12 +229,12 @@ function createTestCase(t0: number): DonationCaseServerRecord {
   assert.equal(first.status, 'stolen_unreported');
   assert.equal(refunded, 0);
 
-  submitDonationCaseVote(first, 'u3', 'thief', start + 5_001);
-  assert.equal(advanceDonationCaseByTime(first, start + 10_001, callbacks), true);
+  submitDonationCaseVote(first, 'u3', 'thief', start + 10_002);
+  assert.equal(advanceDonationCaseByTime(first, start + 15_002, callbacks), true);
   assert.equal(first.status, 'caught');
   assert.equal(first.lastQuickVoteResult, 'correct');
   assert.equal(refunded, first.stolenAmountVnd);
-  assert.equal(advanceDonationCaseByTime(first, start + 10_002, callbacks), false);
+  assert.equal(advanceDonationCaseByTime(first, start + 15_003, callbacks), false);
   assert.equal(refunded, first.stolenAmountVnd);
 
   const promoteAt = nextDonationCaseUpdateAt(first);

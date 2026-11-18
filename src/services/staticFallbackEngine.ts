@@ -2104,6 +2104,11 @@ export async function handleStaticFallbackRequest<T>(
       if (!activeCase || !isDonationCaseOpen(activeCase) || (body.caseId && body.caseId !== activeCase.id)) {
         throw createApiError(409, 'CASE_NOT_OPEN', 'Vụ án này đã kết thúc hoặc đã chuyển sang vụ khác.');
       }
+      const now = Date.now();
+      if (typeof body.roundEndsAt === 'number' &&
+        (activeCase.quickVote?.endsAt !== body.roundEndsAt || now >= body.roundEndsAt)) {
+        throw createApiError(409, 'VOTE_ALREADY_CLOSED', 'Lượt bình chọn này đã hết giờ. Hãy xem kết quả rồi mở lượt mới.');
+      }
       const suspectInput = typeof body.suspectName === 'string' ? body.suspectName : '';
       const resolved = resolveSuspectByInput(roomMembersList, suspectInput);
       if (!resolved.ok) {
@@ -2114,7 +2119,9 @@ export async function handleStaticFallbackRequest<T>(
         );
       }
 
-      submitDonationCaseVote(activeCase, account.userId, resolved.member.userId, Date.now());
+      if (submitDonationCaseVote(activeCase, account.userId, resolved.member.userId, now)) {
+        postNpcChat('🗳️ [VỤ ÁN CÔNG ĐỨC] Vừa mở lượt bình chọn 5 giây. Mở Bảng vụ án để bỏ phiếu.');
+      }
       saveStaticDb(db);
 
       emitRealtimeEvent(db, room, {

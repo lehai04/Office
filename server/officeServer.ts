@@ -2151,6 +2151,14 @@ export async function handleApiRequest(
           });
           return true;
         }
+        const now = Date.now();
+        if (typeof voteBody.roundEndsAt === 'number' &&
+          (activeCase.quickVote?.endsAt !== voteBody.roundEndsAt || now >= voteBody.roundEndsAt)) {
+          sendJson(res, 409, {
+            error: { code: 'VOTE_ALREADY_CLOSED', message: 'Lượt bình chọn này đã hết giờ. Hãy xem kết quả rồi mở lượt mới.' },
+          });
+          return true;
+        }
         const suspectInput = typeof voteBody.suspectName === 'string' ? voteBody.suspectName : '';
         const resolved = resolveSuspectByInput(roomMembersList, suspectInput);
         if (!resolved.ok) {
@@ -2160,7 +2168,9 @@ export async function handleApiRequest(
           return true;
         }
 
-        submitDonationCaseVote(activeCase, account.userId, resolved.member.userId, Date.now());
+        if (submitDonationCaseVote(activeCase, account.userId, resolved.member.userId, now)) {
+          postNpcChat('🗳️ [VỤ ÁN CÔNG ĐỨC] Vừa mở lượt bình chọn 5 giây. Mở Bảng vụ án để bỏ phiếu.');
+        }
         saveDatabase(db, true);
         if (officeStorage) await settleOfficeAlarms();
 

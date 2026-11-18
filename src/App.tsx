@@ -1068,7 +1068,10 @@ export function App() {
     async (suspectName: string): Promise<{ ok: boolean; error?: string }> => {
       if (!session || !room || !donationCaseView) return { ok: false, error: 'Chưa tải được vụ án.' };
       try {
-        const res = await voteDonationCaseApi(room.code, suspectName, session.sessionToken, donationCaseView.id);
+        const res = await voteDonationCaseApi(
+          room.code, suspectName, session.sessionToken,
+          donationCaseView.id, donationCaseView.quickVoteEndsAt ?? undefined
+        );
         setDonationCaseView(res.caseView);
         applyLedgerFromCaseApi(res.myLedger);
         return { ok: true };
@@ -1079,7 +1082,7 @@ export function App() {
         };
       }
     },
-    [session, room, donationCaseView?.id, applyLedgerFromCaseApi]
+    [session, room, donationCaseView?.id, donationCaseView?.quickVoteEndsAt, applyLedgerFromCaseApi]
   );
 
   const handleRobDonationBox = useCallback(async (): Promise<{
@@ -3097,11 +3100,7 @@ export function App() {
         isOpen={isDonationCaseModalOpen}
         onClose={() => setIsDonationCaseModalOpen(false)}
         caseView={donationCaseView}
-        isAbbotUser={session.nickname
-          .normalize('NFD')
-          .replace(/[\u0300-\u036f]/g, '')
-          .toLowerCase()
-          .includes('thanh ngoc')}
+        members={members}
         onReportPolice={handleReportDonationCasePolice}
         onVoteSuspect={handleVoteDonationCase}
         onOpenChat={() => setActivePanel('chat')}
