@@ -8,6 +8,18 @@ export const CHAT_STICKERS = [
   { id: 'nghi-som', label: 'Xin vía nghỉ sớm' },
   { id: 'di-an-hong', label: 'Đi ăn hong?' },
   { id: 'tui-lay', label: 'Tui lạy' },
+  { id: 'tha-tym', label: 'Thả tym' },
+  { id: 'het-cong-duc', label: 'Hết công đức' },
+  { id: 'cuoi-lan-lon', label: 'Cười lăn lộn' },
+  { id: 'nup-thung', label: 'Núp thùng' },
+  { id: 'mua-xu', label: 'Mưa xu' },
+  { id: 'cung-do', label: 'Cứng đơ' },
+  { id: 'ngu-guc', label: 'Ngủ gục' },
+  { id: 'tra-sua', label: 'Trà sữa' },
+  { id: 'tui-a', label: 'Tui á?' },
+  { id: 'hong-drama', label: 'Hóng drama' },
+  { id: 'gio-ngon-cai', label: 'Giơ ngón cái' },
+  { id: 'lui-ghe', label: 'Lùi ghế' },
 ] as const;
 
 export type ChatSticker = (typeof CHAT_STICKERS)[number];

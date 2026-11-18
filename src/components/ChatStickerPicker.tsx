@@ -1,15 +1,34 @@
-import { useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Sticker } from 'lucide-react';
 import stickerSheet from '../assets/chat-stickers-pink-cat.png';
 import { CHAT_STICKERS, chatStickerContent, type ChatSticker } from '../utils/chatStickers';
 
 const columns = [0, 442, 872, 1312];
 const rows = [0, 421, 805, 1199];
+const standaloneImages = import.meta.glob<string>('../assets/chat-stickers/*.png', {
+  eager: true,
+  query: '?url',
+  import: 'default',
+});
 
 export function ChatStickerImage({ sticker, decorative = false }: {
   sticker: ChatSticker;
   decorative?: boolean;
 }) {
+  const alt = decorative ? '' : sticker.label;
+  const image = standaloneImages[`../assets/chat-stickers/${sticker.id}.png`];
+  if (image) {
+    return (
+      <img
+        src={image}
+        alt={alt}
+        loading={decorative ? 'lazy' : undefined}
+        draggable={false}
+        className="pointer-events-none block aspect-square w-full object-contain"
+      />
+    );
+  }
+
   const index = CHAT_STICKERS.indexOf(sticker);
   const column = index % 3;
   const row = Math.floor(index / 3);
@@ -20,7 +39,7 @@ export function ChatStickerImage({ sticker, decorative = false }: {
     <span className="relative block w-full overflow-hidden" style={{ aspectRatio: width / height }}>
       <img
         src={stickerSheet}
-        alt={decorative ? '' : sticker.label}
+        alt={alt}
         draggable={false}
         className="pointer-events-none absolute max-w-none"
         style={{
@@ -39,13 +58,24 @@ export function ChatStickerPicker({ disabled, onSend }: {
 }) {
   const [open, setOpen] = useState(false);
   const pickerId = useId();
+  const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (event.target instanceof Node && !root.current?.contains(event.target)) setOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOutside);
+    return () => document.removeEventListener('pointerdown', closeOutside);
+  }, [open]);
 
   return (
     <div
+      ref={root}
       className="shrink-0"
       onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
+        if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget)) setOpen(false);
       }}
       onKeyDown={(event) => {
         if (event.key !== 'Escape' || !open) return;
@@ -73,7 +103,7 @@ export function ChatStickerPicker({ disabled, onSend }: {
           id={pickerId}
           role="group"
           aria-label="Sticker mèo hồng"
-          className="absolute bottom-full left-3 right-3 z-10 mb-2 grid max-w-64 grid-cols-3 gap-1 rounded-2xl border border-pink-300/25 bg-slate-950 p-2 shadow-2xl"
+          className="absolute bottom-full left-3 right-3 z-10 mb-2 grid max-h-[min(52dvh,18rem)] max-w-64 grid-cols-3 gap-1 overflow-y-auto overscroll-contain rounded-2xl border border-pink-300/25 bg-slate-950 p-2 shadow-2xl"
         >
           {CHAT_STICKERS.map((sticker) => (
             <button
