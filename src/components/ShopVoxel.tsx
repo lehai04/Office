@@ -39,7 +39,7 @@ export function ShopVoxel({ item }: { item: ShopItem }) {
     if (!context) return;
     if (!tile) {
       context.clearRect(0, 0, width, height);
-      const point = (x: number, y: number, z: number) => [120 + 69 * (x - z), 215 - 84 * y + 35 * (x + z)] as const;
+      const point = (x: number, y: number, z: number) => [120 + 69 * (x - z), (item === 'pink_cat' ? 163 : 215) - 84 * y + 35 * (x + z)] as const;
       const face = (color: string, shade: string, corners: ReturnType<typeof point>[]) => {
         context.beginPath();
         corners.forEach((corner, i) => i ? context.lineTo(...corner) : context.moveTo(...corner));

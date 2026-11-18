@@ -13,6 +13,9 @@ import { Html, OrbitControls, ContactShadows } from '@react-three/drei';
 import * as THREE from 'three';
 import {
   WORK_SEAT_LAYOUTS,
+  OFFICE_CABINETS,
+  CABINET_HEIGHT,
+  CABINET_TOP_Y,
   MEETING_TABLE_POSITION,
   MEETING_CHAIRS,
   DOOR_STANDING_SLOTS,
@@ -56,6 +59,7 @@ interface OfficeScene3DProps {
   altar: AltarView | null;
   onFloorClick: (point: ScenePoint, isTouch: boolean) => void;
   onDeskClick?: (point: ScenePoint, seatId: string) => void;
+  onCabinetClick?: (point: ScenePoint) => void;
   currentUserId: string;
   members: RoomMember[];
   seats: WorkSeat[];
@@ -1820,15 +1824,20 @@ const DrawerCabinetUnit: React.FC<{
   rotationY?: number;
   length?: number;
   depth?: number;
-  height?: number;
-}> = ({ position, rotationY = 0, length = 3.1, depth = 0.85, height = 1.25 }) => {
+  onClickTop?: (point: ScenePoint) => void;
+}> = ({ position, rotationY = 0, length = 3.1, depth = 0.85, onClickTop }) => {
+  const height = CABINET_HEIGHT;
   return (
     <group position={position} rotation={[0, rotationY, 0]}>
       <mesh position={[0, height / 2, 0]} castShadow receiveShadow>
         <boxGeometry args={[length, height, depth]} />
         <meshStandardMaterial color="#f8fafc" roughness={0.55} />
       </mesh>
-      <mesh position={[0, height + 0.01, 0]}>
+      <mesh position={[0, height + 0.01, 0]} onClick={onClickTop ? (event) => {
+        if (event.delta > 5) return;
+        event.stopPropagation();
+        onClickTop([event.point.x, CABINET_TOP_Y, event.point.z]);
+      } : undefined}>
         <boxGeometry args={[length + 0.04, 0.03, depth + 0.04]} />
         <meshStandardMaterial color="#1e293b" roughness={0.8} />
       </mesh>
@@ -2299,6 +2308,7 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
   altar,
   onFloorClick,
   onDeskClick,
+  onCabinetClick,
   currentUserId,
   members: roomMembers,
   seats,
@@ -2641,8 +2651,8 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
             <boxGeometry args={[16.0, 0.16, 10.8]} />
             <meshStandardMaterial color="#f1f5f9" roughness={0.88} />
           </mesh>
-          {decorations.map(({ id, item, position }) => EXTRA_VOXELS[item] ? (
-            <group key={id} position={position} scale={item === 'bed' ? 1 : 0.29}
+          {decorations.map(({ id, item, position, rotationY }) => EXTRA_VOXELS[item] ? (
+            <group key={id} position={position} rotation={[0, rotationY ?? 0, 0]} scale={item === 'bed' ? 1 : item === 'pink_cat' ? 0.24 : 0.29}
               onClick={item === 'bed' ? (event) => { if (event.delta <= 5) { event.stopPropagation(); onUseBed(id); } } : undefined}>
               <VoxelObject item={item} />
             </group>
@@ -2767,54 +2777,10 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
               <meshBasicMaterial color="#475569" />
             </mesh>
           </group>
+          {OFFICE_CABINETS.map((cabinet) => (
+            <DrawerCabinetUnit key={cabinet.position.join(',')} {...cabinet} onClickTop={onCabinetClick} />
+          ))}
 
-          {/* 2. TỦ HỒ SƠ DỌC TƯỜNG TRÁI */}
-          <DrawerCabinetUnit
-            position={[-6.95, 0, -2.85]}
-            rotationY={Math.PI / 2}
-            length={3.5}
-            depth={0.95}
-          />
-          <DrawerCabinetUnit
-            position={[-6.95, 0, 0.8]}
-            rotationY={Math.PI / 2}
-            length={3.0}
-            depth={0.95}
-          />
-
-          {/* 3. TỦ HỒ SƠ NGĂN GIỮA PHÍA TRÊN */}
-          <DrawerCabinetUnit
-            position={[0.75, 0, -2.75]}
-            rotationY={Math.PI / 2}
-            length={3.6}
-            depth={0.95}
-          />
-
-          {/* 4. DÃY 4 TỦ HỒ SƠ NGANG SÁT TƯỜNG DƯỚI */}
-          <DrawerCabinetUnit
-            position={[-4.55, 0, 4.55]}
-            rotationY={Math.PI}
-            length={2.75}
-            depth={0.85}
-          />
-          <DrawerCabinetUnit
-            position={[-1.6, 0, 4.55]}
-            rotationY={Math.PI}
-            length={2.75}
-            depth={0.85}
-          />
-          <DrawerCabinetUnit
-            position={[1.35, 0, 4.55]}
-            rotationY={Math.PI}
-            length={2.75}
-            depth={0.85}
-          />
-          <DrawerCabinetUnit
-            position={[4.3, 0, 4.55]}
-            rotationY={Math.PI}
-            length={2.75}
-            depth={0.85}
-          />
 
           {/* 5. BA CHẬU CÂY XANH ĐÚNG VỊ TRÍ TRONG SƠ ĐỒ */}
           <LushOfficePlant position={[-6.85, 0, 3.65]} scale={1.25} />

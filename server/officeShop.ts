@@ -1,8 +1,8 @@
 import { calculateDonationMerit } from '../src/utils/officeEconomyData';
-import { WORK_SEAT_LAYOUTS } from '../src/constants/officeLayout';
+import { CABINET_TOP_Y, OFFICE_CABINETS, WORK_SEAT_LAYOUTS } from '../src/constants/officeLayout';
 import {
   OFFICE_SHOP, OUTFIT_SLOTS, equippedItems, isShopItem,
-  type DecorationItem, type OfficeShopState, type ShopEquipment, type ShopCommand, type ScenePoint,
+  type DecorationItem, type OfficeDecoration, type OfficeShopState, type ShopEquipment, type ShopCommand, type ScenePoint,
 } from '../src/utils/officeShop';
 import type { UserEconomyLedgerEntry } from '../src/utils/donationCaseEngine';
 
@@ -43,7 +43,29 @@ function deskPoint(position: unknown, seatId: string | undefined): ScenePoint | 
   return [x, desk.deskPosition[1] + 0.755, z];
 }
 
-export function runShopCommand(stored: StoredShop, wallet: UserEconomyLedgerEntry, body: Record<string, unknown>, seatId: string | undefined, box: { totalVnd: number; updatedAt: number }, onDonate?: (id: string, amount: number, merit: number) => void): string | undefined {
+function sittingCatAtEdge(point: ScenePoint, center: ScenePoint, rotationY: number, halfWidth: number, halfDepth: number) {
+  const c = Math.cos(rotationY);
+  const s = Math.sin(rotationY);
+  const dx = point[0] - center[0];
+  const dz = point[2] - center[2];
+  const localX = dx * c - dz * s;
+  const localZ = dx * s + dz * c;
+  if (Math.abs(localX) > halfWidth + 0.02 || Math.abs(localZ) > halfDepth + 0.02) return;
+  const x = Math.max(-halfWidth + 0.19, Math.min(halfWidth - 0.19, localX));
+  const towardFront = localZ >= 0;
+  const z = (towardFront ? 1 : -1) * (halfDepth - 0.075);
+  return {
+    position: [center[0] + x * c + z * s, point[1], center[2] - x * s + z * c] as ScenePoint,
+    rotationY: rotationY + (towardFront ? 0 : Math.PI),
+  };
+}
+
+interface RoomShopContext {
+  debitMerit: (amount: number) => boolean;
+  roomDecorations: () => readonly OfficeDecoration[];
+}
+
+export function runShopCommand(stored: StoredShop, wallet: UserEconomyLedgerEntry, body: Record<string, unknown>, seatId: string | undefined, box: { totalVnd: number; updatedAt: number }, onDonate?: (id: string, amount: number, merit: number) => void, room?: RoomShopContext): string | undefined {
   const { id, action, item } = body;
   if (typeof id !== 'string' || !/^[\da-f-]{36}$/i.test(id)) return 'Mã giao dịch không hợp lệ.';
   const signature = JSON.stringify([action, item, body.decorationId, body.position, body.amount]);
@@ -81,8 +103,12 @@ export function runShopCommand(stored: StoredShop, wallet: UserEconomyLedgerEntr
       case 'buy':
         if (item === 'bed') return 'Giường ngủ đã có sẵn trong túi đồ.';
         if ((product.kind === 'equip' || product.kind === 'action') && count) return 'Bạn đã sở hữu vật phẩm này.';
-        if (wallet.balanceVnd < product.price) return 'Không đủ số dư.';
-        wallet.balanceVnd -= product.price;
+        if ('currency' in product && product.currency === 'merit') {
+          if (!room?.debitMerit(product.price)) return 'Không đủ công đức.';
+        } else {
+          if (wallet.balanceVnd < product.price) return 'Không đủ số dư.';
+          wallet.balanceVnd -= product.price;
+        }
         shop.inventory[item] = count + 1;
         break;
       case 'equip': {
@@ -97,6 +123,35 @@ export function runShopCommand(stored: StoredShop, wallet: UserEconomyLedgerEntr
         const raw = body.position;
         const floor = Array.isArray(raw) && raw.length === 3 && raw.every(Number.isFinite) &&
           Math.abs(raw[0]) < 7.2 && Math.abs(raw[2]) < 4.8 && Math.abs(raw[1]) < 0.06;
+        if (item === 'pink_cat') {
+          const point = Array.isArray(raw) && raw.length === 3 && raw.every(Number.isFinite) ? raw as ScenePoint : undefined;
+          if (!point) return 'Hãy chọn mép bàn hoặc nóc tủ.';
+          let anchor: ReturnType<typeof sittingCatAtEdge>;
+          let assignedSeat: string | undefined;
+          if (Math.abs(point[1] - CABINET_TOP_Y) < 0.04) {
+            for (const cabinet of OFFICE_CABINETS) {
+              anchor = sittingCatAtEdge([point[0], CABINET_TOP_Y, point[2]], cabinet.position, cabinet.rotationY, cabinet.length / 2, cabinet.depth / 2);
+              if (anchor) break;
+            }
+          } else {
+            const desk = WORK_SEAT_LAYOUTS.find((layout) => layout.seatId === seatId);
+            const onDesk = deskPoint(point, seatId);
+            if (desk && onDesk && Math.abs(point[1] - onDesk[1]) < 0.04) {
+              anchor = sittingCatAtEdge(onDesk, desk.deskPosition, desk.deskRotationY, 0.84, 0.46);
+              assignedSeat = seatId;
+            }
+          }
+          if (!anchor) return 'Hãy chọn mép bàn của bạn hoặc nóc tủ.';
+          const position = anchor.position;
+          const existing = room?.roomDecorations() ?? shop.decorations;
+          if (existing.some((placed) => Math.abs(placed.position[1] - position[1]) < 0.1 &&
+            Math.hypot(placed.position[0] - position[0], placed.position[2] - position[2]) < 0.3)) {
+            return 'Chỗ này đã có vật phẩm.';
+          }
+          shop.inventory[item] = count - 1;
+          shop.decorations.push({ id, item, ...anchor, seatId: assignedSeat });
+          break;
+        }
         const position: ScenePoint | undefined = item === 'bed'
           ? floor ? [raw[0], 0, raw[2]] : undefined : deskPoint(raw, seatId);
         if (!position) return item === 'bed' ? 'Hãy chọn vị trí trên sàn.' : 'Hãy chọn vị trí trên bàn của bạn.';

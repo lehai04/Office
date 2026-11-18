@@ -2490,7 +2490,7 @@ export function App() {
       return;
     }
     if (kind === 'decor') {
-      if (id !== 'bed' && !mySeat) throw new Error('Hãy chọn chỗ ngồi trong văn phòng trước khi đặt vật phẩm.');
+      if (id !== 'bed' && id !== 'pink_cat' && !mySeat) throw new Error('Hãy chọn chỗ ngồi trong văn phòng trước khi đặt vật phẩm.');
       setPlacingItem(id as DecorationItem);
       setCameraMode('overview');
       if (activePanel === 'zen') exitZenRoom();
@@ -2534,6 +2534,7 @@ export function App() {
           if (seatId !== mySeat?.seatId) showToast('Bạn chỉ có thể đặt vật phẩm tại bàn của mình.');
           else void placeItem(point);
         } : undefined}
+        onCabinetClick={placingItem === 'pink_cat' ? (point) => void placeItem(point) : undefined}
         currentUserId={session.userId}
         members={displayedMembers}
         seats={seats}
@@ -2573,7 +2574,7 @@ export function App() {
         <OfficeActionWheel actions={ownedActions} onSelect={playOwnedAction} onClose={() => setActionWheelOpen(false)} />
       )}
       {shopOpen && (
-        <OfficeShopModal balance={shopView?.balanceVnd ?? 0} shop={shop} connectionError={shopError}
+        <OfficeShopModal balance={shopView?.balanceVnd ?? 0} merit={shopView?.altarMerit ?? 0} shop={shop} connectionError={shopError}
           onClose={() => setShopOpen(false)} onBuy={buyItem} onUse={useItem}
           onRemove={async (decorationId) => { await refreshShop({ action: 'remove', decorationId, id: crypto.randomUUID() }); }} />
       )}
@@ -2585,7 +2586,7 @@ export function App() {
       </button>}
       {placingItem && (
         <div className="fixed inset-x-0 top-14 z-30 mx-auto flex w-fit items-center gap-3 rounded-xl bg-slate-900 px-3 py-2 text-sm text-white">
-          Chọn vị trí {placingItem === 'bed' ? 'trên sàn' : 'trên bàn của bạn'} để đặt {OFFICE_SHOP[placingItem].name.toLowerCase()}.
+          Chọn vị trí {placingItem === 'bed' ? 'trên sàn' : placingItem === 'pink_cat' ? 'trên bàn của bạn hoặc nóc tủ' : 'trên bàn của bạn'} để đặt {OFFICE_SHOP[placingItem].name.toLowerCase()}.
           <button type="button" onClick={() => setPlacingItem(null)} className="rounded bg-white/15 px-2 py-1">Hủy</button>
         </div>
       )}

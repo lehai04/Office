@@ -6,6 +6,7 @@ import './OfficeShopModal.css';
 
 interface Props {
   balance: number;
+  merit: number;
   connectionError?: string;
   shop: OfficeShopState;
   onClose: () => void;
@@ -18,7 +19,7 @@ type Category = keyof typeof SHOP_CATEGORIES;
 const items = Object.keys(OFFICE_SHOP) as ShopItem[];
 const categories = Object.keys(SHOP_CATEGORIES) as Category[];
 const itemColors: Partial<Record<ShopItem, string>> = {
-  outfit: '#efdcfa', dance: '#ffdfed', incense: '#ffedca', computer: '#e1e9ff',
+  pink_cat: '#ffe1ef', outfit: '#efdcfa', dance: '#ffdfed', incense: '#ffedca', computer: '#e1e9ff',
   offering: '#ffe0dc', plant: '#dcf5e8', headstand: '#ffe9e0', lamp: '#fff1cc',
 };
 const categoryIcons = { all: '💻', outfit: '👕', action: '💃', altar: '🪷', equipment: '💻', decor: '🪴' };
@@ -27,7 +28,11 @@ function normalizeName(value: string): string {
   return value.toLocaleLowerCase('vi').normalize('NFD').replace(/\p{Diacritic}/gu, '').replace(/đ/g, 'd').trim();
 }
 
-export function OfficeShopModal({ balance, shop, connectionError, onClose, onBuy, onUse, onRemove }: Props) {
+function priceLabel(id: ShopItem) {
+  return id === 'pink_cat' ? `${OFFICE_SHOP[id].price} công đức` : formatVnd(OFFICE_SHOP[id].price);
+}
+
+export function OfficeShopModal({ balance, merit, shop, connectionError, onClose, onBuy, onUse, onRemove }: Props) {
   const title = useId();
   const dialog = useRef<HTMLDialogElement>(null);
   const list = useRef<HTMLDivElement>(null);
@@ -81,13 +86,17 @@ export function OfficeShopModal({ balance, shop, connectionError, onClose, onBuy
     (category === 'all' || OFFICE_SHOP[id].category === category) &&
     normalizeName(OFFICE_SHOP[id].name).includes(normalizeName(query))
   );
-  if (sort !== 'default') visible.sort((a, b) => (OFFICE_SHOP[a].price - OFFICE_SHOP[b].price) * (sort === 'low' ? 1 : -1));
+  if (sort !== 'default') visible.sort((a, b) => {
+    const currencyOrder = Number(a === 'pink_cat') - Number(b === 'pink_cat');
+    return currencyOrder || (OFFICE_SHOP[a].price - OFFICE_SHOP[b].price) * (sort === 'low' ? 1 : -1);
+  });
   const active = visible.includes(selected) ? selected : visible[0];
   const selectedItem = active ? OFFICE_SHOP[active] : undefined;
   const owned = active ? quantity(active) : 0;
   const placements = active ? placed(active) : [];
   const permanent = selectedItem?.kind === 'equip' || selectedItem?.kind === 'action';
-  const canBuy = Boolean(selectedItem && balance >= selectedItem.price && !(permanent && owned));
+  const funds = active === 'pink_cat' ? merit : balance;
+  const canBuy = Boolean(selectedItem && funds >= selectedItem.price && !(permanent && owned));
   const equipped = Object.values(equippedItems(shop));
   const status = (id: ShopItem) => {
     if (equipped.some((item) => item === id)) return 'Đang mặc';
@@ -195,7 +204,7 @@ export function OfficeShopModal({ balance, shop, connectionError, onClose, onBuy
                     <span className="office-shop__art" style={{ backgroundColor: itemColors[id] ?? '#eee4ff' }}><ShopVoxel item={id} /></span>
                     <strong>{item.name}</strong>
                     <small>{SHOP_CATEGORIES[item.category]}</small>
-                    <span className="office-shop__card-footer"><b>{formatVnd(item.price)}</b><small>{status(id)}</small></span>
+                    <span className="office-shop__card-footer"><b>{priceLabel(id)}</b><small>{status(id)}</small></span>
                   </button>
                 </li>;
               })}
@@ -216,19 +225,20 @@ export function OfficeShopModal({ balance, shop, connectionError, onClose, onBuy
             </div>
             <h4>{selectedItem.name}</h4>
             <p>{selectedItem.description}</p>
-            <div className="office-shop__detail-meta"><strong>{formatVnd(selectedItem.price)}</strong><span>{status(active)}</span></div>
+            <div className="office-shop__detail-meta"><strong>{priceLabel(active)}</strong><span>{status(active)}</span></div>
+            {active === 'pink_cat' && <small>Bạn có {merit.toLocaleString('vi-VN')} công đức</small>}
             <p>Trong túi: {owned}</p>
             {tab === 'store' && (!(permanent && owned > 0) || buyIntent?.item === active) && (
               buyIntent?.item === active ? <>
                 <button className="office-shop__primary" type="button" disabled={!canBuy || pending}
                   onClick={() => void run(async () => { await onBuy(active, buyIntent.id); setBuyIntent(null); })}>
-                  Xác nhận mua · {formatVnd(selectedItem.price)}
+                  Xác nhận mua · {priceLabel(active)}
                 </button>
                 <button className="office-shop__secondary" type="button" disabled={pending} onClick={() => setBuyIntent(null)}>Hủy mua</button>
               </> : <button className="office-shop__primary" type="button" disabled={!canBuy || pending}
-                onClick={() => setBuyIntent({ item: active, id: crypto.randomUUID() })}>Mua · {formatVnd(selectedItem.price)}</button>
+                onClick={() => setBuyIntent({ item: active, id: crypto.randomUUID() })}>Mua · {priceLabel(active)}</button>
             )}
-            {tab === 'store' && balance < selectedItem.price && !(permanent && owned > 0) && <p role="status">Không đủ số dư.</p>}
+            {tab === 'store' && funds < selectedItem.price && !(permanent && owned > 0) && <p role="status">{active === 'pink_cat' ? 'Không đủ công đức.' : 'Không đủ số dư.'}</p>}
             {selectedItem.kind === 'action' && <button type="button" className="office-shop__secondary" onClick={preview}>Thử hiệu ứng</button>}
             {!!owned && (tab === 'bag' || selectedItem.kind !== 'equip') && (
               <button type="button" className={tab === 'bag' ? 'office-shop__primary' : 'office-shop__secondary'} disabled={pending}

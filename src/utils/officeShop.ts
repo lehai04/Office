@@ -31,6 +31,7 @@ export const OFFICE_SHOP = {
   monitor: { name: 'Màn hình phụ', icon: '🖥️', price: 210_000, kind: 'decor', category: 'equipment', description: 'Màn hình phụ cho góc làm việc.' },
   frame: { name: 'Khung tranh', icon: '🖼️', price: 80_000, kind: 'decor', category: 'decor', description: 'Khung tranh nhỏ để bàn.' },
   bed: { name: 'Giường ngủ', icon: '🛏️', price: 0, kind: 'decor', category: 'decor', description: 'Đặt trên sàn văn phòng và bấm giường để nằm ngủ.' },
+  pink_cat: { name: 'Mèo hồng ngồi', icon: '🐱', price: 100, currency: 'merit', kind: 'decor', category: 'decor', description: 'Tượng mèo voxel nhỏ, ngồi thả chân ở mép bàn làm việc hoặc tủ hồ sơ.' },
   clock: { name: 'Đồng hồ bàn', icon: '🕰️', price: 65_000, kind: 'decor', category: 'decor', description: 'Đồng hồ để bàn làm việc.' },
 } as const;
 
@@ -59,6 +60,7 @@ export interface OfficeDecoration {
   item: DecorationItem;
   position: ScenePoint;
   seatId?: string;
+  rotationY?: number;
 }
 
 export interface OfficeShopState {

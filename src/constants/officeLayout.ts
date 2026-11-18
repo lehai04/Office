@@ -18,6 +18,17 @@ export interface MeetingChairTransform {
   rotationY: number;
 }
 
+export const OFFICE_CABINETS = [
+  { position: [-6.95, 0, -2.85], rotationY: Math.PI / 2, length: 3.5, depth: 0.95 },
+  { position: [-6.95, 0, 0.8], rotationY: Math.PI / 2, length: 3, depth: 0.95 },
+  { position: [0.75, 0, -2.75], rotationY: Math.PI / 2, length: 3.6, depth: 0.95 },
+  ...[-4.55, -1.6, 1.35, 4.3].map((x) => ({
+    position: [x, 0, 4.55] as [number, number, number], rotationY: Math.PI, length: 2.75, depth: 0.85,
+  })),
+] satisfies { position: [number, number, number]; rotationY: number; length: number; depth: number }[];
+export const CABINET_HEIGHT = 1.25;
+export const CABINET_TOP_Y = CABINET_HEIGHT + 0.025;
+
 export const DEFAULT_ROOM_CODE = 'TINHTAM';
 export const DEFAULT_ROOM_NAME = 'Văn phòng Tịnh Tâm';
 

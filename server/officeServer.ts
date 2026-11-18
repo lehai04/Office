@@ -1196,16 +1196,25 @@ export async function handleApiRequest(
       ledger.balanceVnd += salary.addedVnd;
       const seat = db.seats.find((entry) => entry.roomId === room.id && entry.occupiedByUserId === account.userId);
       const box = serverDonationBox(room);
-      let donated = false;
+      let altarBalanceChanged = false;
       const error = body ? runShopCommand(stored, ledger, body, seat?.seatId, box, (id, amountVnd, meritAwarded) => {
-        donated = true;
+        altarBalanceChanged = true;
         changeRoomAltarMerit(room.id, account.userId, meritAwarded);
         box.donations = [{ id, amountVnd, meritAwarded, donorUserId: account.userId,
           donorNickname: memberRecord.nickname, createdAt: Date.now(), kind: 'donate' as const }, ...box.donations].slice(0, 50);
+      }, {
+        debitMerit: (amount) => {
+          const merit = db.altars?.[room.id]?.members[account.userId]?.merit ?? 0;
+          if (merit < amount) return false;
+          changeRoomAltarMerit(room.id, account.userId, -amount);
+          altarBalanceChanged = true;
+          return true;
+        },
+        roomDecorations: () => roomShopView(room, account.userId).decorations,
       }) : undefined;
       if (initial || (body && !error) || salary.addedVnd) saveDatabase(db, true);
       if (body && !error) broadcastToRoom(room.id, { type: 'shop_updated' });
-      if (donated) broadcastToRoom(room.id, { type: 'altar_updated' }, (client) => client.userId === account.userId);
+      if (altarBalanceChanged) broadcastToRoom(room.id, { type: 'altar_updated' }, (client) => client.userId === account.userId);
       sendJson(res, error ? 409 : 200, error ? { message: error } : roomShopView(room, account.userId));
       return true;
     }
