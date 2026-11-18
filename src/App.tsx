@@ -566,7 +566,7 @@ export function App() {
     setMyPetCollection(loadMyPetCollection(session.userId, loadedCats[session.userId]));
     setRoomPuzzleState(loadRoomPuzzleState(room.code));
     setUserWallet(loadUserWalletState(room.code, session.userId));
-    setRoomDonationBox(loadRoomDonationBoxState(room.code));
+    if (isUsingStaticFallback()) setRoomDonationBox(loadRoomDonationBoxState(room.code));
     fetchDonationCaseApi(room.code, session.sessionToken)
       .then((res) => setDonationCaseView(res.caseView))
       .catch(() => {});
@@ -603,7 +603,7 @@ export function App() {
       setGiftRequests(loadRoomGiftRequests(room.code));
       setRoomPuzzleState(loadRoomPuzzleState(room.code));
     setUserWallet(loadUserWalletState(room.code, session.userId));
-    setRoomDonationBox(loadRoomDonationBoxState(room.code));
+    if (isUsingStaticFallback()) setRoomDonationBox(loadRoomDonationBoxState(room.code));
     fetchDonationCaseApi(room.code, session.sessionToken)
       .then((res) => setDonationCaseView(res.caseView))
       .catch(() => {});
