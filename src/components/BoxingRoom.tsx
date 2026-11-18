@@ -57,8 +57,10 @@ export function BoxingRoom({ view, onFloor }: { view: BoxingView | null; onFloor
     if (!fish.current || !glove.current) return;
     const struck = Boolean(recentHit && Date.now() - recentHit.at < 280);
     const throwing = Boolean(counter && Date.now() - counter.at < 270);
+    const target = counter?.target ? view?.fighters[counter.target] : undefined;
     fish.current.position.y = knockout ? -0.44 : Math.sin(clock.elapsedTime * 2.7) * 0.027;
     fish.current.rotation.x = knockout ? -0.27 : struck ? -0.13 : 0;
+    if (throwing && target) fish.current.rotation.y = Math.atan2(target.x - fishX, target.z - fishZ);
     glove.current.position.z = throwing ? 0.46 : 0;
   });
   return <group>

@@ -42,7 +42,7 @@ try {
     if (i < 4) await pause(635);
   }
   await move(a, 'boxing', -3, 17.2);
-  await move(b, 'boxing', -2.3, 17.2);
+  await move(b, 'boxing', -1.05, 17.2);
   const ring = await attack(a);
   assert.equal(ring.hits.at(-1).target, b.userId);
   assert.equal(ring.merit, 5);
@@ -50,7 +50,7 @@ try {
   console.log('Ring hit is shared and free of merit cost');
 
   await move(a, 'office', 0, 0);
-  await move(b, 'office', .9, 0);
+  await move(b, 'office', 1.95, 0);
   await pause(440);
   const officeId = randomUUID();
   const attempts = await Promise.all([attack(a, officeId), attack(a, officeId)]);
@@ -62,7 +62,7 @@ try {
   const unfunded = await attack(a);
   assert.equal(unfunded.hits.at(-1).target, undefined);
   await bell(a);
-  await move(b, 'away');
+  await move(b, 'office', 2.4, 0);
   await pause(440);
   const miss = await attack(a);
   assert.equal(miss.hits.at(-1).target, undefined);
@@ -70,7 +70,7 @@ try {
   console.log('Office hit charges exactly five once; replay, low merit and miss do not charge');
 
   await move(a, 'boxing', 3.35, 18.0);
-  await move(b, 'boxing', 3.95, 17.35);
+  await move(b, 'boxing', 5.3, 17.35);
   await pause(440);
   const first = await Promise.all([attack(a), attack(b)]);
   assert.equal((await boxing(a)).fishHp, 36);

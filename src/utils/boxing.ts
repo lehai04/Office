@@ -12,7 +12,7 @@ export const BOXING = {
   maxHp: 60,
   damage: 12,
   recoveryMs: 4800,
-  punchRange: 1.38,
+  punchRange: 2.15,
   punchDelayMs: 420,
   counterDelayMs: 1200,
   officeMeritCost: 5,

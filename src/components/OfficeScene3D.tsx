@@ -1,5 +1,5 @@
 import { BoxingImpact, BoxingRoom } from './BoxingRoom';
-import { BOXING, BOXING_MAP, BOXING_MAP_OFFSET, boxingMapPoint, type BoxingHit, type BoxingView } from '../utils/boxing';
+import { BOXING, BOXING_MAP, BOXING_MAP_OFFSET, FISH_ID, boxingMapPoint, inBoxingRing, type BoxingHit, type BoxingView } from '../utils/boxing';
 import { EXTRA_VOXELS } from '../utils/shopVoxels';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { isUsingStaticFallback } from '../services/officeApi';
@@ -326,10 +326,10 @@ const SceneCameraController: React.FC<{
             : [1.35, 0, -3.6]
       }
       minPolarAngle={Math.PI / 8}
-      maxPolarAngle={Math.PI / 2.15}
-      minAzimuthAngle={-Math.PI / 2.2}
-      maxAzimuthAngle={Math.PI / 2.2}
-      minDistance={inZenRoom || inGameRoom ? 3.5 : 6.5}
+      maxPolarAngle={Math.PI / (inBoxingRoom ? 2.5 : 2.15)}
+      minAzimuthAngle={inBoxingRoom ? -Infinity : -Math.PI / 2.2}
+      maxAzimuthAngle={inBoxingRoom ? Infinity : Math.PI / 2.2}
+      minDistance={inBoxingRoom ? 3.2 : inZenRoom || inGameRoom ? 3.5 : 6.5}
       maxDistance={inBoxingRoom ? 42 : 28}
       enablePan={true}
     />
@@ -2442,7 +2442,7 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
             <div className="h-2.5 w-2.5 rounded-full border-2 border-emerald-400/80 bg-white/40 shadow" />
           </div>
           <div className="pointer-events-none fixed top-20 sm:top-16 left-1/2 -translate-x-1/2 z-20 max-w-[92vw] text-center rounded-full border border-white/15 bg-slate-950/75 px-3 py-1 text-[10px] sm:text-[11px] text-slate-200 backdrop-blur-md shadow">
-            <strong>WASD</strong> để di chuyển {inBoxingRoom && <>· <strong>F</strong> để đấm</>}
+            <strong>WASD</strong> để di chuyển {inBoxingRoom && <>· <strong>F</strong> để đấm · Kéo để xoay nhìn</>}
           </div>
 
           {/* Cụm phím di chuyển cảm ứng (D-Pad) hỗ trợ điện thoại & máy tính bảng */}
@@ -2819,6 +2819,18 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
             const inBoxingMap = inBoxingRoom || (!isMe && boxingView?.fighters[member.userId]?.zone === 'boxing');
             const hit = boxingView?.hits.filter((event) => event.target === member.userId).at(-1);
             const strike = boxingView?.hits.filter((event) => event.attacker === member.userId).at(-1);
+            const opponent = strike?.target ?? hit?.attacker;
+            const actor = { zone: 'boxing' as const, x: position[0], z: position[2] };
+            const nearTarget = inBoxingMap && boxingView && Object.entries(boxingView.fighters)
+              .filter(([id, point]) => id !== member.userId && point.zone === 'boxing' && inBoxingRing(point))
+              .map(([, point]) => ({ point, distance: Math.hypot(point.x - actor.x, point.z - actor.z) }))
+              .filter(({ distance }) => distance > 0.05 && distance <= BOXING.punchRange + 0.45)
+              .sort((a, b) => a.distance - b.distance)[0]?.point;
+            const facing = opponent === FISH_ID ? { x: BOXING.fishX, z: BOXING.fishZ }
+              : opponent ? boxingView?.fighters[opponent]
+              : inBoxingMap && inBoxingRing(actor) ? nearTarget : undefined;
+            const heading = facing && Math.hypot(facing.x - actor.x, facing.z - actor.z) > 0.05
+              ? Math.atan2(facing.x - actor.x, facing.z - actor.z) : rotationY;
             const dupCount =
               nicknameCounts.get(member.nickname.trim().toLowerCase()) ?? 1;
             return (
@@ -2837,7 +2849,7 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
                 action={isMe ? action : null}
                 hideMeshInFpv={isMe && cameraMode === 'first_person'}
                 position={position}
-                rotationY={rotationY}
+                rotationY={heading}
                 bubbleText={bubble?.content}
                 duplicateNicknameCount={dupCount}
               />
