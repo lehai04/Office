@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   MessageSquare,
+  LockKeyhole,
   Send,
   RotateCcw,
   AlertTriangle,
@@ -41,6 +42,7 @@ interface ChatDrawerProps {
   members: RoomMember[];
   onSendMessage: (content: string, existingClientMsgId?: string) => Promise<void>;
   onOpenDonationCase?: () => void;
+  onOpenPrivateChat?: () => void;
 }
 
 export const ChatDrawer: React.FC<ChatDrawerProps> = ({
@@ -51,6 +53,7 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
   members,
   onSendMessage,
   onOpenDonationCase,
+  onOpenPrivateChat,
 }) => {
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
@@ -119,6 +122,11 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
             </p>
           </div>
         </div>
+        <div className="flex shrink-0 items-center gap-1.5">
+        {onOpenPrivateChat && <button type="button" onClick={onOpenPrivateChat}
+          className="flex min-h-8 items-center gap-1 rounded-lg bg-violet-600/25 px-2 text-xs font-semibold text-violet-100 hover:bg-violet-600/50">
+          <LockKeyhole size={13} /> Nhóm riêng
+        </button>}
         <button
           type="button"
           onClick={onClose}
@@ -129,6 +137,7 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
           <ChevronDown className="h-4 w-4 sm:hidden" />
           <X className="h-4 w-4 hidden sm:block" />
         </button>
+        </div>
       </div>
 
       {/* Danh sách tin nhắn */}

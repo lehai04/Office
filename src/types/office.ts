@@ -1,3 +1,5 @@
+import type { OfficePresence } from '../utils/officeSocial';
+
 export type AvatarGender = 'male' | 'female';
 
 export type AttendanceStatus = 'none' | 'full' | 'half' | 'off';
@@ -18,6 +20,7 @@ export interface RoomMember {
   seatId: string | null;
   meetingChairId?: string | null;
   inZenRoom?: boolean;
+  presence?: OfficePresence;
   isManager?: boolean;
   online: boolean;
   joinedAt: string;

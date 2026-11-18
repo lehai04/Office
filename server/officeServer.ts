@@ -1,3 +1,4 @@
+import { isOfficeMood, type OfficePresence, type PrivateChatGroup, type PrivateChatMessage } from '../src/utils/officeSocial';
 import { isOfficeAction, type OfficeActionEvent } from '../src/utils/officeShop';
 import { BOXING } from '../src/utils/boxing';
 import { activeFighters, boxingView, createBoxingState, punch, recoverFish, updateFighter, type BoxingState } from './boxing';
@@ -53,6 +54,7 @@ interface StoredRoomMember {
   memberTag: string;
   joinedAt: string;
   lastSeenAt: string;
+  presence?: OfficePresence;
 }
 
 interface StoredDiaryEntry {
@@ -65,6 +67,20 @@ interface StoredDiaryEntry {
   createdAt: string;
   updatedAt: string;
 }
+
+interface StoredPrivateChat {
+  code: string;
+  name: string;
+  passwordHash: string;
+  members: string[];
+  messages: PrivateChatMessage[];
+}
+
+function publicChat(group: StoredPrivateChat): PrivateChatGroup {
+  return { code: group.code, name: group.name, memberCount: group.members.length };
+}
+
+const privateChatAttempts = new Map<string, { count: number; expiresAt: number }>();
 
 interface DatabaseSchema {
   dbVersion?: number;
@@ -83,6 +99,7 @@ interface DatabaseSchema {
   legacyRoomData?: Record<string, unknown>;
   shops?: Record<string, Record<string, StoredShop>>;
   boxing?: Record<string, BoxingState>;
+  privateChats?: Record<string, Record<string, StoredPrivateChat>>;
 }
 
 export async function dispatchDailyReminders(): Promise<void> {
@@ -510,6 +527,7 @@ function buildRoomStatePayload(room: RoomInfo) {
       memberTag: m.memberTag,
       seatId: mySeat ? mySeat.seatId : null,
       meetingChairId: currentMeetingChair,
+      presence: m.presence,
       inZenRoom: officeStorage?.zenStatus(room.id, m.userId) ?? zenPresence.has(`${room.id}:${m.userId}`),
       isManager: room.managerUserId === m.userId,
       online: isUserOnlineInRoom(room.id, m.userId),
@@ -869,6 +887,105 @@ export async function handleApiRequest(
       const roomState = buildRoomStatePayload(room);
       broadcastToRoom(room.id, { type: 'room_state', ...roomState });
       sendJson(res, 200, roomState);
+      return true;
+    }
+
+    if (subPath === 'presence' && method === 'POST') {
+      const body = await readJsonBody(req);
+      if (typeof body.doNotDisturb !== 'boolean' || (body.mood !== null && !isOfficeMood(body.mood))) {
+        sendJson(res, 400, { message: 'Trạng thái không hợp lệ.' });
+        return true;
+      }
+      memberRecord.presence = { doNotDisturb: body.doNotDisturb, mood: body.mood };
+      saveDatabase(db, true);
+      const snapshot = buildRoomStatePayload(room);
+      broadcastToRoom(room.id, { type: 'room_state', ...snapshot });
+      sendJson(res, 200, snapshot);
+      return true;
+    }
+
+    if (subPath === 'private-chat' && (method === 'GET' || method === 'POST')) {
+      const groups = (db.privateChats ??= {})[room.id] ??= {};
+      const memberId = account.userId;
+      if (method === 'GET') {
+        const code = urlObj.searchParams.get('group')?.toUpperCase();
+        if (!code) {
+          sendJson(res, 200, { groups: Object.values(groups).filter((group) => group.members.includes(memberId)).map(publicChat) });
+          return true;
+        }
+        const group = Object.hasOwn(groups, code) ? groups[code] : undefined;
+        if (!group?.members.includes(memberId)) sendJson(res, 404, { message: 'Bạn chưa tham gia nhóm này.' });
+        else sendJson(res, 200, { group: publicChat(group), messages: group.messages });
+        return true;
+      }
+
+      const body = await readJsonBody(req);
+      const code = typeof body.code === 'string' ? body.code.trim().toUpperCase() : '';
+      const group = /^[A-F0-9]{12}$/.test(code) ? groups[code] : undefined;
+      const password = typeof body.password === 'string' ? body.password : '';
+      if (body.action === 'create') {
+        const name = typeof body.name === 'string' ? body.name.trim() : '';
+        if (!name || name.length > 50 || password.length < 4 || password.length > 64 || !password.trim()) {
+          sendJson(res, 400, { message: 'Nhập tên nhóm tối đa 50 ký tự và mật khẩu từ 4 đến 64 ký tự.' });
+          return true;
+        }
+        let next = crypto.randomBytes(6).toString('hex').toUpperCase();
+        while (Object.hasOwn(groups, next)) next = crypto.randomBytes(6).toString('hex').toUpperCase();
+        const created: StoredPrivateChat = { code: next, name, passwordHash: hashAccountPassword(password), members: [memberId], messages: [] };
+        groups[next] = created;
+        saveDatabase(db, true);
+        sendJson(res, 200, { group: publicChat(created), messages: [] });
+        return true;
+      }
+      if (body.action === 'join') {
+        if (group?.members.includes(memberId)) {
+          sendJson(res, 200, { group: publicChat(group), messages: group.messages });
+          return true;
+        }
+        const now = Date.now();
+        const attemptKey = room.id + ':' + memberId;
+        for (const [key, attempts] of privateChatAttempts) if (attempts.expiresAt <= now) privateChatAttempts.delete(key);
+        const attempts = privateChatAttempts.get(attemptKey) ?? { count: 0, expiresAt: now + 60_000 };
+        if (attempts.count >= 5) {
+          sendJson(res, 429, { message: 'Bạn đã thử quá nhiều lần. Hãy thử lại sau một phút.' });
+          return true;
+        }
+        attempts.count++;
+        privateChatAttempts.set(attemptKey, attempts);
+        if (!group || password.length < 4 || password.length > 64 ||
+            !crypto.timingSafeEqual(Buffer.from(group.passwordHash), Buffer.from(hashAccountPassword(password, group.passwordHash.split(':', 1)[0])))) {
+          sendJson(res, 403, { message: 'Mã nhóm hoặc mật khẩu không đúng.' });
+          return true;
+        }
+        group.members.push(memberId);
+        privateChatAttempts.delete(attemptKey);
+        saveDatabase(db, true);
+        broadcastToRoom(room.id, { type: 'private_chat_updated', code: group.code }, (client) => group.members.includes(client.userId));
+        sendJson(res, 200, { group: publicChat(group), messages: group.messages });
+        return true;
+      }
+      if (body.action === 'send') {
+        if (!group?.members.includes(memberId)) {
+          sendJson(res, 404, { message: 'Bạn chưa tham gia nhóm này.' });
+          return true;
+        }
+        const content = typeof body.content === 'string' ? body.content.trim() : '';
+        const id = typeof body.id === 'string' && /^[a-f0-9-]{36}$/i.test(body.id) ? body.id : undefined;
+        if (!id || !content || content.length > 1000) {
+          sendJson(res, 400, { message: 'Tin nhắn cần có từ 1 đến 1.000 ký tự.' });
+          return true;
+        }
+        if (!group.messages.some((message) => message.id === id && message.userId === memberId)) {
+          group.messages = [...group.messages.slice(-299), {
+            id, content, userId: memberId, nickname: memberRecord.nickname, createdAt: new Date().toISOString(),
+          }];
+          saveDatabase(db, true);
+          broadcastToRoom(room.id, { type: 'private_chat_updated', code: group.code }, (client) => group.members.includes(client.userId));
+        }
+        sendJson(res, 200, { group: publicChat(group), messages: group.messages });
+        return true;
+      }
+      sendJson(res, 400, { message: 'Thao tác nhóm chat không hợp lệ.' });
       return true;
     }
 

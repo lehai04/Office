@@ -1,3 +1,7 @@
+import { PrivateChatDialog } from './components/PrivateChatDialog';
+import { OfficePresenceControl } from './components/OfficePresenceControl';
+import { updateOfficePresence } from './services/officeSocial';
+import { PRIVATE_CHAT_EVENT, type OfficePresence } from './utils/officeSocial';
 import { OfficeActionWheel } from './components/OfficeActionWheel';
 import { BOXING_UPDATE_EVENT, useBoxing } from './services/boxing';
 import type { BoxingZone } from './utils/boxing';
@@ -163,6 +167,9 @@ export function App() {
   const [myDiary, setMyDiary] = useState<MyDiaryEntry[]>([]);
 
   const [activePanel, setActivePanel] = useState<ActivePanel>('none');
+  const [privateChatOpen, setPrivateChatOpen] = useState(false);
+  const [presencePending, setPresencePending] = useState(false);
+  const presenceSaving = useRef(false);
   const [claimingSeatId, setClaimingSeatId] = useState<string | null>(null);
   const [seatError, setSeatError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -356,7 +363,7 @@ export function App() {
 
   const boxingZone: BoxingZone = activePanel === 'boxing' ? 'boxing' :
     activePanel === 'zen' || activePanel === 'games' ? 'away' : 'office';
-  const boxingEnabled = (activePanel === 'boxing' || activePanel === 'none') && !shopOpen && !placingItem && !actionWheelOpen;
+  const boxingEnabled = (activePanel === 'boxing' || activePanel === 'none') && !shopOpen && !placingItem && !actionWheelOpen && !privateChatOpen;
   const boxing = useBoxing(room?.code, session?.sessionToken, session?.userId, boxingZone, boxingEnabled,
     (id) => members.find((member) => member.userId === id)?.nickname ?? 'Một người chơi');
 
@@ -1598,6 +1605,10 @@ export function App() {
     if (!session || !room) return;
 
     const handleRealtimePayload = (data: Record<string, unknown>) => {
+      if (data.type === 'private_chat_updated' && typeof data.code === 'string') {
+        window.dispatchEvent(new CustomEvent(PRIVATE_CHAT_EVENT, { detail: data.code }));
+        return;
+      }
       if (data.type === 'office_action') {
         if (actionRoom.current === room.id + ':' + session.userId) acceptOfficeAction(data);
         return;
@@ -2298,6 +2309,25 @@ export function App() {
     ? WORK_SEAT_LAYOUTS.find((l) => l.seatId === mySeat.seatId)
     : null;
   const myMember = members.find((m) => m.userId === session.userId);
+  const changeMyPresence = async (next: OfficePresence) => {
+    if (presenceSaving.current) return;
+    presenceSaving.current = true;
+    setPresencePending(true);
+    const scope = actionRoom.current;
+    try {
+      const updated = await updateOfficePresence(room.code, session.sessionToken, next);
+      const myPresence = updated.members.find((member) => member.userId === session.userId)?.presence;
+      if (myPresence && actionRoom.current === scope) {
+        setMembers((current) => current.map((member) => member.userId === session.userId
+          ? { ...member, presence: myPresence } : member));
+      }
+    } catch (problem) {
+      if (actionRoom.current === scope) showToast(problem instanceof Error ? problem.message : 'Chưa lưu được trạng thái.');
+    } finally {
+      presenceSaving.current = false;
+      setPresencePending(false);
+    }
+  };
   const myMeetingChair = myMember?.meetingChairId
     ? MEETING_CHAIRS.find((c) => c.id === myMember.meetingChairId)
     : null;
@@ -2332,6 +2362,7 @@ export function App() {
   };
 
   const togglePanel = (panel: ActivePanel) => {
+    setPrivateChatOpen(false);
     if (panel === 'boxing' || activePanel === 'boxing') {
       setWalkTarget(null);
       if (panel === 'boxing') setCameraMode('overview');
@@ -2425,7 +2456,7 @@ export function App() {
         onEnterBoxing={() => togglePanel('boxing')}
         onBoxingPosition={boxing.setPosition}
         onPunch={boxingEnabled && boxing.available ? () => { void boxing.punch(); } : undefined}
-        canWalk={(activePanel === 'none' || activePanel === 'boxing') && !placingItem && !shopOpen && !actionWheelOpen}
+        canWalk={(activePanel === 'none' || activePanel === 'boxing') && !placingItem && !shopOpen && !actionWheelOpen && !privateChatOpen}
         onWalk={setWalkTarget}
         decorations={shopView?.decorations ?? []}
         appearances={shopView?.appearances ?? {}}
@@ -2540,6 +2571,7 @@ export function App() {
 
         {/* Cụm phải: Góc nhìn & Nút xổ Menu cá nhân (Click để mở, click để đóng) */}
         <div className="pointer-events-auto relative flex items-center gap-1">
+          <OfficePresenceControl presence={myMember?.presence} pending={presencePending} onChange={(value) => void changeMyPresence(value)} />
           <button
             type="button"
             data-testid="toggle-camera-mode-btn"
@@ -2901,13 +2933,17 @@ export function App() {
 
       <ChatDrawer
         isOpen={activePanel === 'chat'}
-        onClose={() => setActivePanel('none')}
+        onClose={() => { setActivePanel('none'); setPrivateChatOpen(false); }}
         currentUserId={session.userId}
         messages={messages}
         members={members}
         onSendMessage={handleSendMessage}
+        onOpenPrivateChat={() => setPrivateChatOpen(true)}
         onOpenDonationCase={() => setIsDonationCaseModalOpen(true)}
       />
+
+      {privateChatOpen && activePanel === 'chat' && <PrivateChatDialog key={room.id + ':' + session.userId}
+        room={room.code} token={session.sessionToken} userId={session.userId} onClose={() => setPrivateChatOpen(false)} />}
 
       <AttendanceDrawer
         isOpen={activePanel === 'attendance'}

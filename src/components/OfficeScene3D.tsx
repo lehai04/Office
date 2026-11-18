@@ -1,3 +1,4 @@
+import { OFFICE_MOODS, type OfficePresence } from '../utils/officeSocial';
 import { BoxingImpact, BoxingRoom } from './BoxingRoom';
 import { BOXING, BOXING_MAP, BOXING_MAP_OFFSET, FISH_ID, boxingMapPoint, inBoxingRing, type BoxingHit, type BoxingView } from '../utils/boxing';
 import { EXTRA_VOXELS } from '../utils/shopVoxels';
@@ -458,6 +459,7 @@ const LowPolyCharacter: React.FC<{
   boxingHit?: BoxingHit;
   boxingPunch?: BoxingHit;
   onSelectCharacter?: () => void;
+  presence?: OfficePresence;
 }> = ({
   gender,
   nickname,
@@ -477,6 +479,7 @@ const LowPolyCharacter: React.FC<{
   boxingHit,
   boxingPunch,
   onSelectCharacter,
+  presence,
 }) => {
   const upperBodyRef = useRef<THREE.Group>(null);
   const bowStartRef = useRef<number>(0);
@@ -558,6 +561,9 @@ const LowPolyCharacter: React.FC<{
       ? `${normalizedNickname} (${memberTag})`
       : normalizedNickname;
 
+  const mood = presence?.mood;
+  const isCheerful = mood === 'happy' || mood === 'love';
+  const isAnnoyed = mood === 'curt' || mood === 'grumpy' || mood === 'hate';
   const NameTag = onSelectCharacter ? 'button' : 'div';
 
   return (
@@ -737,6 +743,16 @@ const LowPolyCharacter: React.FC<{
                 <meshBasicMaterial color="#0f172a" />
               </mesh>
 
+              {mood && <group position={[0, -0.06, 0.174]}>
+                <AltarBlock at={[0, 0, 0]} size={[0.075, 0.014, 0.012]} color={isCheerful ? '#a33458' : '#572b39'} />
+                {[-0.041, 0.041].map((x) => <AltarBlock key={x}
+                  at={[x, isCheerful ? 0.012 : mood === 'sad' ? -0.012 : 0, 0]} size={[0.015, 0.021, 0.013]} color="#572b39" />)}
+              </group>}
+              {isAnnoyed && <group position={[0, 0.061, 0.181]}>
+                {[-0.079, 0.079].map((x) => <group key={x} position={[x, 0, 0]} rotation-z={x < 0 ? -0.35 : 0.35}>
+                  <AltarBlock at={[0, 0, 0]} size={[0.063, 0.015, 0.012]} color={hairColor} />
+                </group>)}
+              </group>}
               {outfit?.eyes === 'glasses' && <group position={[0, -0.07, 0.18]} scale={0.16}><VoxelObject item="glasses" /></group>}
               {outfit?.head === 'cap' && <group position={[0, 0.085, 0.02]} scale={0.34}><VoxelObject item="cap" /></group>}
               {outfit?.shirt === 'hoodie' && <AltarBlock at={[0,-0.11,-0.1]} size={[0.42,0.23,0.31]} color="#5579cc" />}
@@ -822,6 +838,8 @@ const LowPolyCharacter: React.FC<{
               />
               {isManager && <span title="Trưởng phòng">👑</span>}
               <span>{displayName}</span>
+              {mood && <span title={OFFICE_MOODS[mood].label} aria-label={OFFICE_MOODS[mood].label}>{OFFICE_MOODS[mood].icon}</span>}
+              {presence?.doNotDisturb && <span className="rounded bg-rose-800 px-1 text-rose-50">Không làm phiền</span>}
             </NameTag>
           </div>
         </Html>
@@ -2853,6 +2871,7 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
               <LowPolyCharacter
                 boxingHit={hit} boxingPunch={strike}
                 onSelectCharacter={isMe ? onOpenActionWheel : undefined}
+                presence={member.presence}
                 gender={member.avatarGender}
                 nickname={member.nickname}
                 memberTag={member.memberTag}
