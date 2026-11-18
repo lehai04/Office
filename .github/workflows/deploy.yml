@@ -31,6 +31,8 @@ jobs:
         run: npm ci
 
       - name: Build for GitHub Pages
+        env:
+          VITE_API_ORIGIN: https://office-vgg.van-phong-ao.workers.dev
         run: npm run build:pages
 
       - name: Setup Pages
