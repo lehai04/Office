@@ -2,6 +2,8 @@ import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { LockKeyhole, Send, X } from 'lucide-react';
 import { officeSocialRequest, type PrivateChatView } from '../services/officeSocial';
 import { PRIVATE_CHAT_EVENT, type PrivateChatGroup, type PrivateChatInvite } from '../utils/officeSocial';
+import { getChatSticker } from '../utils/chatStickers';
+import { ChatStickerImage, ChatStickerPicker } from './ChatStickerPicker';
 
 interface Props {
   room: string; token: string; userId: string; onClose: () => void;
@@ -92,7 +94,7 @@ export function PrivateChatDialog({ room, token, userId, onClose, embedded = fal
     setMode(next);
   };
 
-  const submit = async (body: Record<string, unknown>) => {
+  const submit = async (body: Record<string, unknown>, clearDraft = true) => {
     if (pending.current) return;
     pending.current = true;
     setBusy(true);
@@ -107,7 +109,7 @@ export function PrivateChatDialog({ room, token, userId, onClose, embedded = fal
       if (body.action === 'invite') {
         setNotice('Đã gửi lời mời. Người được mời sẽ cần mật khẩu nhóm.');
         setInviteUser('');
-      } else setDraft('');
+      } else if (clearDraft) setDraft('');
     } catch (problem) {
       setError(problem instanceof Error ? problem.message : 'Chưa thực hiện được thao tác.');
     } finally {
@@ -149,17 +151,27 @@ export function PrivateChatDialog({ room, token, userId, onClose, embedded = fal
           <h3 className="mb-3 break-words font-semibold">{view?.group.name ?? 'Đang tải nhóm…'}</h3>
           {view?.messages.length === 0 && <p className="text-sm text-slate-400">Nhóm chưa có tin nhắn.</p>}
           <ul className="space-y-3">
-            {view?.messages.map((message) => <li key={message.userId + ':' + message.id}
-              className={message.userId === userId ? 'text-right' : ''}>
-              <p className="mb-1 text-xs font-semibold text-violet-200">{message.userId === userId ? 'Bạn' : message.nickname}</p>
-              <p className="inline-block max-w-[85%] whitespace-pre-wrap break-words rounded-xl bg-white/10 px-3 py-2 text-left text-sm">{message.content}</p>
-            </li>)}
+            {view?.messages.map((message) => {
+              const sticker = getChatSticker(message.content);
+              return <li key={message.userId + ':' + message.id}
+                className={message.userId === userId ? 'text-right' : ''}>
+                <p className="mb-1 text-xs font-semibold text-violet-200">{message.userId === userId ? 'Bạn' : message.nickname}</p>
+                {sticker ? (
+                  <span className="inline-block w-36 max-w-[85%]"><ChatStickerImage sticker={sticker} /></span>
+                ) : (
+                  <p className="inline-block max-w-[85%] whitespace-pre-wrap break-words rounded-xl bg-white/10 px-3 py-2 text-left text-sm">{message.content}</p>
+                )}
+              </li>;
+            })}
           </ul>
         </div>
-        <form className="flex gap-2 border-t border-white/10 p-3" onSubmit={(event) => {
+        <form className="relative flex items-center gap-2 border-t border-white/10 p-3" onSubmit={(event) => {
           event.preventDefault();
           if (draft.trim()) void submit({ action: 'send', code: selected, content: draft, id: crypto.randomUUID() });
         }}>
+          <ChatStickerPicker disabled={busy || !view} onSend={(content) => {
+            void submit({ action: 'send', code: selected, content, id: crypto.randomUUID() }, false);
+          }} />
           <input className={inputClass + ' flex-1'} aria-label="Tin nhắn nhóm riêng" placeholder="Nhắn vào nhóm…" value={draft}
             onChange={(event) => setDraft(event.target.value)} maxLength={1000} />
           <button type="submit" className={buttonClass} disabled={busy || !view || !draft.trim()} aria-label="Gửi vào nhóm"><Send size={17} /></button>

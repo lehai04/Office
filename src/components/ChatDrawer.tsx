@@ -11,7 +11,9 @@ import {
   Reply,
 } from 'lucide-react';
 import type { ChatMessage, RoomMember } from '../types/office';
+import { chatStickerPreview, getChatSticker } from '../utils/chatStickers';
 import { formatTimeHoChiMinh } from '../utils/dateVn';
+import { ChatStickerImage, ChatStickerPicker } from './ChatStickerPicker';
 
 export function parseReplyContent(raw: string): {
   replySender: string | null;
@@ -31,8 +33,9 @@ export function parseReplyContent(raw: string): {
 
 export function formatChatPreviewText(raw: string): string {
   const parsed = parseReplyContent(raw);
-  if (!parsed.replySender) return raw;
-  return `↩️ Trả lời ${parsed.replySender}: ${parsed.body}`;
+  const preview = chatStickerPreview(parsed.body);
+  if (!parsed.replySender) return preview;
+  return `↩️ Trả lời ${parsed.replySender}: ${preview}`;
 }
 
 interface ChatDrawerProps {
@@ -94,16 +97,13 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
 
   if (!isOpen) return null;
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmed = draft.trim();
-    if (!trimmed || sending) return;
+  const sendContent = async (content: string) => {
+    if (!content || sending) return;
 
     const payload = replyingTo
-      ? `[[reply:${replyingTo.sender}|${replyingTo.snippet}]]\n${trimmed}`
-      : trimmed;
+      ? `[[reply:${replyingTo.sender}|${replyingTo.snippet}]]\n${content}`
+      : content;
 
-    setDraft('');
     setReplyingTo(null);
     setSending(true);
     try {
@@ -111,6 +111,14 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
     } finally {
       setSending(false);
     }
+  };
+
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+    const text = draft.trim();
+    if (!text || sending) return;
+    setDraft('');
+    void sendContent(text);
   };
 
   return (
@@ -184,7 +192,8 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
               ? `${msg.nickname} (${msg.memberTag})`
               : msg.nickname;
             const parsed = parseReplyContent(msg.content);
-            const cleanBody = parsed.body.replace(/\n+/g, ' ').trim();
+            const sticker = getChatSticker(parsed.body);
+            const cleanBody = chatStickerPreview(parsed.body).replace(/\n+/g, ' ').trim();
             const replySnippet =
               cleanBody.length > 55 ? `${cleanBody.slice(0, 55)}…` : cleanBody;
 
@@ -222,7 +231,7 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
                 </div>
 
                 <div
-                  className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-xs sm:text-sm leading-relaxed break-words whitespace-pre-wrap ${
+                  className={sticker ? 'w-36 max-w-[85%]' : `max-w-[85%] rounded-2xl px-3.5 py-2 text-xs sm:text-sm leading-relaxed break-words whitespace-pre-wrap ${
                     msg.status === 'failed'
                       ? 'bg-rose-950/80 text-rose-200 border border-rose-500/50'
                       : isMine
@@ -233,7 +242,7 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
                   {parsed.replySender && (
                     <div
                       className={`mb-1.5 rounded-xl border-l-4 px-2.5 py-1 text-[11px] leading-snug ${
-                        isMine
+                        isMine && !sticker
                           ? 'border-slate-900/50 bg-slate-950/15 text-slate-900'
                           : 'border-emerald-400 bg-slate-900/70 text-slate-300'
                       }`}
@@ -242,7 +251,7 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
                       <div className="truncate opacity-85">{parsed.replySnippet}</div>
                     </div>
                   )}
-                  {parsed.body}
+                  {sticker ? <ChatStickerImage sticker={sticker} /> : parsed.body}
                   {onOpenDonationCase &&
                     parsed.body.includes('[VỤ ÁN CÔNG ĐỨC]') && (
                       <div className="mt-1.5">
@@ -308,8 +317,12 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
       {/* Ô nhập tin nhắn */}
       <form
         onSubmit={handleSubmit}
-        className="border-t border-white/10 p-3 flex items-center gap-2"
+        className="relative flex items-center gap-2 border-t border-white/10 p-3"
       >
+        <ChatStickerPicker disabled={sending} onSend={(content) => {
+          inputRef.current?.focus();
+          void sendContent(content);
+        }} />
         <input
           ref={inputRef}
           type="text"
@@ -322,7 +335,7 @@ export const ChatDrawer: React.FC<ChatDrawerProps> = ({
               ? `Trả lời ${replyingTo.sender}...`
               : 'Nhập tin nhắn cho đồng nghiệp...'
           }
-          className="flex-1 rounded-2xl border border-white/15 bg-slate-800/90 px-3.5 py-2 text-base sm:text-sm text-white placeholder-slate-400 focus:border-emerald-400 focus:outline-none"
+          className="min-w-0 flex-1 rounded-2xl border border-white/15 bg-slate-800/90 px-3.5 py-2 text-base sm:text-sm text-white placeholder-slate-400 focus:border-emerald-400 focus:outline-none"
         />
         <button
           type="submit"
