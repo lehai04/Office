@@ -1,3 +1,5 @@
+import { BoxingImpact, BoxingRoom } from './BoxingRoom';
+import { BOXING, type BoxingHit, type BoxingView } from '../utils/boxing';
 import { EXTRA_VOXELS } from '../utils/shopVoxels';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { isUsingStaticFallback } from '../services/officeApi';
@@ -33,6 +35,12 @@ export interface ActiveSpeechBubble {
 
 interface OfficeScene3DProps {
   walkTarget: ScenePoint | null;
+  inBoxingRoom: boolean;
+  boxingView: BoxingView | null;
+  onBoxingPosition: (point: ScenePoint) => void;
+  onPunch?: () => void;
+  boxingError: string;
+  boxingFeedback: string;
   canWalk: boolean;
   onWalk: (point: ScenePoint) => void;
   decorations: OfficeDecoration[];
@@ -78,6 +86,7 @@ const SceneCameraController: React.FC<{
   cameraMode: 'overview' | 'first_person';
   inZenRoom: boolean;
   inGameRoom?: boolean;
+  inBoxingRoom: boolean;
   isBowing: boolean;
   myPosition: [number, number, number];
   myRotationY: number;
@@ -90,6 +99,7 @@ const SceneCameraController: React.FC<{
   cameraMode,
   inZenRoom,
   inGameRoom = false,
+  inBoxingRoom,
   isBowing,
   myPosition,
   myRotationY,
@@ -136,16 +146,21 @@ const SceneCameraController: React.FC<{
     };
     const onKeyUp = (event: KeyboardEvent) => keys.delete(movementKey(event));
     const clearKeys = () => { keys.clear(); virtualKeysRef.current.clear(); };
+    const clearForTextInput = (event: FocusEvent) => {
+      const target = event.target;
+      if (target instanceof HTMLElement && (target.isContentEditable ||
+          target.closest('input, textarea, select, [role="textbox"], dialog'))) clearKeys();
+    };
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
     window.addEventListener('blur', clearKeys);
-    window.addEventListener('focusin', clearKeys);
+    window.addEventListener('focusin', clearForTextInput);
     return () => {
       clearKeys();
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
       window.removeEventListener('blur', clearKeys);
-      window.removeEventListener('focusin', clearKeys);
+      window.removeEventListener('focusin', clearForTextInput);
     };
   }, [cameraMode, canWalk, inOffice, virtualKeysRef]);
 
@@ -158,7 +173,10 @@ const SceneCameraController: React.FC<{
   // Khi ở chế độ overview, chuyển góc nhìn mượt giữa Văn phòng chính, Phòng Tịnh Tâm và Phòng Giải Trí
   useEffect(() => {
     if (cameraMode === 'overview') {
-      if (inZenRoom) {
+      if (inBoxingRoom) {
+        camera.position.set(0, isPortraitMobile ? 29 : 11.3, BOXING.centerZ + (isPortraitMobile ? 21 : 10));
+        camera.lookAt(0, 0, BOXING.centerZ);
+      } else if (inZenRoom) {
         if (isPortraitMobile) {
           camera.position.set(0, 4.3, -4.6);
         } else {
@@ -181,7 +199,7 @@ const SceneCameraController: React.FC<{
         camera.lookAt(0, 0, 0);
       }
     }
-  }, [cameraMode, inZenRoom, inGameRoom, isPortraitMobile, camera]);
+  }, [cameraMode, inZenRoom, inGameRoom, inBoxingRoom, isPortraitMobile, camera]);
 
   // Sự kiện chuột / bàn phím cho Góc nhìn thứ nhất (First-Person View)
   useEffect(() => {
@@ -251,8 +269,11 @@ const SceneCameraController: React.FC<{
       const dx = (forward * direction.x - right * direction.z) * step;
       const dz = (forward * direction.z + right * direction.x) * step;
       if (inOffice) {
-        const x = THREE.MathUtils.clamp(myPosition[0] + dx, -7.65, 7.65);
-        const z = THREE.MathUtils.clamp(myPosition[2] + dz, -5.1, 5.1);
+        const maxX = inBoxingRoom ? BOXING.width / 2 - 0.3 : 7.65;
+        const maxZ = inBoxingRoom ? BOXING.depth / 2 - 0.3 : 5.1;
+        const centerZ = inBoxingRoom ? BOXING.centerZ : 0;
+        const x = THREE.MathUtils.clamp(myPosition[0] + dx, -maxX, maxX);
+        const z = THREE.MathUtils.clamp(myPosition[2] + dz, centerZ - maxZ, centerZ + maxZ);
         if (x !== myPosition[0] || z !== myPosition[2]) onWalk([x, 0, z]);
       } else {
         walkOffsetRef.current.x += dx;
@@ -296,7 +317,7 @@ const SceneCameraController: React.FC<{
     <OrbitControls
       makeDefault
       target={
-        inZenRoom
+        inBoxingRoom ? [0, 0, BOXING.centerZ] : inZenRoom
           ? [0, 0.9, -11.2]
           : inGameRoom
             ? [-7.6, 0.9, -11.2]
@@ -307,7 +328,7 @@ const SceneCameraController: React.FC<{
       minAzimuthAngle={-Math.PI / 2.2}
       maxAzimuthAngle={Math.PI / 2.2}
       minDistance={inZenRoom || inGameRoom ? 3.5 : 6.5}
-      maxDistance={28}
+      maxDistance={inBoxingRoom ? 42 : 28}
       enablePan={true}
     />
   );
@@ -431,6 +452,8 @@ const LowPolyCharacter: React.FC<{
   outfit?: ShopOutfit;
   action?: OfficeAction | null;
   duplicateNicknameCount: number;
+  boxingHit?: BoxingHit;
+  boxingPunch?: BoxingHit;
 }> = ({
   gender,
   nickname,
@@ -447,6 +470,8 @@ const LowPolyCharacter: React.FC<{
   outfit,
   action,
   duplicateNicknameCount,
+  boxingHit,
+  boxingPunch,
 }) => {
   const upperBodyRef = useRef<THREE.Group>(null);
   const bowStartRef = useRef<number>(0);
@@ -474,7 +499,7 @@ const LowPolyCharacter: React.FC<{
       actor.position.y += (y - actor.position.y) * step;
       actor.position.z += (z - actor.position.z) * step;
       if (action === 'dance') actor.position.y += Math.abs(Math.sin(clock.elapsedTime * 8)) * 0.08;
-      actor.rotation.z = action === 'dance' ? Math.sin(clock.elapsedTime * 9) * 0.18 : action === 'headstand' ? Math.PI : 0;
+      actor.rotation.z = action === 'dance' ? Math.sin(clock.elapsedTime * 9) * 0.18 : action === 'headstand' ? Math.PI : boxingHit && Date.now() - boxingHit.at < 240 ? 0.23 : 0;
     }
     if (leftArm.current && rightArm.current) {
       const base = isBowing ? -1.1 : isSeated ? -0.55 : 0;
@@ -482,6 +507,7 @@ const LowPolyCharacter: React.FC<{
       leftArm.current.rotation.x = action === 'clap' ? -1.35 : action === 'confetti' ? -2.2 : base;
       rightArm.current.rotation.x = action === 'clap' ? -1.35 : action === 'wave' ? -2.45 : action === 'confetti' ? -2.2 : base;
       leftArm.current.rotation.z = action === 'clap' ? -0.67 - beat * 0.31 : isBowing ? -0.35 : 0.08;
+      if (boxingPunch && Date.now() - boxingPunch.at < 240) rightArm.current.rotation.x = -1.58;
       rightArm.current.rotation.z = action === 'clap' ? 0.67 + beat * 0.31 : action === 'wave' ? -0.47 + beat * 0.36 : isBowing ? 0.35 : -0.08;
     }
     if (confetti.current) {
@@ -2186,6 +2212,12 @@ const OutdoorCatCourtyard3D: React.FC<{
 
 export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
   walkTarget,
+  inBoxingRoom,
+  boxingView,
+  onBoxingPosition,
+  onPunch,
+  boxingError,
+  boxingFeedback,
   canWalk,
   onWalk,
   decorations,
@@ -2263,7 +2295,19 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
       .filter((m) => m.inZenRoom || (m.userId === currentUserId && inZenRoom))
       .sort((a, b) => a.userId.localeCompare(b.userId));
 
-    return members.map((member) => {
+    return members.flatMap((member) => {
+      const remote = boxingView?.fighters[member.userId];
+      const local = member.userId === currentUserId;
+      if (inBoxingRoom) {
+        const point: ScenePoint | undefined = local ? walkTarget ?? BOXING.spawn :
+          remote?.zone === 'boxing' ? [remote.x, 0, remote.z] : undefined;
+        return point ? [{ member, isSeated: false, position: point, rotationY: Math.PI }] : [];
+      }
+      if (!local && remote?.zone === 'boxing') return [];
+      return [placeMember(member, remote)];
+    });
+
+    function placeMember(member: RoomMember, remote: BoxingView['fighters'][string] | undefined) {
       // Nếu thành viên đang ở trong Phòng Tịnh Tâm -> đặt ngồi trên 1 trong 10 đệm Bồ đoàn (hoặc bàn góc trái cho Trụ trì Thanh Ngọc)
       const zenIdx = zenMembers.findIndex((zm) => zm.userId === member.userId);
       if (zenIdx !== -1) {
@@ -2301,6 +2345,14 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
       if (member.userId === currentUserId && walkTarget) {
         return { member, isSeated: false, position: walkTarget, rotationY: 0 };
       }
+      if (member.userId !== currentUserId && remote?.zone === 'office') {
+        const seat = member.seatId ? seatLayoutMap.get(member.seatId) : undefined;
+        const meeting = member.meetingChairId ? meetingChairMap.get(member.meetingChairId) : undefined;
+        const atSeat = seat?.chairPosition ?? meeting?.position;
+        if (!atSeat || Math.hypot(atSeat[0] - remote.x, atSeat[2] - remote.z) > 0.15) {
+          return { member, isSeated: false, position: [remote.x, 0, remote.z] as ScenePoint, rotationY: 0 };
+        }
+      }
       if (member.meetingChairId && meetingChairMap.has(member.meetingChairId)) {
         const mChair = meetingChairMap.get(member.meetingChairId)!;
         return {
@@ -2337,19 +2389,21 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
         position: pos,
         rotationY: slot.rotationY,
       };
-    });
-  }, [members, currentUserId, inZenRoom, inGameRoom, abbotAtDonationDesk, walkTarget]);
+    }
+  }, [members, currentUserId, inZenRoom, inGameRoom, inBoxingRoom, abbotAtDonationDesk, walkTarget, boxingView?.fighters]);
 
   const myPlacement = useMemo(() => {
     const found = characterPlacements.find((p) => p.member.userId === currentUserId);
     return (
       found ?? {
-        position: [3.8, 0, -3.6] as [number, number, number],
+        position: inBoxingRoom ? BOXING.spawn : [3.8, 0, -3.6] as ScenePoint,
         rotationY: 0,
         isSeated: false,
       }
     );
-  }, [characterPlacements, currentUserId]);
+  }, [characterPlacements, currentUserId, inBoxingRoom]);
+  const [x, y, z] = myPlacement.position;
+  useEffect(() => { onBoxingPosition([x, y, z]); }, [x, y, z, onBoxingPosition]);
 
   const myMember = members.find((m) => m.userId === currentUserId);
   const isMeAtMeetingTable = Boolean(myMember?.meetingChairId);
@@ -2357,6 +2411,7 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
 
   const bindVirtualKey = (key: 'w' | 'a' | 's' | 'd') => ({
     onPointerDown: (e: React.PointerEvent) => {
+      e.preventDefault();
       e.stopPropagation();
       virtualKeysRef.current.add(key);
     },
@@ -2375,19 +2430,19 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
   return (
     <div className="relative w-full h-full touch-none bg-gradient-to-b from-slate-900 via-slate-950 to-slate-900">
       {/* Tâm ngắm, hướng dẫn & Cụm nút di chuyển cảm ứng (D-Pad) cho điện thoại khi ở Góc nhìn thứ nhất */}
-      {cameraMode === 'first_person' && (
+      {(cameraMode === 'first_person' || inBoxingRoom) && (
         <>
-          <div className="pointer-events-none fixed inset-0 z-10 flex items-center justify-center">
+          <div className={cameraMode === 'first_person' ? "pointer-events-none fixed inset-0 z-10 flex items-center justify-center" : "hidden"}>
             <div className="h-2.5 w-2.5 rounded-full border-2 border-emerald-400/80 bg-white/40 shadow" />
           </div>
           <div className="pointer-events-none fixed top-20 sm:top-16 left-1/2 -translate-x-1/2 z-20 max-w-[92vw] text-center rounded-full border border-white/15 bg-slate-950/75 px-3 py-1 text-[10px] sm:text-[11px] text-slate-200 backdrop-blur-md shadow">
-            👁️ Vuốt màn hình để nhìn 360° • Dùng nút di chuyển hoặc phím <strong>WASD</strong> để đi bộ
+            <strong>WASD</strong> để di chuyển {inBoxingRoom && <>· <strong>F</strong> để đấm</>}
           </div>
 
           {/* Cụm phím di chuyển cảm ứng (D-Pad) hỗ trợ điện thoại & máy tính bảng */}
           <div
             data-testid="mobile-fpv-dpad"
-            className="fixed bottom-20 left-3 z-20 grid grid-cols-3 gap-1.5 w-28 h-28 select-none"
+            className={`fixed bottom-20 left-3 z-20 grid h-28 w-28 select-none grid-cols-3 gap-1.5 ${inBoxingRoom && cameraMode === 'overview' ? 'sm:hidden' : ''}`}
           >
             <div />
             <button
@@ -2426,6 +2481,15 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
           </div>
         </>
       )}
+      {onPunch && <div className={`fixed bottom-24 z-30 flex flex-col items-start gap-1 ${inBoxingRoom || cameraMode === 'first_person' ? 'left-32' : 'left-3'} sm:right-4 sm:left-auto`}>
+        {(boxingError || boxingFeedback) && <p role="status" className="max-w-48 rounded bg-slate-950/90 px-2 py-1 text-xs text-violet-200">{boxingError || boxingFeedback}</p>}
+        <button type="button" onClick={onPunch} className="min-h-11 rounded-xl border border-violet-400/40 bg-violet-700 px-3 text-sm font-bold text-white shadow-lg active:bg-violet-500">
+          🥊 Đấm <kbd className="ml-1 hidden rounded bg-black/30 px-1 sm:inline">F</kbd>
+        </button>
+        {!inBoxingRoom && <span className="rounded bg-slate-950/90 px-2 py-1 text-[10px] text-amber-100">
+          {boxingView?.merit ?? '—'} công đức · trúng: −5
+        </span>}
+      </div>}
 
       <Canvas
         shadows
@@ -2446,6 +2510,8 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
         />
 
         <group position={[0, -0.3, 0]}>
+          {inBoxingRoom && <BoxingRoom view={boxingView} onFloor={onFloorClick} />}
+          <group visible={!inBoxingRoom}>
           {/* GIAN PHÒNG TỊNH TÂM 3D (Phật • Ông Địa • Thần Tài • Mõ Gỗ • Chuông Đồng) */}
           <ZenSanctuaryRoom3D
             selectedDeity={selectedDeity}
@@ -2722,15 +2788,19 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
           })}
 
           {/* 8. CÁC NHÂN VẬT 3D TRONG PHÒNG */}
+          </group>
           {characterPlacements.map(({ member, isSeated, position, rotationY }) => {
             if (altar?.rituals.some((ritual) => ritual.userId === member.userId)) return null;
             const isMe = member.userId === currentUserId;
             const bubble = activeBubbles[member.userId];
+            const hit = boxingView?.hits.filter((event) => event.target === member.userId).at(-1);
+            const strike = boxingView?.hits.filter((event) => event.attacker === member.userId).at(-1);
             const dupCount =
               nicknameCounts.get(member.nickname.trim().toLowerCase()) ?? 1;
             return (
+              <group key={member.userId}>
               <LowPolyCharacter
-                key={member.userId}
+                boxingHit={hit} boxingPunch={strike}
                 gender={member.avatarGender}
                 nickname={member.nickname}
                 memberTag={member.memberTag}
@@ -2747,9 +2817,11 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
                 bubbleText={bubble?.content}
                 duplicateNicknameCount={dupCount}
               />
+              {hit && <BoxingImpact key={hit.id} point={position} hit={hit} />}
+              </group>
             );
           })}
-          {altar?.rituals.map((ritual) => (
+          {!inBoxingRoom && altar?.rituals.map((ritual) => (
             <RitualCharacter key={ritual.id} ritual={ritual} outfit={appearances[ritual.userId]}
               origin={characterPlacements.find((placement) => placement.member.userId === ritual.userId)?.position ?? [0, 0, -8.25]} />
           ))}
@@ -2791,6 +2863,7 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
             cameraMode={cameraMode}
             inZenRoom={inZenRoom}
             inGameRoom={inGameRoom}
+            inBoxingRoom={inBoxingRoom}
             isBowing={isBowing}
             myPosition={myPlacement.position}
             myRotationY={myPlacement.rotationY}

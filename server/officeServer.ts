@@ -1,3 +1,5 @@
+import { BOXING } from '../src/utils/boxing';
+import { activeFighters, boxingView, createBoxingState, punch, recoverFish, updateFighter, type BoxingState } from './boxing';
 import { restoreShop, runShopCommand, type StoredShop } from './officeShop';
 import { SHOP_OFFERINGS, equippedItems, type RoomShopView, type ShopConsumable } from '../src/utils/officeShop';
 import { createDefaultWalletState, settlePastMonthsSalary } from '../src/utils/officeEconomyData';
@@ -79,6 +81,7 @@ interface DatabaseSchema {
   altars?: Record<string, RoomAltarState>;
   legacyRoomData?: Record<string, unknown>;
   shops?: Record<string, Record<string, StoredShop>>;
+  boxing?: Record<string, BoxingState>;
 }
 
 export async function dispatchDailyReminders(): Promise<void> {
@@ -255,6 +258,21 @@ function settleRoomAltar(roomId: string, altar: RoomAltarState, now: number) {
   });
 }
 
+const boxingPresence = new Map<string, Parameters<typeof updateFighter>[0]>();
+
+function publishBoxing(roomId: string, state: BoxingState, now: number) {
+  const view = boxingView(state, boxingPresence.get(roomId) ?? {}, 0, now);
+  broadcastToRoom(roomId, { type: 'boxing_updated', ...view });
+}
+
+export function removeBoxingPresence(roomId: string, userId: string): void {
+  const fighters = boxingPresence.get(roomId);
+  if (!fighters?.[userId]) return;
+  delete fighters[userId];
+  const state = db.boxing?.[roomId];
+  if (state) publishBoxing(roomId, state, Date.now());
+}
+
 export async function settleOfficeAlarms(): Promise<void> {
   const now = Date.now();
   let next: number | undefined;
@@ -271,6 +289,13 @@ export async function settleOfficeAlarms(): Promise<void> {
     const times = altar.rituals.map((ritual) => ritual.finishAt);
     if (altar.incenseUntil > now) times.push(altar.incenseUntil);
     for (const time of times) next = next === undefined ? time : Math.min(next, time);
+  }
+  for (const [roomId, state] of Object.entries(db.boxing ?? {})) {
+    if (recoverFish(state, now)) {
+      saveDatabase(db, true);
+      publishBoxing(roomId, state, now);
+    }
+    if (state.recoverAt) next = Math.min(next ?? Infinity, state.recoverAt);
   }
   await officeStorage?.schedule(next);
 }
@@ -832,6 +857,7 @@ export async function handleApiRequest(
           return true;
         }
         zenPresence.add(key);
+        removeBoxingPresence(room.id, account.userId);
         officeStorage?.zenStatus(room.id, account.userId, true);
       } else {
         zenPresence.delete(key);
@@ -861,6 +887,56 @@ export async function handleApiRequest(
       if (initial || (body && !error) || salary.addedVnd) saveDatabase(db, true);
       if (body && !error) broadcastToRoom(room.id, { type: 'shop_updated' });
       sendJson(res, error ? 409 : 200, error ? { message: error } : roomShopView(room, account.userId));
+      return true;
+    }
+
+    if (subPath === 'boxing' && (method === 'GET' || method === 'POST')) {
+      const body = method === 'POST' ? await readJsonBody(req) : null;
+      const now = Date.now();
+      const state = (db.boxing ??= {})[room.id] ??= createBoxingState();
+      let fighters = boxingPresence.get(room.id);
+      if (!fighters) boxingPresence.set(room.id, fighters = {});
+      activeFighters(fighters, now);
+      for (const id of Object.keys(fighters)) {
+        if (!db.roomMembers.some((member) => member.roomId === room.id && member.userId === id)) delete fighters[id];
+      }
+      const recovered = recoverFish(state, now);
+      const altar = (db.altars ??= {})[room.id] ??= createAltarState();
+      const getMerit = () => altar.members[account.userId]?.merit ?? 0;
+      if (recovered) { saveDatabase(db, true); publishBoxing(room.id, state, now); }
+      if (body?.action === 'move') {
+        const inZen = officeStorage?.zenStatus(room.id, account.userId) ?? zenPresence.has(`${room.id}:${account.userId}`);
+        if (!updateFighter(fighters, account.userId, inZen ? 'away' : body.zone, body.x, body.z, now)) {
+          sendJson(res, 409, { message: 'Vị trí Boxing chưa hợp lệ.' });
+          return true;
+        }
+        publishBoxing(room.id, state, now);
+      } else if (body?.action === 'punch' && typeof body.id === 'string' && /^[\da-f-]{36}$/i.test(body.id)) {
+        const currentlyInZen = officeStorage?.zenStatus(room.id, account.userId) ?? zenPresence.has(`${room.id}:${account.userId}`);
+        if (currentlyInZen) delete fighters[account.userId];
+        const hit = punch(state, fighters, account.userId, body.id, now, () => {
+          if (getMerit() < BOXING.officeMeritCost) return false;
+          altar.members[account.userId].merit -= BOXING.officeMeritCost;
+          return true;
+        });
+        if (hit) {
+          saveDatabase(db, true);
+          publishBoxing(room.id, state, now);
+          if (state.recoverAt) {
+            if (officeStorage) await settleOfficeAlarms();
+            else setTimeout(() => {
+              if (recoverFish(state, Date.now())) {
+                saveDatabase(db, true);
+                publishBoxing(room.id, state, Date.now());
+              }
+            }, BOXING.recoveryMs + 10).unref();
+          }
+        }
+      } else if (body) {
+        sendJson(res, 400, { message: 'Thao tác Boxing không hợp lệ.' });
+        return true;
+      }
+      sendJson(res, 200, boxingView(state, fighters, getMerit(), Date.now()));
       return true;
     }
 

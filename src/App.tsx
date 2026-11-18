@@ -1,3 +1,5 @@
+import { BOXING_UPDATE_EVENT, useBoxing } from './services/boxing';
+import type { BoxingZone } from './utils/boxing';
 import { requestRoomShop, SHOP_UPDATE_EVENT } from './services/officeShop';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -143,7 +145,7 @@ import type {
   WorkSeat,
 } from './types/office';
 
-type ActivePanel = 'none' | 'seats' | 'chat' | 'attendance' | 'diary' | 'zen' | 'games';
+type ActivePanel = 'none' | 'seats' | 'chat' | 'attendance' | 'diary' | 'zen' | 'games' | 'boxing';
 
 export function App() {
   const [session, setSession] = useState<AuthSession | null>(null);
@@ -316,6 +318,12 @@ export function App() {
       setToastMessage((prev) => (prev === msg ? null : prev));
     }, 4000);
   }, []);
+
+  const boxingZone: BoxingZone = activePanel === 'boxing' ? 'boxing' :
+    activePanel === 'zen' || activePanel === 'games' ? 'away' : 'office';
+  const boxingEnabled = (activePanel === 'boxing' || activePanel === 'none') && !shopOpen && !placingItem;
+  const boxing = useBoxing(room?.code, session?.sessionToken, boxingZone, boxingEnabled,
+    () => showToast('−5 công đức'));
 
   const triggerSpeechBubble = useCallback((userId: string, content: string) => {
     const expiresAt = Date.now() + 5000;
@@ -1555,6 +1563,10 @@ export function App() {
     if (!session || !room) return;
 
     const handleRealtimePayload = (data: Record<string, unknown>) => {
+      if (data.type === 'boxing_updated') {
+        window.dispatchEvent(new CustomEvent(BOXING_UPDATE_EVENT, { detail: data }));
+        return;
+      }
       if (data.type === 'member_kicked') {
         const kickedId = String(data.kickedUserId || '');
         const kickedName = String(data.kickedNickname || 'Thành viên');
@@ -2280,6 +2292,10 @@ export function App() {
   };
 
   const togglePanel = (panel: ActivePanel) => {
+    if (panel === 'boxing' || activePanel === 'boxing') {
+      setWalkTarget(null);
+      if (panel === 'boxing') setCameraMode('overview');
+    }
     if (panel === 'zen') {
       if (activePanel === 'zen') {
         exitZenRoom();
@@ -2346,14 +2362,20 @@ export function App() {
       {/* CẢNH PHÒNG 3D CHÍNH & GIAN PHÒNG TỊNH TÂM 3D */}
       <OfficeScene3D
         altar={altar}
-        walkTarget={walkTarget}
-        canWalk={activePanel === 'none' && !placingItem && !shopOpen}
+        walkTarget={walkTarget && ((walkTarget[2] > 10) === (activePanel === 'boxing')) ? walkTarget : null}
+        inBoxingRoom={activePanel === 'boxing'}
+        boxingView={boxing.view}
+        boxingError={boxing.error}
+        boxingFeedback={boxing.feedback}
+        onBoxingPosition={boxing.setPosition}
+        onPunch={boxingEnabled && boxing.available ? () => { void boxing.punch(); } : undefined}
+        canWalk={(activePanel === 'none' || activePanel === 'boxing') && !placingItem && !shopOpen}
         onWalk={setWalkTarget}
         decorations={shopView?.decorations ?? []}
         appearances={shopView?.appearances ?? {}}
         action={officeAction}
         onFloorClick={(point, isTouch) => {
-          if (!placingItem && isTouch && activePanel === 'none' && cameraMode === 'overview') setWalkTarget(point);
+          if (!placingItem && isTouch && (activePanel === 'none' || activePanel === 'boxing') && cameraMode === 'overview') setWalkTarget(point);
         }}
         onDeskClick={placingItem ? (point, seatId) => {
           if (seatId !== mySeat?.seatId) showToast('Bạn chỉ có thể đặt vật phẩm tại bàn của mình.');
@@ -3190,6 +3212,11 @@ export function App() {
           >
             <Gamepad2 className="h-3.5 w-3.5 shrink-0" />
             <span>Giải Trí</span>
+          </button>
+
+          <button type="button" aria-pressed={activePanel === 'boxing'} onClick={() => togglePanel('boxing')}
+            className={`flex flex-1 flex-col items-center justify-center gap-0.5 whitespace-nowrap rounded-xl border border-violet-400/35 px-1.5 py-1 text-[10px] font-bold sm:flex-initial sm:flex-row sm:rounded-full sm:px-2.5 sm:text-xs ${activePanel === 'boxing' ? 'bg-violet-600 text-white' : 'bg-violet-500/20 text-violet-200 hover:bg-violet-500/30'}`}>
+            <span aria-hidden="true">🥊</span><span>Boxing</span>
           </button>
 
           <button

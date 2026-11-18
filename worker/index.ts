@@ -4,6 +4,7 @@ import { Readable } from 'node:stream';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import {
   authorizeOfficeRealtime, configureOfficeStorage, handleApiRequest, importVggRoom, publishOfficePresence, settleOfficeAlarms,
+  removeBoxingPresence,
   type OfficeRealtimeMember,
 } from '../server/officeServer';
 
@@ -154,7 +155,10 @@ export class OfficeState extends DurableObject<Env> {
   webSocketClose(socket: WebSocket, code: number, reason: string): void {
     const member = socket.deserializeAttachment() as Attachment | null;
     socket.close(code, reason);
-    if (member) publishOfficePresence(member.roomId);
+    if (member) {
+      if (!this.memberSockets(member.roomId, member.userId).length) removeBoxingPresence(member.roomId, member.userId);
+      publishOfficePresence(member.roomId);
+    }
   }
 
   async alarm(): Promise<void> {
