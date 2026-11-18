@@ -32,6 +32,11 @@ function account(state: RoomAltarState, id: string): MemberAltarState {
   return state.members[id] ??= { merit: 0, lastMeritAt: 0, results: [] };
 }
 
+export function adjustAltarMerit(state: RoomAltarState, userId: string, delta: number): void {
+  const member = account(state, userId);
+  member.merit = Math.max(0, member.merit + delta);
+}
+
 function finishOffering(state: RoomAltarState, ritual: AltarRitual, owner: MemberAltarState): AltarResult {
   const result = { id: ritual.id, kind: ritual.kind, ok: false, message: '' };
   const target = state.trays.find((tray) => tray.id === ritual.targetId && tray.userId !== ritual.userId);

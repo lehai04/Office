@@ -174,6 +174,8 @@ export const ZenSanctuaryOverlay: React.FC<ZenSanctuaryOverlayProps> = ({
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [showMusicMenu, setShowMusicMenu] = useState(false);
   const [donationAmountDraft, setDonationAmountDraft] = useState<string>('50000');
+  const [donationBusy, setDonationBusy] = useState(false);
+  const donationRequest = useRef(false);
   const [donationNotice, setDonationNotice] = useState<{
     type: 'ok' | 'err';
     text: string;
@@ -613,8 +615,14 @@ export const ZenSanctuaryOverlay: React.FC<ZenSanctuaryOverlayProps> = ({
                 <button
                   type="button"
                   onClick={async () => {
+                    if (donationRequest.current) return;
                     const amt = Math.round(Number(donationAmountDraft) || 0);
-                    const res = await onDonateToBox(amt);
+                    donationRequest.current = true;
+                    setDonationBusy(true);
+                    const res = await onDonateToBox(amt).finally(() => {
+                      donationRequest.current = false;
+                      setDonationBusy(false);
+                    });
                     if (res.ok) {
                       setDonationNotice({
                         type: 'ok',
@@ -627,24 +635,28 @@ export const ZenSanctuaryOverlay: React.FC<ZenSanctuaryOverlayProps> = ({
                       });
                     }
                   }}
+                  disabled={donationBusy}
                   className="w-full rounded-2xl bg-gradient-to-r from-amber-400 to-yellow-500 py-2.5 px-2 text-xs font-black text-slate-950 shadow-lg hover:brightness-105 active:scale-95 cursor-pointer"
                 >
                   🙏 Bỏ tiền Công Đức
                 </button>
                 <button
                   type="button"
-                  disabled={donationBox.totalVnd <= 0}
+                  disabled={donationBusy || donationBox.totalVnd <= 0}
                   onClick={async () => {
-                    const rawAmt = Math.round(Number(donationAmountDraft) || 0);
-                    const robAmt =
-                      rawAmt > 0
-                        ? Math.min(rawAmt, donationBox.totalVnd)
-                        : donationBox.totalVnd;
-                    const res = await onRobDonationBox(robAmt);
+                    if (donationRequest.current) return;
+                    donationRequest.current = true;
+                    setDonationBusy(true);
+                    const entered = Math.round(Number(donationAmountDraft) || 0);
+                    const amount = entered > 0 ? Math.min(entered, donationBox.totalVnd) : donationBox.totalVnd;
+                    const res = await onRobDonationBox(amount).finally(() => {
+                      donationRequest.current = false;
+                      setDonationBusy(false);
+                    });
                     if (res.ok) {
                       setDonationNotice({
                         type: 'err',
-                        text: `🥷 Bạn vừa cướp ${formatVnd(res.robbedVnd || robAmt)} từ Hòm Công Đức!`,
+                        text: `🥷 Bạn vừa cướp ${formatVnd(res.robbedVnd ?? 0)} từ Hòm Công Đức!`,
                       });
                     } else {
                       setDonationNotice({
@@ -655,7 +667,7 @@ export const ZenSanctuaryOverlay: React.FC<ZenSanctuaryOverlayProps> = ({
                   }}
                   className="w-full rounded-2xl border border-rose-400/50 bg-rose-600/85 hover:bg-rose-500 disabled:opacity-40 py-2.5 px-2 text-xs font-black text-white shadow-lg active:scale-95 cursor-pointer"
                 >
-                  🥷 Cướp tiền ({donationBox.totalVnd > 0 ? 'Trừ 5 CĐ' : 'Trống'})
+                  🥷 {donationBox.totalVnd > 0 ? 'Cướp hòm' : 'Hòm trống'}
                 </button>
               </div>
             </div>

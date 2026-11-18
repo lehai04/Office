@@ -198,6 +198,7 @@ export function App() {
   const [shopView, setShopView] = useState<RoomShopView | null>(null);
   const [shopError, setShopError] = useState('');
   const shopRequestOrder = useRef(0);
+  const stealingDonation = useRef(false);
   const placingRequest = useRef(false);
   const [shopRitual, setShopRitual] = useState<ShopConsumable | null>(null);
   const [placingItem, setPlacingItem] = useState<DecorationItem | null>(null);
@@ -709,7 +710,7 @@ export function App() {
       setShopView(view);
       setShopError('');
       setUserWallet((previous) => ({ ...previous, balanceVnd: view.balanceVnd, shop: view.shop }));
-      setRoomDonationBox((box) => box.totalVnd === view.donationTotalVnd ? box : { ...box, totalVnd: view.donationTotalVnd });
+      setRoomDonationBox((box) => view.donationBox ?? (box.totalVnd === view.donationTotalVnd ? box : { ...box, totalVnd: view.donationTotalVnd }));
       return view;
     } catch (problem) {
       if (command) throw problem;
@@ -851,7 +852,7 @@ export function App() {
       if (!Number.isFinite(amountVnd) || amountVnd < 1000) {
         return { ok: false, error: 'Vui lòng nhập số tiền tối thiểu 1.000đ.' };
       }
-      if (userWallet.balanceVnd < amountVnd) {
+      if (isUsingStaticFallback() && userWallet.balanceVnd < amountVnd) {
         return {
           ok: false,
           error: `Số dư ví không đủ (hiện có ${formatVnd(userWallet.balanceVnd)}).`,
@@ -862,7 +863,7 @@ export function App() {
         try {
           await refreshShop({ action: 'donate', amount: amountVnd, id: crypto.randomUUID() });
           const meritAwarded = calculateDonationMerit(amountVnd);
-          setMeritCount((count) => count + meritAwarded);
+          window.dispatchEvent(new Event(ALTAR_UPDATE_EVENT));
           playTempleBellSound();
           return { ok: true, meritAwarded };
         } catch (problem) {
@@ -959,21 +960,30 @@ export function App() {
     return () => window.clearInterval(timer);
   }, [session, room, donationCaseView?.status, applyLedgerFromCaseApi]);
 
-  const handleStealDonationBoxCase = useCallback(async () => {
-    if (!session || !room) return;
+  const stealHostedDonation = useCallback(async () => {
+    if (!session || !room) throw new Error('Chưa kết nối phòng.');
+    if (stealingDonation.current) throw new Error('Đang xử lý thao tác cướp.');
+    stealingDonation.current = true;
     try {
       const res = await stealDonationBoxCaseApi(room.code, session.sessionToken);
       setDonationCaseView(res.caseView);
       applyLedgerFromCaseApi(res.myLedger);
-      setRoomDonationBox(loadRoomDonationBoxState(room.code));
-      playChatNotificationSound();
-      showToast(
-        `🕵️ Bạn đã trộm thành công ${formatVnd(res.stolenAmountVnd || 0)} từ Hòm Công Đức! Hãy giữ bí mật nhé.`
-      );
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Không thể trộm hòm công đức lúc này.');
+      await refreshShop();
+      return res.stolenAmountVnd ?? 0;
+    } finally {
+      stealingDonation.current = false;
     }
-  }, [session, room, applyLedgerFromCaseApi, showToast]);
+  }, [session, room, applyLedgerFromCaseApi, refreshShop]);
+
+  const handleStealDonationBoxCase = useCallback(async () => {
+    try {
+      const amount = await stealHostedDonation();
+      playChatNotificationSound();
+      showToast(`Bạn đã lấy ${formatVnd(amount)} từ Hòm Công Đức.`);
+    } catch (problem) {
+      showToast(problem instanceof Error ? problem.message : 'Không thể trộm hòm công đức lúc này.');
+    }
+  }, [stealHostedDonation, showToast]);
 
   const handleReportDonationCasePolice = useCallback(async () => {
     if (!session || !room) return;
@@ -1014,16 +1024,12 @@ export function App() {
       if (!session || !room) {
         return { ok: false, error: 'Chưa kết nối phòng.' };
       }
-      if (roomDonationBox.totalVnd <= 0) {
+      if (isUsingStaticFallback() && roomDonationBox.totalVnd <= 0) {
         return { ok: false, error: 'Hòm công đức đang trống trơn!' };
       }
       if (!isUsingStaticFallback()) {
         try {
-          const outcome = await stealDonationBoxCaseApi(room.code, session.sessionToken);
-          setDonationCaseView(outcome.caseView);
-          applyLedgerFromCaseApi(outcome.myLedger);
-          const view = await refreshShop();
-          return { ok: true, robbedVnd: view ? Math.max(0, roomDonationBox.totalVnd - view.donationTotalVnd) : undefined };
+          return { ok: true, robbedVnd: await stealHostedDonation() };
         } catch (problem) {
           return { ok: false, error: problem instanceof Error ? problem.message : 'Chưa thể thực hiện.' };
         }
@@ -1078,7 +1084,7 @@ export function App() {
       showToast(`🥷 ${session.nickname} vừa cướp ${formatVnd(robAmount)} từ Hòm Công Đức!`);
       return { ok: true, robbedVnd: robAmount };
     },
-    [session, room, userWallet, roomDonationBox, showToast, refreshShop, applyLedgerFromCaseApi]
+    [session, room, userWallet, roomDonationBox, showToast, stealHostedDonation]
   );
 
   const triggerGlobalChatAlert = useCallback(
@@ -1783,7 +1789,7 @@ export function App() {
         ) {
           setActiveChallengeBanner(incoming.content);
         }
-      } else if (data.type === 'donation_box_sync' && data.donationBox) {
+      } else if (data.type === 'donation_box_sync' && data.donationBox && isUsingStaticFallback()) {
         const incomingBox = data.donationBox as RoomDonationBoxState;
         setRoomDonationBox((prev) => {
           const donMap = new Map(prev.donations.map((d) => [d.id, d]));
@@ -1806,6 +1812,7 @@ export function App() {
           return merged;
         });
       } else if (data.type === 'donation_case_sync') {
+        void refreshShop();
         fetchDonationCaseApi(room.code, session.sessionToken)
           .then((res) => {
             setDonationCaseView(res.caseView);
@@ -2983,7 +2990,7 @@ export function App() {
           setSelectedDeity(d);
           setActiveBlessing(null);
         }}
-        meritCount={altar?.merit ?? meritCount}
+        meritCount={altar?.merit ?? shopView?.altarMerit ?? meritCount}
         isBowing={isBowing}
         autoMo={autoMo}
         soundEnabled={soundEnabled}

@@ -4,11 +4,11 @@ import { BOXING } from '../src/utils/boxing';
 import { activeFighters, boxingView, createBoxingState, punch, recoverFish, updateFighter, type BoxingState } from './boxing';
 import { restoreShop, runShopCommand, type StoredShop } from './officeShop';
 import { SHOP_OFFERINGS, equippedItems, type RoomShopView, type ShopConsumable } from '../src/utils/officeShop';
-import { createDefaultWalletState, settlePastMonthsSalary } from '../src/utils/officeEconomyData';
+import { createDefaultWalletState, settlePastMonthsSalary, type DonationRecord, type RoomDonationBoxState } from '../src/utils/officeEconomyData';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { altarView, createAltarState, settleAltar, updateAltar, type RoomAltarState } from './zenAltar';
+import { adjustAltarMerit, altarView, createAltarState, settleAltar, updateAltar, type RoomAltarState } from './zenAltar';
 import { getNowInHoChiMinh, VN_TIMEZONE } from '../src/utils/dateVn';
 import { pushPublicKey, parseReminderDevice, sendReminder, type ReminderDevice } from './reminderPush';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -91,7 +91,7 @@ interface DatabaseSchema {
   messages: ChatMessage[];
   attendance: Record<string, AttendanceRecord>; // keyed by `${roomId}:${userId}:${date}`
   diaryEntries: StoredDiaryEntry[];
-  roomDonationBoxes?: Record<string, { totalVnd: number; updatedAt: number }>;
+  roomDonationBoxes?: Record<string, Omit<RoomDonationBoxState, 'donations'> & { donations?: DonationRecord[] }>;
   roomDonationCases?: Record<string, DonationCaseServerRecord>;
   roomEconomyLedgers?: Record<string, RoomEconomyLedger>;
   reminderDevices?: Record<string, ReminderDevice>;
@@ -249,11 +249,57 @@ function getRoomShop(room: RoomInfo, userId: string) {
   return { shops, stored: shops[userId], ledger: ensureUserLedger(roomLedger, userId) };
 }
 
-function serverDonationBox(room: RoomInfo) {
+function serverDonationBox(room: RoomInfo): RoomDonationBoxState {
   const boxes = db.roomDonationBoxes ??= {};
-  const archived = db.legacyRoomData?.[room.code] as { roomDonationBoxes?: Record<string, { totalVnd?: number }> } | undefined;
-  const total = archived?.roomDonationBoxes?.[room.code]?.totalVnd;
-  return boxes[room.code] ??= { totalVnd: Number.isSafeInteger(total) && total! >= 0 ? total! : 0, updatedAt: Date.now() };
+  const existing = boxes[room.code];
+  if (existing?.donations) return existing as RoomDonationBoxState;
+  const archived = db.legacyRoomData?.[room.code] as {
+    roomDonationBoxes?: Partial<RoomDonationBoxState> | Record<string, Partial<RoomDonationBoxState>>;
+    browserData?: Record<string, unknown>;
+  } | undefined;
+  const archivedBoxes = archived?.roomDonationBoxes;
+  const archivedBox = archivedBoxes && typeof archivedBoxes === 'object' && 'totalVnd' in archivedBoxes
+    ? archivedBoxes as Partial<RoomDonationBoxState>
+    : (archivedBoxes as Record<string, Partial<RoomDonationBoxState>> | undefined)?.[room.code];
+  let browserBox: Partial<RoomDonationBoxState> | undefined;
+  const raw = archived?.browserData?.['van_phong_ao_donation_box_v1:' + room.code];
+  if (typeof raw === 'string') {
+    try { browserBox = JSON.parse(raw) as Partial<RoomDonationBoxState>; } catch { /* Missing archived hòm data. */ }
+  }
+  const total = archivedBox?.totalVnd ?? browserBox?.totalVnd;
+  const box = boxes[room.code] ??= { totalVnd: Number.isSafeInteger(total) && total! >= 0 ? total! : 0, updatedAt: Date.now() };
+  box.donations ??= [archivedBox?.donations, browserBox?.donations].find(Array.isArray)
+    ?.filter((entry) => entry && entry.kind !== 'rob').slice(0, 50) ?? [];
+  return box as RoomDonationBoxState;
+}
+
+function changeRoomAltarMerit(roomId: string, userId: string, delta: number) {
+  if (delta) adjustAltarMerit((db.altars ??= {})[roomId] ??= createAltarState(), userId, delta);
+}
+
+function trackDonationCaseMerit(roomId: string, ledger: RoomEconomyLedger) {
+  const before = new Map<string, number>();
+  return {
+    getUserLedger: (userId: string) => {
+      const entry = ensureUserLedger(ledger, userId);
+      if (!before.has(userId)) {
+        entry.meritCount = db.altars?.[roomId]?.members[userId]?.merit ?? 0;
+        before.set(userId, entry.meritCount);
+      }
+      return entry;
+    },
+    apply: () => {
+      const updated: string[] = [];
+      for (const [userId, oldMerit] of before) {
+        const delta = ledger.users[userId].meritCount - oldMerit;
+        if (delta) {
+          changeRoomAltarMerit(roomId, userId, delta);
+          updated.push(userId);
+        }
+      }
+      return updated;
+    },
+  };
 }
 
 function roomShopView(room: RoomInfo, userId: string): RoomShopView {
@@ -265,8 +311,9 @@ function roomShopView(room: RoomInfo, userId: string): RoomShopView {
     const seat = db.seats.find((entry) => entry.roomId === room.id && entry.occupiedByUserId === member.userId);
     return (shops[member.userId]?.state.decorations ?? []).filter((placed) => !placed.seatId || placed.seatId === seat?.seatId);
   });
-  return { shop: stored.state, balanceVnd: ledger.balanceVnd, donationTotalVnd: serverDonationBox(room).totalVnd,
-    appearances, decorations };
+  const box = serverDonationBox(room);
+  return { shop: stored.state, balanceVnd: ledger.balanceVnd, donationTotalVnd: box.totalVnd,
+    donationBox: box, altarMerit: db.altars?.[room.id]?.members[userId]?.merit ?? 0, appearances, decorations };
 }
 
 function settleRoomAltar(roomId: string, altar: RoomAltarState, now: number) {
@@ -1028,9 +1075,17 @@ export async function handleApiRequest(
       stored.settledMonths = salary.wallet.settledMonths;
       ledger.balanceVnd += salary.addedVnd;
       const seat = db.seats.find((entry) => entry.roomId === room.id && entry.occupiedByUserId === account.userId);
-      const error = body ? runShopCommand(stored, ledger, body, seat?.seatId, serverDonationBox(room)) : undefined;
+      const box = serverDonationBox(room);
+      let donated = false;
+      const error = body ? runShopCommand(stored, ledger, body, seat?.seatId, box, (id, amountVnd, meritAwarded) => {
+        donated = true;
+        changeRoomAltarMerit(room.id, account.userId, meritAwarded);
+        box.donations = [{ id, amountVnd, meritAwarded, donorUserId: account.userId,
+          donorNickname: memberRecord.nickname, createdAt: Date.now(), kind: 'donate' as const }, ...box.donations].slice(0, 50);
+      }) : undefined;
       if (initial || (body && !error) || salary.addedVnd) saveDatabase(db, true);
       if (body && !error) broadcastToRoom(room.id, { type: 'shop_updated' });
+      if (donated) broadcastToRoom(room.id, { type: 'altar_updated' }, (client) => client.userId === account.userId);
       sendJson(res, error ? 409 : 200, error ? { message: error } : roomShopView(room, account.userId));
       return true;
     }
@@ -1736,17 +1791,20 @@ export async function handleApiRequest(
 
       const curCase = db.roomDonationCases[room.code];
       if (curCase) {
+        const trackedMerit = trackDonationCaseMerit(room.id, ledger);
         const changed = advanceDonationCaseByTime(curCase, Date.now(), {
           onPostNpcChat: postNpcChat,
           onAdjustDonationBox: (deltaVnd) => {
             box.totalVnd = Math.max(0, box.totalVnd + deltaVnd);
             box.updatedAt = Date.now();
           },
-          getUserLedger: (uid) => ensureUserLedger(ledger, uid),
+          getUserLedger: trackedMerit.getUserLedger,
         });
         if (changed) {
+          const updatedMerit = trackedMerit.apply();
           saveDatabase(db, true);
           broadcastToRoom(room.id, { type: 'donation_case_sync', caseId: curCase.id });
+          if (updatedMerit.length) broadcastToRoom(room.id, { type: 'altar_updated' }, (client) => updatedMerit.includes(client.userId));
         }
       }
 
@@ -1815,6 +1873,7 @@ export async function handleApiRequest(
         if (abbotMember) {
           const abbotEntry = ensureUserLedger(ledger, abbotMember.userId);
           abbotEntry.meritCount = Math.max(0, abbotEntry.meritCount - abbotPenalty);
+          changeRoomAltarMerit(room.id, abbotMember.userId, -abbotPenalty);
         }
 
         const newCase: DonationCaseServerRecord = {
@@ -1849,6 +1908,8 @@ export async function handleApiRequest(
           `🚨 [VỤ ÁN CÔNG ĐỨC] Hòm công đức vừa bị trộm! Đã mất ${stolenAmountVnd.toLocaleString('vi-VN')} xu Office.`
         );
         broadcastToRoom(room.id, { type: 'donation_case_sync', caseId: newCase.id });
+        broadcastToRoom(room.id, { type: 'shop_updated' });
+        if (abbotMember) broadcastToRoom(room.id, { type: 'altar_updated' }, (client) => client.userId === abbotMember.userId);
         sendJson(res, 200, {
           caseView: toPublicDonationCaseView(
             newCase,
@@ -2135,6 +2196,7 @@ function ensureServerCaseTicker() {
         }
         const box = db.roomDonationBoxes[roomCode];
         const ledger = db.roomEconomyLedgers[roomCode];
+        const trackedMerit = trackDonationCaseMerit(room.id, ledger);
         const changed = advanceDonationCaseByTime(curCase, Date.now(), {
           onPostNpcChat: (content) => {
             const npcMsg: ChatMessage = {
@@ -2156,9 +2218,10 @@ function ensureServerCaseTicker() {
             box.totalVnd = Math.max(0, box.totalVnd + deltaVnd);
             box.updatedAt = Date.now();
           },
-          getUserLedger: (uid) => ensureUserLedger(ledger, uid),
+          getUserLedger: trackedMerit.getUserLedger,
         });
         if (changed) {
+          trackedMerit.apply();
           anyChanged = true;
           broadcastToRoom(room.id, { type: 'donation_case_sync', caseId: curCase.id });
         }

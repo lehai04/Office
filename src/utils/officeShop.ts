@@ -1,3 +1,5 @@
+import type { RoomDonationBoxState } from './officeEconomyData';
+
 export const SHOP_CATEGORIES = {
   outfit: 'Trang phục',
   action: 'Hành động',
@@ -77,6 +79,8 @@ export interface RoomShopView {
   shop: OfficeShopState;
   balanceVnd: number;
   donationTotalVnd: number;
+  donationBox?: RoomDonationBoxState;
+  altarMerit?: number;
   appearances: Record<string, ShopOutfit>;
   decorations: OfficeDecoration[];
 }

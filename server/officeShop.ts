@@ -42,7 +42,7 @@ function deskPoint(position: unknown, seatId: string | undefined): ScenePoint | 
   return [x, desk.deskPosition[1] + 0.755, z];
 }
 
-export function runShopCommand(stored: StoredShop, wallet: UserEconomyLedgerEntry, body: Record<string, unknown>, seatId: string | undefined, box: { totalVnd: number; updatedAt: number }): string | undefined {
+export function runShopCommand(stored: StoredShop, wallet: UserEconomyLedgerEntry, body: Record<string, unknown>, seatId: string | undefined, box: { totalVnd: number; updatedAt: number }, onDonate?: (id: string, amount: number, merit: number) => void): string | undefined {
   const { id, action, item } = body;
   if (typeof id !== 'string' || !/^[\da-f-]{36}$/i.test(id)) return 'Mã giao dịch không hợp lệ.';
   const signature = JSON.stringify([action, item, body.decorationId, body.position, body.amount]);
@@ -58,7 +58,9 @@ export function runShopCommand(stored: StoredShop, wallet: UserEconomyLedgerEntr
     if (action === 'donate') {
       box.totalVnd += requested;
       box.updatedAt = Date.now();
-      wallet.meritCount += calculateDonationMerit(requested);
+      const merit = calculateDonationMerit(requested);
+      wallet.meritCount += merit;
+      onDonate?.(id, requested, merit);
     }
   } else if (action === 'remove') {
     const index = shop.decorations.findIndex((placed) => placed.id === body.decorationId);
