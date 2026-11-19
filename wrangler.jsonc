@@ -4,7 +4,8 @@
   "compatibility_date": "2026-11-17",
   "compatibility_flags": ["nodejs_compat"],
   "durable_objects": {
-    "bindings": [{ "name": "OFFICE_STATE", "class_name": "OfficeState" }]
+    "bindings": [{ "name": "OFFICE_STATE", "class_name": "OfficeState" }],
+    "code_update_strategy": { "mode": "immediate" }
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["OfficeState"] }],
   "vars": { "OFFICE_WEB_ORIGIN": "https://lehai04.github.io" },
