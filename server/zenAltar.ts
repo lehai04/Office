@@ -73,10 +73,13 @@ export function settleAltar(state: RoomAltarState, now: number, consume?: (userI
 
 export function updateAltar(
   state: RoomAltarState, member: AltarMember, body: Record<string, unknown>, now: number, item?: ShopConsumable,
+  managerUserId?: string | null,
 ): string | undefined {
   const owner = account(state, member.userId);
   if (body.action === 'clear') {
-    if (state.abbotUserId !== member.userId) return 'Chỉ Trụ trì có thể dọn mâm lễ.';
+    if (state.abbotUserId !== member.userId && managerUserId !== member.userId) {
+      return 'Chỉ Trụ trì hoặc Trưởng phòng có thể dọn mâm lễ.';
+    }
     state.trays = [];
     return;
   }
@@ -122,10 +125,10 @@ export function updateAltar(
     finishAt: startAt + altarRitualDuration(kind, Boolean(targetId)) });
 }
 
-export function altarView(state: RoomAltarState, userId: string, now: number): AltarView {
+export function altarView(state: RoomAltarState, userId: string, now: number, managerUserId?: string | null): AltarView {
   return {
     trays: state.trays, rituals: state.rituals, incenseUntil: state.incenseUntil,
     merit: state.members[userId]?.merit ?? 0, recentResults: state.members[userId]?.results.slice(-20) ?? [],
-    canClear: state.abbotUserId === userId, serverTime: now,
+    canClear: state.abbotUserId === userId || managerUserId === userId, serverTime: now,
   };
 }

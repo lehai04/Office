@@ -173,11 +173,11 @@ export function ZenAltarControls({ roomCode, token, userId, incense, offerings, 
         onChange={(event) => setOfferingChoice(event.target.value as ShopOffering)}>
         {offerings.map((item) => <option value={item} key={item}>{OFFICE_SHOP[item].name}</option>)}
       </select>}
-      {full && view?.canClear && <p role="status" className="mt-2 text-amber-300">Bàn thờ đã đủ 5 mâm lễ. Trụ trì có thể dọn mâm.</p>}
+      {full && view?.canClear && <p role="status" className="mt-2 text-amber-300">Bàn thờ đã đủ 5 mâm lễ. Bạn có thể dọn mâm.</p>}
       {chooseTray && full && (
         <div className="mt-2 space-y-2 border-t border-white/10 pt-2">
           <p>Bàn thờ đã đủ 5 mâm lễ.</p>
-          <button type="button" className={button} onClick={() => { setChooseTray(false); setSelectedId(null); }}>Chờ Trụ trì dọn</button>
+          <button type="button" className={button} onClick={() => { setChooseTray(false); setSelectedId(null); }}>Chờ Trụ trì hoặc Trưởng phòng dọn</button>
           {[...(view?.trays ?? [])].sort((a, b) => a.slot - b.slot).map((tray) => (
             <button key={tray.id} type="button" aria-pressed={tray.id === selectedId}
               disabled={tray.userId === userId || busy}

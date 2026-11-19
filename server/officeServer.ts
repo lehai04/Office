@@ -1375,7 +1375,7 @@ export async function handleApiRequest(
           error = 'Bạn không có vật phẩm này trong túi.';
         }
       }
-      if (body && !error) error = updateAltar(altar, memberRecord, body, now, item);
+      if (body && !error) error = updateAltar(altar, memberRecord, body, now, item, room.managerUserId);
       if (settled || (body && !error)) saveDatabase(db, true);
       const started = body?.action === 'start' && !error
         ? altar.rituals.find((ritual) => ritual.id === body.id && ritual.userId === account.userId) : undefined;
@@ -1391,7 +1391,7 @@ export async function handleApiRequest(
           if (db.altars?.[room.id] === altar && settleRoomAltar(room.id, altar, Date.now())) saveDatabase(db, true);
         }, Math.max(1, started.finishAt - Date.now() + 10)).unref();
       }
-      sendJson(res, error ? 409 : 200, { ...altarView(altar, account.userId, now), error });
+      sendJson(res, error ? 409 : 200, { ...altarView(altar, account.userId, now, room.managerUserId), error });
       return true;
     }
 
@@ -1614,6 +1614,7 @@ export async function handleApiRequest(
 
       room.managerUserId = targetMember.userId;
       saveDatabase(db, true);
+      broadcastToRoom(room.id, { type: 'altar_updated' });
 
       const roomState = buildRoomStatePayload(room);
       broadcastToRoom(room.id, {
