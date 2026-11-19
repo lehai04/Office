@@ -3035,7 +3035,11 @@ export const OfficeScene3D: React.FC<OfficeScene3DProps> = ({
             const dupCount =
               nicknameCounts.get(member.nickname.trim().toLowerCase()) ?? 1;
             return (
-              <group key={member.userId} position={inBoxingMap ? BOXING_MAP_OFFSET : undefined} scale={inBoxingMap ? BOXING_MAP.scale : 1}>
+              <group
+                key={`${member.userId}:${inBoxingMap ? 'boxing' : 'office'}`}
+                position={inBoxingMap ? BOXING_MAP_OFFSET : [0, 0, 0]}
+                scale={inBoxingMap ? BOXING_MAP.scale : 1}
+              >
               <LowPolyCharacter
                 boxingHit={hit} boxingPunch={strike}
                 onSelectCharacter={isMe ? onOpenActionWheel : undefined}
