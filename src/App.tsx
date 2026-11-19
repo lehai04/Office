@@ -2554,7 +2554,7 @@ export function App() {
         <OfficeActionWheel actions={ownedActions} onSelect={playOwnedAction} onClose={() => setActionWheelOpen(false)} />
       )}
       {shopOpen && (
-        <OfficeShopModal balance={shopView?.balanceVnd ?? 0} merit={shopView?.altarMerit ?? 0} shop={shop} connectionError={shopError}
+        <OfficeShopModal avatarGender={myMember?.avatarGender ?? session.avatarGender} balance={shopView?.balanceVnd ?? 0} merit={shopView?.altarMerit ?? 0} shop={shop} connectionError={shopError}
           onClose={() => setShopOpen(false)} onBuy={buyItem} onUse={useItem}
           onRemove={async (decorationId) => { await refreshShop({ action: 'remove', decorationId, id: crypto.randomUUID() }); }} />
       )}

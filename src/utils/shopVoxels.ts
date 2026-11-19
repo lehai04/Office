@@ -1,8 +1,42 @@
+import { AO_DAI, type AoDaiItem } from './aoDai';
 import type { ShopItem } from './officeShop';
 
 export type VoxelPart = readonly [x: number, y: number, z: number, w: number, h: number, d: number, color: string];
 
+function aoDaiThumbnail(item: AoDaiItem): VoxelPart[] {
+  const p = AO_DAI[item];
+  return [
+    [0, 1.02, 0, .52, .64, .30, p.cloth],
+    [0, 1.39, 0, .31, .09, .31, p.trim],
+    [0, .52, .18, .51, .70, .045, p.cloth],
+    [0, .52, -.18, .51, .70, .045, p.cloth],
+    [0, 1.67, 0, .43, .43, .43, '#fcd34d'],
+    [0, 1.91, -.015, .47, .13, .47, '#1f2937'],
+    ...[-1, 1].flatMap((side): VoxelPart[] => [
+      [side * .33, 1.02, 0, .14, .56, .14, p.cloth],
+      [side * .33, .76, 0, .15, .035, .15, p.trim],
+      [side * .33, .68, 0, .13, .12, .13, '#fcd34d'],
+      [side * .14, .42, 0, .18, .76, .18, p.trousers],
+      [side * .14, .06, .04, .19, .12, .29, p.shoes],
+      [side * .10, 1.69, .223, .033, .061, .012, '#15202b'],
+    ]),
+    ...(item === 'ao_dai_truc_vang' ? [
+      [.15, .42, .215, .021, .30, .02, p.trim],
+      [.20, .42, .215, .021, .25, .02, p.trim],
+      [.10, .51, .22, .12, .027, .02, p.trim],
+      [.10, .41, .22, .12, .027, .02, p.trim],
+    ] as VoxelPart[] : [
+      [.14, .35, .215, .015, .19, .02, p.trim],
+      [.14, .48, .22, .055, .13, .02, '#ffe0d6'],
+      [.08, .46, .22, .055, .08, .02, '#efb5b4'],
+      [.20, .46, .22, .055, .08, .02, '#efb5b4'],
+    ] as VoxelPart[]),
+  ];
+}
+
 export const EXTRA_VOXELS: Partial<Record<ShopItem, readonly VoxelPart[]>> = {
+  ao_dai_truc_vang: aoDaiThumbnail('ao_dai_truc_vang'),
+  ao_dai_sen_hong: aoDaiThumbnail('ao_dai_sen_hong'),
   pink_cat: [
     [-.48,.13,-.38,.25,.23,.23,'#e52f83'], [-.66,.28,-.38,.21,.44,.23,'#ff42a0'],
     [0,.32,-.06,.66,.64,.53,'#ff3896'],

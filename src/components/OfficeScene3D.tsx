@@ -1,3 +1,5 @@
+import { AO_DAI, isAoDai } from '../utils/aoDai';
+import { AoDaiGarment } from './AoDaiGarment';
 import { PixelMoodIcon } from './PixelMoodIcon';
 import { OFFICE_MOODS, type OfficeMood, type OfficePresence } from '../utils/officeSocial';
 import { BoxingImpact, BoxingRoom } from './BoxingRoom';
@@ -450,7 +452,7 @@ const RadiantHaloAura3D: React.FC = () => {
  * Mô hình nhân vật 3D Low-Poly nhẹ (Nam / Nữ)
  * Có tư thế ngồi/quỳ (isSeated=true), đứng (isSeated=false), và cúi lạy 3 lạy (isBowing=true)
  */
-const LowPolyCharacter: React.FC<{
+export const LowPolyCharacter: React.FC<{
   gender: AvatarGender;
   nickname: string;
   memberTag: string;
@@ -471,6 +473,7 @@ const LowPolyCharacter: React.FC<{
   onSelectCharacter?: () => void;
   presence?: OfficePresence;
   sleeping?: boolean;
+  hideLabel?: boolean;
 }> = ({
   gender,
   nickname,
@@ -492,6 +495,7 @@ const LowPolyCharacter: React.FC<{
   onSelectCharacter,
   presence,
   sleeping = false,
+  hideLabel = false,
 }) => {
   const upperBodyRef = useRef<THREE.Group>(null);
   const bowStartRef = useRef<number>(0);
@@ -591,12 +595,14 @@ const LowPolyCharacter: React.FC<{
   });
 
   const shirt = outfit?.shirt;
+  const aoDai = isAoDai(shirt) ? shirt : undefined;
+  const aoDaiPalette = aoDai ? AO_DAI[aoDai] : undefined;
   const animal = isAnimalCostume(shirt) ? shirt : undefined;
   const costume = animal ? COSPLAY_COLORS[animal] : undefined;
   const dress = shirt === 'princess_dress';
   const robe = shirt === 'monk_robe';
   const shirtColor =
-    costume?.suit ?? (dress ? '#dc4c91' : robe ? '#81502e' :
+    aoDaiPalette?.cloth ?? costume?.suit ?? (dress ? '#dc4c91' : robe ? '#81502e' :
     shirt === 'hoodie' ? '#668bea' : shirt === 'outfit' ? '#a855f7' : gender === 'male'
       ? isCurrentUser
         ? '#10b981'
@@ -604,7 +610,7 @@ const LowPolyCharacter: React.FC<{
       : isCurrentUser
         ? '#ec4899'
         : '#f43f5e');
-  const pantsColor = costume?.suit ?? (robe ? '#65432d' : gender === 'male' ? '#1e293b' : '#334155');
+  const pantsColor = aoDaiPalette?.trousers ?? costume?.suit ?? (robe ? '#65432d' : gender === 'male' ? '#1e293b' : '#334155');
   const hairColor = gender === 'male' ? '#1f2937' : '#451a03';
   const skinColor = '#fcd34d';
 
@@ -743,10 +749,15 @@ const LowPolyCharacter: React.FC<{
             </group>
           ))}
 
+          {aoDaiPalette && !sleeping && [-1, 1].map((side) => (
+            <AltarBlock key={side} at={[side * 0.11, 0.055, isSeated ? 0.33 : 0.03]}
+              size={[0.15, 0.10, 0.23]} color={aoDaiPalette.shoes} />
+          ))}
+
           {/* Phần thân trên & đầu (Có thể cúi lạy khi ở Phòng Tịnh Tâm) */}
           <group ref={sleeping ? undefined : upperBodyRef} position={[0, hipY, 0]}>
             {!sleeping && <>
-            {gender === 'male' || dress || robe || costume ? (
+            {gender === 'male' || dress || robe || costume || aoDai ? (
               <mesh position={[0, 0.36, 0]} castShadow>
                 <boxGeometry args={[0.42, 0.52, 0.24]} />
                 <meshStandardMaterial
@@ -779,6 +790,7 @@ const LowPolyCharacter: React.FC<{
               </group>
             )}
 
+            {aoDai && <AoDaiGarment item={aoDai} seated={isSeated} />}
             {dress && <>
               <mesh position={[0, -0.08, isSeated ? 0.08 : 0]} castShadow>
                 <cylinderGeometry args={[0.20, 0.43, isSeated ? 0.28 : 0.53, 10]} />
@@ -822,6 +834,10 @@ const LowPolyCharacter: React.FC<{
             >
               <boxGeometry args={[0.11, 0.42, 0.11]} />
               <meshStandardMaterial color={shirtColor} roughness={0.65} />
+              {aoDaiPalette && <>
+                <AltarBlock at={[0, -0.18, 0]} size={[0.116, 0.025, 0.116]} color={aoDaiPalette.trim} />
+                <AltarBlock at={[0, -0.235, 0]} size={[0.10, 0.075, 0.10]} color={skinColor} />
+              </>}
             </mesh>
             <mesh
               ref={rightArm}
@@ -831,6 +847,10 @@ const LowPolyCharacter: React.FC<{
             >
               <boxGeometry args={[0.11, 0.42, 0.11]} />
               <meshStandardMaterial color={shirtColor} roughness={0.65} />
+              {aoDaiPalette && <>
+                <AltarBlock at={[0, -0.18, 0]} size={[0.116, 0.025, 0.116]} color={aoDaiPalette.trim} />
+                <AltarBlock at={[0, -0.235, 0]} size={[0.10, 0.075, 0.10]} color={skinColor} />
+              </>}
             </mesh>
 
             </>}
@@ -924,7 +944,7 @@ const LowPolyCharacter: React.FC<{
 
       </group>
       {/* Nhãn Biệt danh & Bong bóng Chat */}
-      {!hideMeshInFpv && (
+      {!hideMeshInFpv && !hideLabel && (
         <Html
           position={sleeping ? [0, 0.76, -1.48] : [0, labelY + bodyOffsetY, 0]}
           center

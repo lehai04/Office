@@ -32,7 +32,7 @@
 .office-shop__title h2 { font-size: clamp(18px, 3vw, 25px); letter-spacing: -.035em; font-weight: 800; line-height: 1.12; }
 .office-shop__title p { color: var(--shop-muted); margin-top: 4px; font-size: 11px; }
 .office-shop__mark { display: grid; place-items: center; flex: 0 0 42px; height: 42px; border-radius: 14px; color: white; background: var(--shop-accent); }
-.office-shop__tabs { display: flex; gap: 7px; align-items: center; }
+.office-shop__tabs { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; }
 .office-shop__tabs button, .office-shop__close, .office-shop__detail-heading button {
   padding: 8px 10px; border: 1px solid var(--shop-line); border-radius: 9px; background: white; font-weight: 750;
 }
@@ -153,6 +153,12 @@
 .office-shop__motion--salute,
 .office-shop__motion--laugh { animation: shop-wave .55s ease-in-out 3; }
 .office-shop__motion--stretch { animation: shop-stretch 1.65s ease-in-out; }
+.office-shop__avatar { width: 100%; height: 230px; touch-action: none; }
+.office-shop__preview:has(.office-shop__avatar) { height: 285px; }
+@media (max-width: 767px) {
+  .office-shop__avatar { height: 185px; }
+  .office-shop__preview:has(.office-shop__avatar) { height: 230px; }
+}
 @keyframes shop-spin { to { transform: rotateY(360deg); } }
 @keyframes shop-lean { 50% { transform: rotate(22deg) translateY(7%); } }
 @keyframes shop-stretch { 50% { transform: scale(1.08, 1.18); } }

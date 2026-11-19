@@ -26,6 +26,8 @@ export const OFFICE_SHOP = {
   rabbit_cosplay: { name: 'Cosplay thỏ trắng', icon: '🐰', price: 220_000, kind: 'equip', category: 'outfit', description: 'Bộ đồ thỏ trắng có tai dài và đuôi tròn.' },
   panda_cosplay: { name: 'Cosplay gấu trúc', icon: '🐼', price: 220_000, kind: 'equip', category: 'outfit', description: 'Bộ đồ gấu trúc đen trắng với hai tai tròn.' },
   monk_robe: { name: 'Áo sư chùa', icon: '🟤', price: 180_000, kind: 'equip', category: 'outfit', description: 'Áo nâu dài với vạt chéo màu vàng đất.' },
+  ao_dai_truc_vang: { name: 'Áo dài Trúc Vàng', icon: '🎋', price: 30, currency: 'merit', kind: 'equip', category: 'outfit', description: 'Áo xanh ngọc đậm, cổ đứng viền vàng, tà xẻ hai bên và họa tiết trúc vàng. Quần kem, giày đen. Vừa cả avatar nam và nữ.' },
+  ao_dai_sen_hong: { name: 'Áo dài Sen Hồng', icon: '🪷', price: 30, currency: 'merit', kind: 'equip', category: 'outfit', description: 'Áo hồng sen trầm, cổ đứng, đường cài chéo viền kem và hoa sen khối. Quần kem, giày hồng. Vừa cả avatar nam và nữ.' },
   pixel_glasses: { name: 'Kính pixel', icon: '🕶️', price: 80_000, kind: 'equip', category: 'outfit', description: 'Kính đen góc vuông có điểm sáng kiểu pixel.' },
   wave: { name: 'Vẫy tay', icon: '👋', price: 70_000, kind: 'action', category: 'action', description: 'Vẫy tay chào đồng nghiệp.' },
   clap: { name: 'Vỗ tay', icon: '👏', price: 90_000, kind: 'action', category: 'action', description: 'Vỗ tay ăn mừng.' },
@@ -61,6 +63,7 @@ export const OUTFIT_SLOTS = {
   outfit: 'shirt', hoodie: 'shirt', glasses: 'eyes', cap: 'head',
   princess_dress: 'shirt', princess_tiara: 'head', cat_cosplay: 'shirt',
   rabbit_cosplay: 'shirt', panda_cosplay: 'shirt', monk_robe: 'shirt', pixel_glasses: 'eyes',
+  ao_dai_truc_vang: 'shirt', ao_dai_sen_hong: 'shirt',
 } as const satisfies Record<ShopEquipment, 'shirt' | 'eyes' | 'head'>;
 
 export const COSPLAY_COLORS = {
@@ -77,6 +80,11 @@ export const SHOP_OFFERINGS: readonly ShopOffering[] = ['offering', 'lotus', 'te
 
 export function isShopItem(value: unknown): value is ShopItem {
   return typeof value === 'string' && Object.hasOwn(OFFICE_SHOP, value);
+}
+
+export function usesMerit(item: ShopItem): boolean {
+  const product = OFFICE_SHOP[item];
+  return 'currency' in product && product.currency === 'merit';
 }
 
 export const equippedItems = (shop: OfficeShopState): ShopOutfit =>

@@ -1,11 +1,14 @@
+import { OutfitPreview } from './OutfitPreview';
+import type { AvatarGender } from '../types/office';
 import { useEffect, useId, useRef, useState } from 'react';
 import { formatVnd } from '../utils/officeEconomyData';
-import { OFFICE_SHOP, SHOP_CATEGORIES, equippedItems, type OfficeShopState, type ShopItem } from '../utils/officeShop';
+import { OFFICE_SHOP, SHOP_CATEGORIES, equippedItems, type OfficeShopState, usesMerit, type ShopEquipment, type ShopItem } from '../utils/officeShop';
 import { ShopVoxel } from './ShopVoxel';
 import './OfficeShopModal.css';
 
 interface Props {
   balance: number;
+  avatarGender?: AvatarGender;
   merit: number;
   connectionError?: string;
   shop: OfficeShopState;
@@ -29,10 +32,10 @@ function normalizeName(value: string): string {
 }
 
 function priceLabel(id: ShopItem) {
-  return id === 'pink_cat' ? `${OFFICE_SHOP[id].price} công đức` : formatVnd(OFFICE_SHOP[id].price);
+  return usesMerit(id) ? `${OFFICE_SHOP[id].price} công đức` : formatVnd(OFFICE_SHOP[id].price);
 }
 
-export function OfficeShopModal({ balance, merit, shop, connectionError, onClose, onBuy, onUse, onRemove }: Props) {
+export function OfficeShopModal({ balance, merit, avatarGender = 'male', shop, connectionError, onClose, onBuy, onUse, onRemove }: Props) {
   const title = useId();
   const dialog = useRef<HTMLDialogElement>(null);
   const list = useRef<HTMLDivElement>(null);
@@ -87,7 +90,7 @@ export function OfficeShopModal({ balance, merit, shop, connectionError, onClose
     normalizeName(OFFICE_SHOP[id].name).includes(normalizeName(query))
   );
   if (sort !== 'default') visible.sort((a, b) => {
-    const currencyOrder = Number(a === 'pink_cat') - Number(b === 'pink_cat');
+    const currencyOrder = Number(usesMerit(a)) - Number(usesMerit(b));
     return currencyOrder || (OFFICE_SHOP[a].price - OFFICE_SHOP[b].price) * (sort === 'low' ? 1 : -1);
   });
   const active = visible.includes(selected) ? selected : visible[0];
@@ -95,7 +98,7 @@ export function OfficeShopModal({ balance, merit, shop, connectionError, onClose
   const owned = active ? quantity(active) : 0;
   const placements = active ? placed(active) : [];
   const permanent = selectedItem?.kind === 'equip' || selectedItem?.kind === 'action';
-  const funds = active === 'pink_cat' ? merit : balance;
+  const funds = active && usesMerit(active) ? merit : balance;
   const canBuy = Boolean(selectedItem && funds >= selectedItem.price && !(permanent && owned));
   const equipped = Object.values(equippedItems(shop));
   const status = (id: ShopItem) => {
@@ -162,6 +165,7 @@ export function OfficeShopModal({ balance, merit, shop, connectionError, onClose
         </div>
         <nav aria-label="Khu vực cửa hàng" className="office-shop__tabs">
           <strong className="office-shop__balance" aria-label={`Số dư ${formatVnd(balance)}`}>{formatVnd(balance)}</strong>
+          <strong className="office-shop__balance">{merit.toLocaleString('vi-VN')} công đức</strong>
           <button type="button" aria-pressed={tab === 'store'} onClick={() => changeTab('store')}>Cửa hàng</button>
           <button type="button" aria-pressed={tab === 'bag'} onClick={() => changeTab('bag')}>Túi đồ {items.filter((id) => quantity(id) || placed(id).length).length}</button>
         </nav>
@@ -220,13 +224,15 @@ export function OfficeShopModal({ balance, merit, shop, connectionError, onClose
             </div>
             <div className="office-shop__preview" style={{ backgroundColor: itemColors[active] ?? '#eee4ff' }}>
               <div className={previewing ? `office-shop__motion office-shop__motion--${active}` : undefined}>
-                <ShopVoxel item={active} />
+                {selectedItem.kind === 'equip'
+                  ? <OutfitPreview key={active} item={active as ShopEquipment} gender={avatarGender} outfit={equippedItems(shop)} />
+                  : <ShopVoxel item={active} />}
               </div>
             </div>
             <h4>{selectedItem.name}</h4>
             <p>{selectedItem.description}</p>
             <div className="office-shop__detail-meta"><strong>{priceLabel(active)}</strong><span>{status(active)}</span></div>
-            {active === 'pink_cat' && <small>Bạn có {merit.toLocaleString('vi-VN')} công đức</small>}
+            {usesMerit(active) && <small>Bạn có {merit.toLocaleString('vi-VN')} công đức</small>}
             <p>Trong túi: {owned}</p>
             {tab === 'store' && (!(permanent && owned > 0) || buyIntent?.item === active) && (
               buyIntent?.item === active ? <>
@@ -238,7 +244,7 @@ export function OfficeShopModal({ balance, merit, shop, connectionError, onClose
               </> : <button className="office-shop__primary" type="button" disabled={!canBuy || pending}
                 onClick={() => setBuyIntent({ item: active, id: crypto.randomUUID() })}>Mua · {priceLabel(active)}</button>
             )}
-            {tab === 'store' && funds < selectedItem.price && !(permanent && owned > 0) && <p role="status">{active === 'pink_cat' ? 'Không đủ công đức.' : 'Không đủ số dư.'}</p>}
+            {tab === 'store' && funds < selectedItem.price && !(permanent && owned > 0) && <p role="status">{usesMerit(active) ? 'Không đủ công đức.' : 'Không đủ số dư.'}</p>}
             {selectedItem.kind === 'action' && <button type="button" className="office-shop__secondary" onClick={preview}>Thử hiệu ứng</button>}
             {!!owned && (tab === 'bag' || selectedItem.kind !== 'equip') && (
               <button type="button" className={tab === 'bag' ? 'office-shop__primary' : 'office-shop__secondary'} disabled={pending}
