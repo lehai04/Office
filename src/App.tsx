@@ -2555,6 +2555,7 @@ export function App() {
       )}
       {shopOpen && (
         <OfficeShopModal avatarGender={myMember?.avatarGender ?? session.avatarGender} balance={shopView?.balanceVnd ?? 0} merit={shopView?.altarMerit ?? 0} shop={shop} connectionError={shopError}
+          onCustomize={async (item, colors, id) => { await refreshShop({ action: 'customize', item, colors, id }); }}
           onClose={() => setShopOpen(false)} onBuy={buyItem} onUse={useItem}
           onRemove={async (decorationId) => { await refreshShop({ action: 'remove', decorationId, id: crypto.randomUUID() }); }} />
       )}

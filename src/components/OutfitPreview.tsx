@@ -3,7 +3,7 @@ import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import { LowPolyCharacter } from './OfficeScene3D';
 import type { AvatarGender } from '../types/office';
-import { OUTFIT_SLOTS, type OfficeAction, type ShopEquipment, type ShopOutfit } from '../utils/officeShop';
+import { OUTFIT_SLOTS, type OfficeAction, type ShopEquipment, type ShopAppearance } from '../utils/officeShop';
 
 const poses = {
   standing: 'Đứng', seated: 'Ngồi', wave: 'Vẫy tay', dance: 'Nhảy múa',
@@ -11,7 +11,7 @@ const poses = {
 } as const;
 
 export function OutfitPreview({ item, gender, outfit }: {
-  item: ShopEquipment; gender: AvatarGender; outfit: ShopOutfit;
+  item: ShopEquipment; gender: AvatarGender; outfit: ShopAppearance;
 }) {
   const [pose, setPose] = useState<keyof typeof poses>('standing');
   const actionEvent = useMemo(() => pose === 'standing' || pose === 'seated' ? undefined : {

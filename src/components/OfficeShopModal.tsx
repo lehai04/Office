@@ -2,7 +2,8 @@ import { OutfitPreview } from './OutfitPreview';
 import type { AvatarGender } from '../types/office';
 import { useEffect, useId, useRef, useState } from 'react';
 import { formatVnd } from '../utils/officeEconomyData';
-import { OFFICE_SHOP, SHOP_CATEGORIES, equippedItems, type OfficeShopState, usesMerit, type ShopEquipment, type ShopItem } from '../utils/officeShop';
+import { OFFICE_SHOP, SHOP_CATEGORIES, equippedAppearance, equippedItems, type OfficeShopState, usesMerit, type ShopEquipment, type ShopItem } from '../utils/officeShop';
+import { AO_DAI, AO_DAI_COLOR_LABELS, aoDaiPalette, isAoDai, type AoDaiItem, type AoDaiPalette } from '../utils/aoDai';
 import { ShopVoxel } from './ShopVoxel';
 import './OfficeShopModal.css';
 
@@ -15,6 +16,7 @@ interface Props {
   onClose: () => void;
   onBuy: (item: ShopItem, requestId: string) => void | Promise<void>;
   onUse: (item: ShopItem) => void | Promise<void>;
+  onCustomize: (item: AoDaiItem, colors: AoDaiPalette, requestId: string) => Promise<void>;
   onRemove: (id: string) => void | Promise<void>;
 }
 
@@ -35,7 +37,7 @@ function priceLabel(id: ShopItem) {
   return usesMerit(id) ? `${OFFICE_SHOP[id].price} công đức` : formatVnd(OFFICE_SHOP[id].price);
 }
 
-export function OfficeShopModal({ balance, merit, avatarGender = 'male', shop, connectionError, onClose, onBuy, onUse, onRemove }: Props) {
+export function OfficeShopModal({ balance, merit, avatarGender = 'male', shop, connectionError, onClose, onBuy, onUse, onCustomize, onRemove }: Props) {
   const title = useId();
   const dialog = useRef<HTMLDialogElement>(null);
   const list = useRef<HTMLDivElement>(null);
@@ -53,6 +55,8 @@ export function OfficeShopModal({ balance, merit, avatarGender = 'male', shop, c
   const [buyIntent, setBuyIntent] = useState<{ item: ShopItem; id: string } | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
+  const [colorDraft, setColorDraft] = useState<{ item: AoDaiItem; colors: AoDaiPalette } | null>(null);
+  const [colorSaved, setColorSaved] = useState(false);
 
   useEffect(() => {
     const element = dialog.current;
@@ -95,6 +99,14 @@ export function OfficeShopModal({ balance, merit, avatarGender = 'male', shop, c
   });
   const active = visible.includes(selected) ? selected : visible[0];
   const selectedItem = active ? OFFICE_SHOP[active] : undefined;
+  const coloredItem = isAoDai(active) ? active : undefined;
+  const draftColors = coloredItem
+    ? colorDraft?.item === coloredItem ? colorDraft.colors : aoDaiPalette(coloredItem, shop.aoDaiColors)
+    : undefined;
+  const previewAppearance = equippedAppearance(shop);
+  if (coloredItem && draftColors) {
+    previewAppearance.aoDaiColors = { ...shop.aoDaiColors, [coloredItem]: draftColors };
+  }
   const owned = active ? quantity(active) : 0;
   const placements = active ? placed(active) : [];
   const permanent = selectedItem?.kind === 'equip' || selectedItem?.kind === 'action';
@@ -114,17 +126,23 @@ export function OfficeShopModal({ balance, merit, avatarGender = 'male', shop, c
   };
 
   const openItem = (id: ShopItem, button: HTMLButtonElement) => {
+    if (operation.current) return;
     window.clearTimeout(previewTimer.current);
     setPreviewing(false);
     setError('');
     setSelected(id);
+    setColorDraft(null);
+    setColorSaved(false);
     setBuyIntent(null);
     trigger.current = button;
     if (window.matchMedia('(max-width: 767px)').matches) setSheet(true);
   };
 
   const changeTab = (next: 'store' | 'bag') => {
+    if (operation.current) return;
     setTab(next);
+    setColorDraft(null);
+    setColorSaved(false);
     setBuyIntent(null);
     setCategory('all');
     setQuery('');
@@ -205,7 +223,7 @@ export function OfficeShopModal({ balance, merit, avatarGender = 'male', shop, c
                 return <li key={id}>
                   <button type="button" className="office-shop__card" aria-pressed={active === id}
                     onClick={(event) => openItem(id, event.currentTarget)}>
-                    <span className="office-shop__art" style={{ backgroundColor: itemColors[id] ?? '#eee4ff' }}><ShopVoxel item={id} /></span>
+                    <span className="office-shop__art" style={{ backgroundColor: itemColors[id] ?? '#eee4ff' }}><ShopVoxel item={id} colors={shop.aoDaiColors} /></span>
                     <strong>{item.name}</strong>
                     <small>{SHOP_CATEGORIES[item.category]}</small>
                     <span className="office-shop__card-footer"><b>{priceLabel(id)}</b><small>{status(id)}</small></span>
@@ -225,7 +243,7 @@ export function OfficeShopModal({ balance, merit, avatarGender = 'male', shop, c
             <div className="office-shop__preview" style={{ backgroundColor: itemColors[active] ?? '#eee4ff' }}>
               <div className={previewing ? `office-shop__motion office-shop__motion--${active}` : undefined}>
                 {selectedItem.kind === 'equip'
-                  ? <OutfitPreview key={active} item={active as ShopEquipment} gender={avatarGender} outfit={equippedItems(shop)} />
+                  ? <OutfitPreview key={active} item={active as ShopEquipment} gender={avatarGender} outfit={previewAppearance} />
                   : <ShopVoxel item={active} />}
               </div>
             </div>
@@ -234,6 +252,32 @@ export function OfficeShopModal({ balance, merit, avatarGender = 'male', shop, c
             <div className="office-shop__detail-meta"><strong>{priceLabel(active)}</strong><span>{status(active)}</span></div>
             {usesMerit(active) && <small>Bạn có {merit.toLocaleString('vi-VN')} công đức</small>}
             <p>Trong túi: {owned}</p>
+            {tab === 'bag' && owned > 0 && coloredItem && draftColors && (
+              <fieldset className="office-shop__colors" disabled={pending}>
+                <legend>Chỉnh màu áo dài</legend>
+                {(Object.keys(AO_DAI_COLOR_LABELS) as Array<keyof AoDaiPalette>).map((part) => (
+                  <label key={part}>
+                    <span>{AO_DAI_COLOR_LABELS[part]}</span>
+                    <input type="color" aria-label={AO_DAI_COLOR_LABELS[part]} value={draftColors[part]}
+                      onChange={(event) => {
+                        setColorSaved(false);
+                        setColorDraft({ item: coloredItem, colors: { ...draftColors, [part]: event.target.value } });
+                      }} />
+                  </label>
+                ))}
+                <small>Đổi màu miễn phí. Màu được lưu riêng cho từng bộ.</small>
+                <button type="button" className="office-shop__secondary" onClick={() => {
+                  setColorDraft({ item: coloredItem, colors: { ...AO_DAI[coloredItem] } });
+                  setColorSaved(false);
+                }}>Chọn màu gốc</button>
+                <button type="button" className="office-shop__primary" onClick={() => void run(async () => {
+                  await onCustomize(coloredItem, draftColors, crypto.randomUUID());
+                  setColorDraft(null);
+                  setColorSaved(true);
+                })}>{pending ? 'Đang lưu…' : 'Lưu màu'}</button>
+                {colorSaved && <p role="status">Đã lưu màu áo dài.</p>}
+              </fieldset>
+            )}
             {tab === 'store' && (!(permanent && owned > 0) || buyIntent?.item === active) && (
               buyIntent?.item === active ? <>
                 <button className="office-shop__primary" type="button" disabled={!canBuy || pending}

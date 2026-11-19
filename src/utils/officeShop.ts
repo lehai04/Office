@@ -1,4 +1,5 @@
 import type { RoomDonationBoxState } from './officeEconomyData';
+import type { AoDaiColors, AoDaiItem, AoDaiPalette } from './aoDai';
 
 export const SHOP_CATEGORIES = {
   outfit: 'Trang phục',
@@ -76,6 +77,7 @@ export function isAnimalCostume(item: ShopEquipment | undefined): item is keyof 
   return item !== undefined && Object.hasOwn(COSPLAY_COLORS, item);
 }
 export type ShopOutfit = Partial<Record<typeof OUTFIT_SLOTS[ShopEquipment], ShopEquipment>>;
+export type ShopAppearance = ShopOutfit & { aoDaiColors?: AoDaiColors };
 export const SHOP_OFFERINGS: readonly ShopOffering[] = ['offering', 'lotus', 'tea', 'cake'];
 
 export function isShopItem(value: unknown): value is ShopItem {
@@ -89,6 +91,9 @@ export function usesMerit(item: ShopItem): boolean {
 
 export const equippedItems = (shop: OfficeShopState): ShopOutfit =>
   shop.equipped ?? (shop.outfit ? { shirt: shop.outfit } : {});
+
+export const equippedAppearance = (shop: OfficeShopState): ShopAppearance =>
+  ({ ...equippedItems(shop), aoDaiColors: shop.aoDaiColors });
 
 export type ScenePoint = [number, number, number];
 
@@ -105,12 +110,14 @@ export interface OfficeShopState {
   decorations: OfficeDecoration[];
   outfit?: 'outfit';
   equipped?: ShopOutfit;
+  aoDaiColors?: AoDaiColors;
   sleepingBedId?: string;
 }
 
 export const EMPTY_OFFICE_SHOP: OfficeShopState = { inventory: {}, decorations: [] };
 
 export type ShopCommand =
+  | { action: 'customize'; item: AoDaiItem; colors: AoDaiPalette; id: string }
   | { action: 'buy' | 'equip'; item: ShopItem; id: string }
   | { action: 'place'; item: ShopItem; position: ScenePoint; id: string }
   | { action: 'spend' | 'donate'; amount: number; id: string }
@@ -122,7 +129,7 @@ export interface RoomShopView {
   donationTotalVnd: number;
   donationBox?: RoomDonationBoxState;
   altarMerit?: number;
-  appearances: Record<string, ShopOutfit>;
+  appearances: Record<string, ShopAppearance>;
   decorations: OfficeDecoration[];
   sleeping?: Record<string, ScenePoint>;
 }

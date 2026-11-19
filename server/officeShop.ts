@@ -5,6 +5,7 @@ import {
   type DecorationItem, type OfficeDecoration, type OfficeShopState, type ShopEquipment, type ShopCommand, type ScenePoint,
 } from '../src/utils/officeShop';
 import type { UserEconomyLedgerEntry } from '../src/utils/donationCaseEngine';
+import { AO_DAI, isAoDai, parseAoDaiPalette, type AoDaiItem } from '../src/utils/aoDai';
 
 export interface StoredShop {
   state: OfficeShopState;
@@ -33,8 +34,13 @@ export function restoreShop(raw: unknown): { shop: StoredShop; balance?: number 
       }
     }
   }
+  const aoDaiColors: OfficeShopState['aoDaiColors'] = {};
+  for (const item of Object.keys(AO_DAI) as AoDaiItem[]) {
+    const colors = parseAoDaiPalette(wallet.shop?.aoDaiColors?.[item]);
+    if (inventory[item] && colors) aoDaiColors[item] = colors;
+  }
   return {
-    shop: { state: { inventory, decorations, outfit, equipped }, receipts: {},
+    shop: { state: { inventory, decorations, outfit, equipped, aoDaiColors }, receipts: {},
       settledMonths: Array.isArray(wallet.settledMonths) ? wallet.settledMonths.filter((month) => /^\d{4}-\d{2}$/.test(month)) : [] },
     balance: Number.isSafeInteger(wallet.balanceVnd) && wallet.balanceVnd! >= 0 ? wallet.balanceVnd : undefined,
   };
@@ -77,7 +83,9 @@ interface RoomShopContext {
 export function runShopCommand(stored: StoredShop, wallet: UserEconomyLedgerEntry, body: Record<string, unknown>, seatId: string | undefined, box: { totalVnd: number; updatedAt: number }, onDonate?: (id: string, amount: number, merit: number) => void, room?: RoomShopContext): string | undefined {
   const { id, action, item } = body;
   if (typeof id !== 'string' || !/^[\da-f-]{36}$/i.test(id)) return 'Mã giao dịch không hợp lệ.';
-  const signature = JSON.stringify([action, item, body.decorationId, body.position, body.amount]);
+  const signature = JSON.stringify(action === 'customize'
+    ? [action, item, body.colors]
+    : [action, item, body.decorationId, body.position, body.amount]);
   if (Object.hasOwn(stored.receipts, id)) {
     return stored.receipts[id] === signature ? undefined : 'Mã giao dịch đã được dùng.';
   }
@@ -109,6 +117,13 @@ export function runShopCommand(stored: StoredShop, wallet: UserEconomyLedgerEntr
     const product = OFFICE_SHOP[item];
     const count = shop.inventory[item] ?? 0;
     switch (action as ShopCommand['action']) {
+      case 'customize': {
+        if (!isAoDai(item) || !count) return 'Bạn cần sở hữu bộ áo dài này trước khi đổi màu.';
+        const colors = parseAoDaiPalette(body.colors);
+        if (!colors) return 'Màu không hợp lệ. Vui lòng chọn màu theo định dạng #RRGGBB.';
+        shop.aoDaiColors = { ...shop.aoDaiColors, [item]: colors };
+        break;
+      }
       case 'buy':
         if (item === 'bed') return 'Giường ngủ đã có sẵn trong túi đồ.';
         if ((product.kind === 'equip' || product.kind === 'action') && count) return 'Bạn đã sở hữu vật phẩm này.';

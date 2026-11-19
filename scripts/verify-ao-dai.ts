@@ -4,6 +4,7 @@ import { createServer } from 'node:http';
 import { configureOfficeStorage, handleApiRequest } from '../server/officeServer';
 import { restoreShop } from '../server/officeShop';
 import { OFFICE_SHOP, OUTFIT_SLOTS } from '../src/utils/officeShop';
+import { AO_DAI, type AoDaiPalette } from '../src/utils/aoDai';
 
 // Isolated storage exercises the same request handler and snapshot format as the Worker.
 let snapshot = JSON.stringify({
@@ -58,6 +59,15 @@ try {
     const poor = (await call(shopPath, b.sessionToken)).data;
     assert.equal(poor.altarMerit, 0);
     assert.equal(poor.shop.inventory[item], undefined);
+    const customColors: AoDaiPalette = {
+      cloth: item === 'ao_dai_truc_vang' ? '#173fca' : '#8350bc',
+      trim: '#fefefe', trousers: '#414141', shoes: '#050505',
+    };
+    const deniedColor = await call(shopPath, b.sessionToken, {
+      action: 'customize', item, colors: customColors, id: randomUUID(),
+    });
+    assert.equal(deniedColor.status, 409);
+    assert.equal((await call(shopPath, b.sessionToken)).data.shop.aoDaiColors?.[item], undefined);
 
     const donation = await call(shopPath, a.sessionToken, { action: 'donate', amount: 1_000_000, id: randomUUID() });
     assert.equal(donation.status, 200);
@@ -76,6 +86,22 @@ try {
     assert.equal(view.altarMerit, before.altarMerit - OFFICE_SHOP[item].price);
     assert.equal(view.balanceVnd, before.balanceVnd);
     assert.equal(view.shop.inventory[item], 1);
+    const beforeColor = view;
+    const customization = { action: 'customize', item, colors: customColors, id: randomUUID() };
+    for (let retry = 0; retry < 2; retry++) {
+      const customized = await call(shopPath, a.sessionToken, customization);
+      assert.equal(customized.status, 200);
+      assert.deepEqual(customized.data.shop.aoDaiColors[item], customColors);
+      assert.equal(customized.data.altarMerit, beforeColor.altarMerit);
+      assert.equal(customized.data.balanceVnd, beforeColor.balanceVnd);
+    }
+    const reusedId = await call(shopPath, a.sessionToken, { ...customization, colors: AO_DAI[item] });
+    assert.equal(reusedId.status, 409);
+    const invalidColor = await call(shopPath, a.sessionToken, {
+      ...customization, id: randomUUID(), colors: { ...customColors, cloth: 'red;invalid' },
+    });
+    assert.equal(invalidColor.status, 409);
+    assert.deepEqual((await call(shopPath, a.sessionToken)).data.shop.aoDaiColors[item], customColors);
     const duplicate = await call(shopPath, a.sessionToken, command('buy', item));
     assert.equal(duplicate.status, 409);
     assert.equal((await call(shopPath, a.sessionToken)).data.altarMerit, view.altarMerit);
@@ -84,6 +110,7 @@ try {
     assert.equal(equip.data.shop.equipped.shirt, item);
     const observer = (await call(shopPath, b.sessionToken)).data;
     assert.equal(observer.appearances[a.userId].shirt, item);
+    assert.deepEqual(observer.appearances[a.userId].aoDaiColors[item], customColors);
     assert.ok(events.some((event) => event.type === 'shop_updated'));
 
     // Reload the persisted server state, then replay the purchase receipt.
@@ -91,12 +118,20 @@ try {
     view = (await call(shopPath, a.sessionToken)).data;
     assert.equal(view.shop.inventory[item], 1);
     assert.equal(view.shop.equipped.shirt, item);
+    assert.deepEqual(view.shop.aoDaiColors[item], customColors);
     assert.equal((await call(shopPath, a.sessionToken, successfulPurchase)).data.altarMerit, view.altarMerit);
     const restored = restoreShop({ shop: view.shop }).shop.state;
     assert.equal(restored.equipped?.shirt, item);
+    assert.deepEqual(restored.aoDaiColors?.[item], customColors);
     const remove = await call(shopPath, a.sessionToken, command('equip', item));
     assert.equal(remove.status, 200);
     assert.equal(remove.data.shop.equipped.shirt, undefined);
+    const resetColor = await call(shopPath, a.sessionToken, {
+      action: 'customize', item, colors: AO_DAI[item], id: randomUUID(),
+    });
+    assert.equal(resetColor.status, 200);
+    assert.deepEqual(resetColor.data.shop.aoDaiColors[item], AO_DAI[item]);
+    assert.equal(resetColor.data.altarMerit, beforeColor.altarMerit);
   }
   const final = (await call(shopPath, a.sessionToken)).data;
   assert.equal(final.balanceVnd, initial.balanceVnd - 2_000_000);
@@ -115,7 +150,15 @@ try {
   assert.equal(persistedB.shop.equipped.shirt, 'ao_dai_sen_hong');
   assert.equal(persistedB.shop.inventory.ao_dai_truc_vang, 1);
   assert.equal(persistedB.shop.inventory.ao_dai_sen_hong, 1);
-  console.log('Áo dài API checks passed: merit, insufficient funds, duplicate/retried purchases, equip, observer sync, snapshot reload and restoration.');
+  const blue = { cloth: '#0033cc', trim: '#eeeeee', trousers: '#bbbbbb', shoes: '#111111' };
+  const purple = { ...blue, cloth: '#7700aa' };
+  await call(shopPath, a.sessionToken, { action: 'customize', item: 'ao_dai_truc_vang', colors: blue, id: randomUUID() });
+  await call(shopPath, a.sessionToken, { action: 'customize', item: 'ao_dai_sen_hong', colors: purple, id: randomUUID() });
+  configureOfficeStorage(storage, snapshot);
+  const separateColors = (await call(shopPath, a.sessionToken)).data.shop.aoDaiColors;
+  assert.deepEqual(separateColors.ao_dai_truc_vang, blue);
+  assert.deepEqual(separateColors.ao_dai_sen_hong, purple);
+  console.log('Áo dài API passed: buying, equipping, free colors, ownership validation, separate palettes, reset, observer sync and snapshot reload.');
 } finally {
   await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
 }

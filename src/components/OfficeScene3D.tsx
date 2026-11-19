@@ -1,4 +1,4 @@
-import { AO_DAI, isAoDai } from '../utils/aoDai';
+import { aoDaiPalette as resolveAoDaiPalette, isAoDai } from '../utils/aoDai';
 import { AoDaiGarment } from './AoDaiGarment';
 import { PixelMoodIcon } from './PixelMoodIcon';
 import { OFFICE_MOODS, type OfficeMood, type OfficePresence } from '../utils/officeSocial';
@@ -11,7 +11,7 @@ import { uniqueStaticRoomMembers } from '../utils/roomMemberDisplay';
 import { ALTAR_BOW_MS, ALTAR_KICK_MS, ALTAR_PLACE_MS, ALTAR_WALK_MS, type AltarRitual, type AltarView } from '../utils/zenAltar';
 import {
   COSPLAY_COLORS, isAnimalCostume, OFFICE_ACTION_DURATION_MS,
-  type OfficeActionEvent, type OfficeDecoration, type ScenePoint, type ShopOutfit, type ShopOffering, type ShopItem,
+  type OfficeActionEvent, type OfficeDecoration, type ScenePoint, type ShopAppearance, type ShopOffering, type ShopItem,
 } from '../utils/officeShop';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Html, OrbitControls, ContactShadows } from '@react-three/drei';
@@ -58,7 +58,7 @@ interface OfficeScene3DProps {
   decorations: OfficeDecoration[];
   sleeping: Record<string, ScenePoint>;
   onUseBed: (id: string) => void;
-  appearances: Record<string, ShopOutfit>;
+  appearances: Record<string, ShopAppearance>;
   actions: Record<string, OfficeActionEvent>;
   onOpenActionWheel?: () => void;
   altar: AltarView | null;
@@ -465,7 +465,7 @@ export const LowPolyCharacter: React.FC<{
   position: [number, number, number];
   rotationY: number;
   bubbleText?: string;
-  outfit?: ShopOutfit;
+  outfit?: ShopAppearance;
   actionEvent?: OfficeActionEvent;
   duplicateNicknameCount: number;
   boxingHit?: BoxingHit;
@@ -596,7 +596,7 @@ export const LowPolyCharacter: React.FC<{
 
   const shirt = outfit?.shirt;
   const aoDai = isAoDai(shirt) ? shirt : undefined;
-  const aoDaiPalette = aoDai ? AO_DAI[aoDai] : undefined;
+  const aoDaiPalette = aoDai ? resolveAoDaiPalette(aoDai, outfit?.aoDaiColors) : undefined;
   const animal = isAnimalCostume(shirt) ? shirt : undefined;
   const costume = animal ? COSPLAY_COLORS[animal] : undefined;
   const dress = shirt === 'princess_dress';
@@ -790,7 +790,7 @@ export const LowPolyCharacter: React.FC<{
               </group>
             )}
 
-            {aoDai && <AoDaiGarment item={aoDai} seated={isSeated} />}
+            {aoDai && <AoDaiGarment item={aoDai} seated={isSeated} colors={outfit?.aoDaiColors} />}
             {dress && <>
               <mesh position={[0, -0.08, isSeated ? 0.08 : 0]} castShadow>
                 <cylinderGeometry args={[0.20, 0.43, isSeated ? 0.28 : 0.53, 10]} />
@@ -1110,7 +1110,7 @@ function PlacedTray({ slot, item, replacing }: { slot: number; item?: ShopOfferi
 function RitualCharacter({ ritual, origin, outfit, presence }: {
   ritual: AltarRitual;
   origin: ScenePoint;
-  outfit?: ShopOutfit;
+  outfit?: ShopAppearance;
   presence?: OfficePresence;
 }) {
   const actor = useRef<THREE.Group>(null);

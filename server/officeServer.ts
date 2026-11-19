@@ -5,7 +5,7 @@ import { isOfficeAction, type OfficeActionEvent } from '../src/utils/officeShop'
 import { BOXING } from '../src/utils/boxing';
 import { activeFighters, boxingView, createBoxingState, punch, recoverFish, updateFighter, type BoxingState } from './boxing';
 import { restoreShop, runShopCommand, type StoredShop } from './officeShop';
-import { OFFICE_SHOP, SHOP_OFFERINGS, equippedItems, type RoomShopView, type ShopConsumable } from '../src/utils/officeShop';
+import { OFFICE_SHOP, SHOP_OFFERINGS, equippedAppearance, type RoomShopView, type ShopConsumable } from '../src/utils/officeShop';
 import { calculateDonationMerit, createDefaultWalletState, settlePastMonthsSalary, type DonationRecord, type RoomDonationBoxState } from '../src/utils/officeEconomyData';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -370,7 +370,7 @@ function roomShopView(room: RoomInfo, userId: string): RoomShopView {
   const { shops, stored, ledger } = getRoomShop(room, userId);
   const members = db.roomMembers.filter((member) => member.roomId === room.id);
   const appearances = Object.fromEntries(members.flatMap((member) =>
-    shops[member.userId] ? [[member.userId, equippedItems(shops[member.userId].state)]] : []));
+    shops[member.userId] ? [[member.userId, equippedAppearance(shops[member.userId].state)]] : []));
   const decorations = members.flatMap((member) => {
     const seat = db.seats.find((entry) => entry.roomId === room.id && entry.occupiedByUserId === member.userId);
     return (shops[member.userId]?.state.decorations ?? []).filter((placed) => !placed.seatId || placed.seatId === seat?.seatId);
@@ -825,7 +825,7 @@ export async function handleApiRequest(
       return true;
     }
     if (pathname === '/api/health' && method === 'GET') {
-      sendJson(res, 200, { ok: true, mode: 'local_server', shopItems: Object.keys(OFFICE_SHOP) });
+      sendJson(res, 200, { ok: true, mode: 'local_server', shopItems: Object.keys(OFFICE_SHOP), shopFeatures: ['ao_dai_colors'] });
       return true;
     }
 

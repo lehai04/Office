@@ -1,4 +1,5 @@
-import { EXTRA_VOXELS } from '../utils/shopVoxels';
+import { aoDaiThumbnail, EXTRA_VOXELS } from '../utils/shopVoxels';
+import { isAoDai, type AoDaiColors } from '../utils/aoDai';
 import { useEffect, useRef } from 'react';
 import artworkUrl from '../assets/office-shop-voxel.png?url';
 import { OFFICE_SHOP, type ShopItem } from '../utils/officeShop';
@@ -29,7 +30,7 @@ function loadArtwork() {
   return artwork;
 }
 
-export function ShopVoxel({ item }: { item: ShopItem }) {
+export function ShopVoxel({ item, colors }: { item: ShopItem; colors?: AoDaiColors }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const tile = tiles[item];
   const [x, y, width, height] = tile ?? [0, 0, 240, 280];
@@ -49,7 +50,8 @@ export function ShopVoxel({ item }: { item: ShopItem }) {
         context.fillStyle = shade;
         context.fill();
       };
-      for (const [cx, cy, cz, w, h, d, color] of [...(EXTRA_VOXELS[item] ?? [])].sort((a, b) => a[0] + a[1] + a[2] - b[0] - b[1] - b[2])) {
+      const parts = isAoDai(item) ? aoDaiThumbnail(item, colors) : EXTRA_VOXELS[item];
+      for (const [cx, cy, cz, w, h, d, color] of [...(parts ?? [])].sort((a, b) => a[0] + a[1] + a[2] - b[0] - b[1] - b[2])) {
         const x = cx - w / 2, y = cy - h / 2, z = cz - d / 2;
         const a = point(x, y + h, z), b = point(x + w, y + h, z), c = point(x + w, y + h, z + d), e = point(x, y + h, z + d);
         const front = point(x + w, y, z + d);
@@ -65,7 +67,7 @@ export function ShopVoxel({ item }: { item: ShopItem }) {
       if (active) context.drawImage(image, x, y, width, height, 0, 0, width, height);
     }).catch(() => {});
     return () => { active = false; };
-  }, [item, tile, x, y, width, height]);
+  }, [item, tile, x, y, width, height, colors]);
 
   if (!tile && !EXTRA_VOXELS[item]) {
     return <span aria-hidden="true" className="grid h-full place-items-center text-5xl">{OFFICE_SHOP[item].icon}</span>;

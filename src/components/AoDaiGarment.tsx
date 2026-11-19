@@ -1,4 +1,4 @@
-import { AO_DAI, type AoDaiItem } from '../utils/aoDai';
+import { aoDaiPalette, type AoDaiColors, type AoDaiItem } from '../utils/aoDai';
 
 function Block({ at, size, color, turn = 0 }: {
   at: [number, number, number]; size: [number, number, number]; color: string; turn?: number;
@@ -9,8 +9,8 @@ function Block({ at, size, color, turn = 0 }: {
 }
 
 // Coordinates are relative to the existing avatar hip, in the same units as its torso.
-export function AoDaiGarment({ item, seated }: { item: AoDaiItem; seated: boolean }) {
-  const palette = AO_DAI[item];
+export function AoDaiGarment({ item, seated, colors }: { item: AoDaiItem; seated: boolean; colors?: AoDaiColors }) {
+  const palette = aoDaiPalette(item, colors);
   return <group>
     <Block at={[0, 0.635, 0]} size={[0.25, 0.055, 0.245]} color={palette.cloth} />
     <Block at={[0, 0.662, 0]} size={[0.255, 0.012, 0.25]} color={palette.trim} />

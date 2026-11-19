@@ -1,10 +1,10 @@
-import { AO_DAI, type AoDaiItem } from './aoDai';
+import { aoDaiPalette, type AoDaiColors, type AoDaiItem } from './aoDai';
 import type { ShopItem } from './officeShop';
 
 export type VoxelPart = readonly [x: number, y: number, z: number, w: number, h: number, d: number, color: string];
 
-function aoDaiThumbnail(item: AoDaiItem): VoxelPart[] {
-  const p = AO_DAI[item];
+export function aoDaiThumbnail(item: AoDaiItem, colors?: AoDaiColors): VoxelPart[] {
+  const p = aoDaiPalette(item, colors);
   return [
     [0, 1.02, 0, .52, .64, .30, p.cloth],
     [0, 1.39, 0, .31, .09, .31, p.trim],
