@@ -5,7 +5,7 @@ import { isOfficeAction, type OfficeActionEvent } from '../src/utils/officeShop'
 import { BOXING } from '../src/utils/boxing';
 import { activeFighters, boxingView, createBoxingState, punch, recoverFish, updateFighter, type BoxingState } from './boxing';
 import { restoreShop, runShopCommand, type StoredShop } from './officeShop';
-import { SHOP_OFFERINGS, equippedItems, type RoomShopView, type ShopConsumable } from '../src/utils/officeShop';
+import { OFFICE_SHOP, SHOP_OFFERINGS, equippedItems, type RoomShopView, type ShopConsumable } from '../src/utils/officeShop';
 import { calculateDonationMerit, createDefaultWalletState, settlePastMonthsSalary, type DonationRecord, type RoomDonationBoxState } from '../src/utils/officeEconomyData';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -825,7 +825,7 @@ export async function handleApiRequest(
       return true;
     }
     if (pathname === '/api/health' && method === 'GET') {
-      sendJson(res, 200, { ok: true, mode: 'local_server' });
+      sendJson(res, 200, { ok: true, mode: 'local_server', shopItems: Object.keys(OFFICE_SHOP) });
       return true;
     }
 

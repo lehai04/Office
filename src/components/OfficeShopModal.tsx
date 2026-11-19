@@ -237,7 +237,13 @@ export function OfficeShopModal({ balance, merit, avatarGender = 'male', shop, c
             {tab === 'store' && (!(permanent && owned > 0) || buyIntent?.item === active) && (
               buyIntent?.item === active ? <>
                 <button className="office-shop__primary" type="button" disabled={!canBuy || pending}
-                  onClick={() => void run(async () => { await onBuy(active, buyIntent.id); setBuyIntent(null); })}>
+                  onClick={() => {
+                    const purchase = buyIntent;
+                    void run(async () => {
+                      await onBuy(purchase.item, purchase.id);
+                      setBuyIntent(null);
+                    });
+                  }}>
                   Xác nhận mua · {priceLabel(active)}
                 </button>
                 <button className="office-shop__secondary" type="button" disabled={pending} onClick={() => setBuyIntent(null)}>Hủy mua</button>
